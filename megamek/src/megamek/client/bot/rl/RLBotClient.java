@@ -38,8 +38,8 @@ public class RLBotClient extends BotClient {
         this.listenPort = listenPort;
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
         
-        // Start listening thread
-        new Thread(this::listenForPython).start();
+        // Wait for python connection before proceeding
+        listenForPython();
     }
     
     private void listenForPython() {
@@ -128,16 +128,20 @@ public class RLBotClient extends BotClient {
             
             // Send to python
             byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
+            System.err.println("RLBOTCLIENT: Serialized payload to " + bytes.length + " bytes. Writing...");
             // Write length integer first (4 bytes)
             pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
             pythonOut.write(bytes);
             pythonOut.flush();
+            System.err.println("RLBOTCLIENT: Flushed payload. Awaiting response length...");
             
             // Read response length
             byte[] lenBytes = new byte[4];
             int read = pythonIn.read(lenBytes);
+            System.err.println("RLBOTCLIENT: Read " + read + " bytes for length prefix.");
             if (read < 4) return null;
             int length = java.nio.ByteBuffer.wrap(lenBytes).getInt();
+            System.err.println("RLBOTCLIENT: Parsed length as " + length + " bytes. Awaiting payload...");
             
             // Read payload
             byte[] data = new byte[length];
@@ -151,10 +155,13 @@ public class RLBotClient extends BotClient {
             return msgpackMapper.readValue(data, responseType);
             
         } catch (java.net.SocketTimeoutException e) {
+            System.err.println("RLBOTCLIENT FATAL: Python SocketTimeoutException: " + e.getMessage());
             logger.warn("Python client timed out responding. Closing connection to prevent hang.");
             try { pythonSocket.close(); } catch (Exception ignored) {}
             return null;
         } catch (Exception e) {
+            System.err.println("RLBOTCLIENT FATAL EXCEPTION: " + e.getMessage());
+            e.printStackTrace();
             logger.error(e, "Error communicating with python");
             return null;
         }
@@ -176,7 +183,17 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected MovePath calculateMoveTurn() {
-        return null; // individual forces continueMovementFor
+        // Find an unmoved entity and ask Python for its move
+        List<Entity> myUnits = getEntitiesOwned();
+        System.err.println("RLBOTCLIENT: calculateMoveTurn called. Configured entities: " + getGame().getEntitiesVector().size() + ", Owned entities: " + myUnits.size());
+        for (Entity e : myUnits) {
+            if (e.isSelectableThisTurn()) {
+                System.err.println("RLBOTCLIENT: Picked entity " + e.getDisplayName() + " to move.");
+                return continueMovementFor(e);
+            }
+        }
+        System.err.println("RLBOTCLIENT: No selectable entities found.");
+        return null;
     }
 
     private List<Map<String, Object>> buildMovementMask(Entity mover) {
@@ -186,16 +203,16 @@ public class RLBotClient extends BotClient {
         // Ground path generation
         int maxMove = Math.min(mover.getRunMPwithoutMASC(), mover.getRunMP(megamek.common.MPCalculationSetting.NO_GRAVITY));
         if (maxMove > 0) {
-            megamek.common.pathfinder.LongestPathFinder lpf = megamek.common.pathfinder.LongestPathFinder.newInstanceOfLongestPath(maxMove, megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
-            lpf.run(new megamek.common.moves.MovePath(game, mover, null));
-            lastCalculatedPaths.addAll(lpf.getLongestComputedPaths());
+            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
+            spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
+            lastCalculatedPaths.addAll(spfGround.getAllComputedPathsUncategorized());
         }
         
         // Add jump paths if applicable
         if (mover.getAnyTypeMaxJumpMP() > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spf = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
-            spf.run(new megamek.common.moves.MovePath(game, mover, null).addStep(megamek.common.moves.MovePath.MoveStepType.START_JUMP));
-            lastCalculatedPaths.addAll(spf.getAllComputedPathsUncategorized());
+            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
+            spfJump.run(new megamek.common.moves.MovePath(game, mover, null).addStep(megamek.common.moves.MovePath.MoveStepType.START_JUMP));
+            lastCalculatedPaths.addAll(spfJump.getAllComputedPathsUncategorized());
         }
 
         for (int i = 0; i < lastCalculatedPaths.size(); i++) {
@@ -222,21 +239,26 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected MovePath continueMovementFor(Entity entity) {
-        Map<String, Object> maskData = new HashMap<>();
-        maskData.put("active_entity", entity.getId());
-        maskData.put("valid_paths", buildMovementMask(entity));
+        try {
+            Map<String, Object> maskData = new HashMap<>();
+            maskData.put("active_entity", entity.getId());
+            maskData.put("valid_paths", buildMovementMask(entity));
 
-        Map<String, Object> response = queryPython("MOVEMENT", maskData, Map.class);
-        
-        if (response != null && response.containsKey("selected_path_index")) {
-            int idx = ((Number) response.get("selected_path_index")).intValue();
-            if (idx >= 0 && idx < lastCalculatedPaths.size()) {
-                return lastCalculatedPaths.get(idx);
+            Map<String, Object> response = queryPython("MOVEMENT", maskData, Map.class);
+            
+            if (response != null && response.containsKey("selected_path_index")) {
+                int idx = ((Number) response.get("selected_path_index")).intValue();
+                if (idx >= 0 && idx < lastCalculatedPaths.size()) {
+                    return lastCalculatedPaths.get(idx);
+                }
             }
+            
+            // If no path given, command the entity to stand still / end turn
+            sendDone(true);
+        } catch (Throwable t) {
+            System.err.println("RLBOTCLIENT FATAL THROWABLE in continueMovementFor: " + t.toString());
+            t.printStackTrace();
         }
-        
-        // If no path given, command the entity to stand still / end turn
-        sendDone(true);
         return null;
     }
 
@@ -407,6 +429,26 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected void checkMorale() {}
+
+    @Override
+    public void changePhase(megamek.common.enums.GamePhase phase) {
+        super.changePhase(phase);
+        
+        // If we are fully automated and pre-deployed by RLServerManager,
+        // we never get a Deployment GameTurn, so we must manually skip the phase here.
+        if (phase.isDeployment()) {
+            boolean hasUndeployed = false;
+            for (Entity e : getEntitiesOwned()) {
+                if (!e.isDeployed()) {
+                    hasUndeployed = true;
+                    break;
+                }
+            }
+            if (!hasUndeployed) {
+                sendDone(true);
+            }
+        }
+    }
 
     @Override
     protected void postMovementProcessing() {}

@@ -80,6 +80,9 @@ public class MegaMek {
     private static final SanityInputFilter sanityInputFilter = new SanityInputFilter();
 
     public static void main(String... args) {
+        if (java.util.Arrays.asList(args).contains("-rlserver") || java.util.Arrays.asList(args).contains("-rlexport")) {
+            System.setProperty("java.awt.headless", "true");
+        }
         ObjectInputFilter.Config.setSerialFilter(sanityInputFilter);
 
         // Configure Sentry with defaults. Although the client defaults to enabled, the properties file is used to

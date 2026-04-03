@@ -516,7 +516,11 @@ public class Princess extends BotClient {
     protected void calculateDeployment() {
         // get the first unit
         final int entityNum = game.getFirstDeployableEntityNum(game.getTurnForPlayer(localPlayerNumber));
-        sendChat("deploying unit " + getEntity(entityNum).getChassis(), Level.INFO);
+        if (entityNum == megamek.common.Entity.NONE) {
+            sendDone(true);
+            return;
+        }
+        sendChat("deploying unit " + getEntity(entityNum).getChassis(), org.apache.logging.log4j.Level.INFO);
 
         // if we are using forced withdrawal, and the entity being considered is crippled
         // we will opt to not re-deploy the entity
@@ -2744,6 +2748,26 @@ public class Princess extends BotClient {
             BotGeometry.debugSelfTest(this);
         } catch (Exception ignored) {
 
+        }
+    }
+
+    @Override
+    public void changePhase(megamek.common.enums.GamePhase phase) {
+        super.changePhase(phase);
+        
+        // If we are fully automated and pre-deployed by RLServerManager,
+        // we never get a Deployment GameTurn, so we must manually skip the phase here.
+        if (phase.isDeployment()) {
+            boolean hasUndeployed = false;
+            for (Entity e : getEntitiesOwned()) {
+                if (!e.isDeployed()) {
+                    hasUndeployed = true;
+                    break;
+                }
+            }
+            if (!hasUndeployed) {
+                sendDone(true);
+            }
         }
     }
 

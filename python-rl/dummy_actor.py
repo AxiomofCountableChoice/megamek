@@ -11,12 +11,14 @@ def main():
     print(f"Connecting to MegaMek RLServer at {host}:{port}...")
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.connect((host, port))
-        print("Connected successfully!")
-    except ConnectionRefusedError:
-        print("Connection refused. Make sure MegaMek is running with the -rlserver flag.")
-        sys.exit(1)
+    while True:
+        try:
+            sock.connect((host, port))
+            print("Connected successfully!")
+            break
+        except ConnectionRefusedError:
+            print("Waiting for MegaMek server to start...")
+            time.sleep(2)
 
     try:
         while True:
@@ -47,7 +49,7 @@ def main():
             print(f"State Phase: {state.get('phase_main')} (Turn: {state.get('turn_number')})")
             
             # Form dummy response
-            response = {}
+            response = {"selected_path_index": 0}
             
             # Send MessagePack response
             res_bytes = msgpack.packb(response, use_bin_type=True)
