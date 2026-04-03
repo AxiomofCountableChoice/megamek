@@ -60,6 +60,8 @@ import megamek.common.net.marshalling.SanityInputFilter;
 import megamek.common.preference.PreferenceManager;
 import megamek.logging.MMLogger;
 import megamek.server.DedicatedServer;
+import megamek.server.rl.RLServerManager;
+import megamek.client.bot.rl.PrincessOfflineTrainer;
 import megamek.utilities.GifWriter;
 import megamek.utilities.RATGeneratorEditor;
 
@@ -150,6 +152,14 @@ public class MegaMek {
             startGifWriter(restArgs);
             return;
         }
+        if (parser.rlServer()) {
+            startRLServer(restArgs);
+            return;
+        }
+        if (parser.rlExport()) {
+            startRLExport(restArgs);
+            return;
+        }
         if (parser.ratGenEditor()) {
             RATGeneratorEditor.main(restArgs);
         } else {
@@ -189,6 +199,16 @@ public class MegaMek {
     private static void startDedicatedServer(String... args) {
         LOGGER.info(MMLoggingConstants.SC_STARTING_DEDICATED_SERVER, Arrays.toString(args));
         DedicatedServer.start(args);
+    }
+
+    private static void startRLServer(String... args) {
+        LOGGER.info("Starting Dedicated RL Server", Arrays.toString(args));
+        RLServerManager.start(args);
+    }
+
+    private static void startRLExport(String... args) {
+        LOGGER.info("Starting Offline Princess RL Export", Arrays.toString(args));
+        PrincessOfflineTrainer.start(args);
     }
 
     /**

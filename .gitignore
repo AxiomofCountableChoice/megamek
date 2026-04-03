@@ -110,3 +110,11 @@ equipment.txt
 
 /megamek/docs/README.md
 /megamek/docs/LICENSE*
+
+# Python environments and cache
+.venv/
+venv/
+ENV/
+env.bak/
+__pycache__/
+*.py[cod]

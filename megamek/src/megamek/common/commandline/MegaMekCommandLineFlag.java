@@ -42,7 +42,9 @@ public enum MegaMekCommandLineFlag {
     ASC(Messages.getString("MegaMek.Help.UnitAlphastrikeConversion")),
     EDITRATGEN(Messages.getString("MegaMek.Help.RatgenEdit")),
     DATADIR(Messages.getFormattedString("MegaMek.Help.DataDir", Configuration.dataDir())),
-    GIF(Messages.getString("MegaMek.Help.Gif"));
+    GIF(Messages.getString("MegaMek.Help.Gif")),
+    RLSERVER("Starts the dedicated headless server for RL interaction"),
+    RLEXPORT("Starts the headless trajectory generator for RL offline logging");
     // endregion Enum Declarations
 
     public final String helpText;

@@ -47,6 +47,8 @@ public class MegaMekCommandLineParser extends AbstractCommandLineParser {
     private boolean quick = false;
     private boolean ratGenEditor = false;
     private boolean writeGif = false;
+    private boolean rlServer = false;
+    private boolean rlExport = false;
     private String[] restArgs = new String[0];
 
     public MegaMekCommandLineParser(String... args) {
@@ -71,6 +73,14 @@ public class MegaMekCommandLineParser extends AbstractCommandLineParser {
 
     public boolean writeGif() {
         return writeGif;
+    }
+
+    public boolean rlServer() {
+        return rlServer;
+    }
+
+    public boolean rlExport() {
+        return rlExport;
     }
 
     /**
@@ -159,6 +169,12 @@ public class MegaMekCommandLineParser extends AbstractCommandLineParser {
                         break;
                     case EDITRATGEN:
                         ratGenEditor = true;
+                        break;
+                    case RLSERVER:
+                        rlServer = true;
+                        break;
+                    case RLEXPORT:
+                        rlExport = true;
                         break;
                 }
             } catch (ParseException ex) {
