@@ -43,9 +43,10 @@ class MegaMekEnvironment:
                 print("Waiting for MegaMek server to start...")
                 time.sleep(2)
                 
-    def reset(self):
+    def reset(self, device=None):
         """
         Wait for the next match state payload and return the initial state.
+        If device is provided (e.g. 'cuda:0' or a torch.device object), moves the parsed HeteroData graph and its tensors to this device.
         """
         if not self._connected:
             self.connect()
@@ -55,11 +56,40 @@ class MegaMekEnvironment:
         if payload is None:
             raise ConnectionError("Server disconnected during reset.")
             
-        return self._parse_to_heterodata(payload)
+        if payload.get("context") == "TOPOLOGY":
+            print(f"Received TOPOLOGY payload. Parsing Board shape ({payload.get('width')}x{payload.get('height')})...")
+            if HAS_PYG:
+                nodes = payload.get("hex_nodes", [])
+                edges = payload.get("hex_edges", [])
+                
+                if nodes:
+                    self.static_hex_features = torch.tensor(nodes, dtype=torch.float32)
+                else:
+                    self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
+                    
+                if edges:
+                    edge_array = np.array(edges, dtype=np.int64).T
+                    self.static_hex_adjacency_edges = torch.tensor(edge_array, dtype=torch.long)
+                else:
+                    self.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
+                    
+            print("Topology cached. Awaiting actual initial state...")
+            payload = self._receive_payload()
+            if payload is None:
+                 raise ConnectionError("Server disconnected while waiting for STATE.")
+                    
+        data_graph, mask = self._parse_to_heterodata(payload)
+        if device is not None and HAS_PYG:
+            data_graph = data_graph.to(device)
+            self.static_hex_features = self.static_hex_features.to(device)
+            self.static_hex_adjacency_edges = self.static_hex_adjacency_edges.to(device)
+            
+        return data_graph, mask
 
-    def step(self, action_dict):
+    def step(self, action_dict, device=None):
         """
         Submit an action dict (e.g. {"selected_path_index": 0}) and await the next state.
+        Optional device parameter dynamically shifts the next payload onto GPU natively.
         """
         res_bytes = msgpack.packb(action_dict, use_bin_type=True)
         self.sock.sendall(struct.pack('>I', len(res_bytes)))
@@ -72,6 +102,9 @@ class MegaMekEnvironment:
             return None, None, True 
             
         state, mask = self._parse_to_heterodata(payload)
+        if device is not None and HAS_PYG and state is not None:
+            state = state.to(device)
+            
         # Using dummy reward/done for now
         return state, mask, False
 
@@ -112,44 +145,41 @@ class MegaMekEnvironment:
         phase_str = raw_state.get('phase_main', "UNKNOWN")
         turn = raw_state.get('turn_number', 0)
         
-        # Dummy embedding for phase (Usually an MLP projection in encoder)
+        # Dummy embedding for phase
         data.global_context = torch.tensor([turn, len(phase_str)], dtype=torch.float32)
         
         # 2. Dynamic Entity Nodes ($V_U$)
-        # In a real payload, we'd iterate over raw_state["entities"]
-        # For scaffolding, we mock a single Mech node:
-        mech_features = [
-            [0.0, 1.0, 0.0]  # e.g., [is_friendly, heat_ratio, armor_ratio]
-        ]
-        data['mech'].x = torch.tensor(mech_features, dtype=torch.float32)
+        raw_entities = raw_state.get("entities", [])
+        if raw_entities:
+            data['mech'].x = torch.tensor(raw_entities, dtype=torch.float32)
+        else:
+            # 12 covariates: isMine, x, y, facing, heat, maxHeat, armor, structure, tmm, speedMode, gunnery, piloting
+            data['mech'].x = torch.empty((0, 12), dtype=torch.float32)
         
         # 3. Static Hex/Topology Cache ($V_H$ and $E_{adj}$)
-        if self.static_hex_features is None:
-            # Placeholder: Initialize static cache from Java's initial boot sequence
-            self.static_hex_features = torch.tensor([
-                [0.0, 0.0, 0.0],  # Hex 0: [elevation, woods, is_objective]
-                [1.0, 0.0, 0.0]   # Hex 1: ...
-            ], dtype=torch.float32)
-            
-            # Edges between adjacent hexes
-            self.static_hex_adjacency_edges = torch.tensor([
-                [0, 1],
-                [1, 0]
-            ], dtype=torch.long)
-            
-        data['hex'].x = self.static_hex_features
-        data['hex', 'adjacent_to', 'hex'].edge_index = self.static_hex_adjacency_edges
+        if self.static_hex_features is not None:
+            data['hex'].x = self.static_hex_features
+        
+        if self.static_hex_adjacency_edges is not None:
+            data['hex', 'adjacent_to', 'hex'].edge_index = self.static_hex_adjacency_edges
         
         # 4. Ephemeral Edges ($E_{occ}$)
-        # Where are the mechs standing right now?
-        # Placeholder: Mech 0 occupies Hex 1
-        data['mech', 'occupies', 'hex'].edge_index = torch.tensor([
-            [0],
-            [1]
-        ], dtype=torch.long)
-
-        # In production this parses real MessagePack arrays dynamically
+        width = raw_state.get("global_state", {}).get("board_width", 0)
+        mech_indices = []
+        hex_indices = []
         
+        for i, ent in enumerate(raw_entities):
+            ex, ey = ent[1], ent[2]
+            if ex >= 0 and ey >= 0 and width > 0:
+                hex_idx = int(ey * width + ex)
+                mech_indices.append(i)
+                hex_indices.append(hex_idx)
+                
+        if mech_indices:
+            data['mech', 'occupies', 'hex'].edge_index = torch.tensor([mech_indices, hex_indices], dtype=torch.long)
+        else:
+            data['mech', 'occupies', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+
         return data, mask
 
     def close(self):

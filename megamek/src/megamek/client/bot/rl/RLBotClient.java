@@ -20,6 +20,10 @@ import megamek.common.Entity;
 import megamek.common.event.GamePlayerChatEvent;
 import megamek.common.moves.MovePath;
 import megamek.logging.MMLogger;
+import megamek.common.Board;
+import megamek.common.Hex;
+import megamek.common.Terrains;
+
 
 public class RLBotClient extends BotClient {
     private static final MMLogger logger = MMLogger.create(RLBotClient.class);
@@ -32,6 +36,71 @@ public class RLBotClient extends BotClient {
     private int listenPort;
     
     private List<MovePath> lastCalculatedPaths = new ArrayList<>();
+    private boolean hasSentTopology = false;
+
+    private void ensureTopologySent() {
+        if (!hasSentTopology && game != null && game.getBoard() != null && pythonSocket != null && pythonSocket.isConnected()) {
+            sendTopologyToPython();
+            hasSentTopology = true;
+        }
+    }
+
+    private void sendTopologyToPython() {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("context", "TOPOLOGY");
+            
+            Board board = game.getBoard();
+            int width = board.getWidth();
+            int height = board.getHeight();
+            payload.put("width", width);
+            payload.put("height", height);
+            
+            List<float[]> hexes = new ArrayList<>();
+            List<int[]> edges = new ArrayList<>();
+            
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    Hex hex = board.getHex(x, y);
+                    if (hex == null) {
+                        hexes.add(new float[]{0f, 0f, 0f, 0f, 0f});
+                        continue;
+                    }
+                    
+                    float elev = hex.getLevel();
+                    float woods = Math.max(hex.terrainLevel(Terrains.WOODS), hex.terrainLevel(Terrains.JUNGLE));
+                    if (woods < 0) woods = 0;
+                    float water = hex.terrainLevel(Terrains.WATER);
+                    if (water < 0) water = 0;
+                    float isPavement = hex.hasPavement() ? 1f : 0f;
+                    float isBuilding = hex.containsTerrain(Terrains.BUILDING) ? 1f : 0f;
+                    
+                    hexes.add(new float[]{elev, woods, water, isPavement, isBuilding});
+                    
+                    int currentIndex = y * width + x;
+                    for (int dir = 0; dir < 6; dir++) {
+                        Hex adj = board.getHexInDir(x, y, dir);
+                        if (adj != null) {
+                            int adjIndex = adj.getCoords().getY() * width + adj.getCoords().getX();
+                            edges.add(new int[]{currentIndex, adjIndex});
+                        }
+                    }
+                }
+            }
+            
+            payload.put("hex_nodes", hexes);
+            payload.put("hex_edges", edges);
+            
+            byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
+            pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
+            pythonOut.write(bytes);
+            pythonOut.flush();
+            System.err.println("RLBOTCLIENT: Topology payload (" + bytes.length + " bytes) sent.");
+        } catch (Exception e) {
+            System.err.println("RLBOTCLIENT: Failed to send topology " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     public RLBotClient(String playerName, String host, int port, int listenPort) {
         super(playerName, host, port);
@@ -61,13 +130,39 @@ public class RLBotClient extends BotClient {
         }
     }
     
+    private float[] extractEntityFeatures(Entity e) {
+        float isMine = (getLocalPlayer() != null && e.getOwnerId() == getLocalPlayer().getId()) ? 1f : 0f;
+        float x = e.getPosition() != null ? e.getPosition().getX() : -1f;
+        float y = e.getPosition() != null ? e.getPosition().getY() : -1f;
+        float facing = e.getFacing();
+        float heat = e.getHeat();
+        float maxHeat = e.getHeatCapacity();
+        float armor = e.getTotalArmor();
+        float structure = e.getTotalInternal();
+        float tmm = megamek.common.Compute.getTargetMovementModifier(game, e.getId()).getValue();
+        
+        float speedMode = 0f;
+        if (e.moved != megamek.common.EntityMovementType.MOVE_NONE) {
+            if (e.moved == megamek.common.EntityMovementType.MOVE_WALK) speedMode = 1f;
+            else if (e.moved == megamek.common.EntityMovementType.MOVE_RUN) speedMode = 2f;
+            else if (e.moved == megamek.common.EntityMovementType.MOVE_JUMP) speedMode = 3f;
+        }
+        
+        float gunnery = e.getCrew() != null ? e.getCrew().getGunnery() : 4f;
+        float piloting = e.getCrew() != null ? e.getCrew().getPiloting() : 5f;
+        
+        return new float[]{
+            isMine, x, y, facing, heat, maxHeat, armor, structure, tmm, speedMode, gunnery, piloting
+        };
+    }
+
     private Map<String, Object> serializeGameState() {
         Map<String, Object> state = new HashMap<>();
         
-        // 1. Covariates (Phase Vector p)
         state.put("phase_main", game.getPhase().name());
         state.put("turn_number", game.getTurnIndex());
         state.put("round_number", game.getRoundCount());
+        
         int myActivations = 0;
         if (getLocalPlayer() != null) {
             state.put("current_player_id", getLocalPlayer().getId());
@@ -77,39 +172,16 @@ public class RLBotClient extends BotClient {
         }
         state.put("my_activations_left", myActivations);
 
-        // 2. Global Game State
-        Map<String, Object> global = new HashMap<>();
-        if (game.getPlanetaryConditions() != null) {
-            global.put("gravity", game.getPlanetaryConditions().getGravity());
-            global.put("temperature", game.getPlanetaryConditions().getTemperature());
-            global.put("light_level", game.getPlanetaryConditions().getLight());
-        }
-        if (game.getBoard() != null) {
-            global.put("board_width", game.getBoard().getWidth());
-            global.put("board_height", game.getBoard().getHeight());
-        }
-        state.put("global_state", global);
-
-        // 3. Entities
-        Map<Integer, Object> entitiesData = new HashMap<>();
+        List<float[]> entityArray = new ArrayList<>();
+        List<Integer> entityIds = new ArrayList<>();
+        
         for (Entity e : game.getEntitiesVector()) {
-            Map<String, Object> ed = new HashMap<>();
-            ed.put("id", e.getId());
-            if (e.getPosition() != null) {
-                ed.put("x", e.getPosition().getX());
-                ed.put("y", e.getPosition().getY());
-            }
-            ed.put("facing", e.getFacing());
-            ed.put("heat", e.getHeat());
-            ed.put("owner_id", e.getOwnerId());
-            ed.put("is_active", e.isActive());
-            ed.put("is_destroyed", e.isDestroyed());
-            ed.put("armor", e.getTotalArmor());
-            ed.put("structure", e.getTotalInternal());
-            ed.put("elevation", e.getElevation());
-            entitiesData.put(e.getId(), ed);
+            entityIds.add(e.getId());
+            entityArray.add(extractEntityFeatures(e));
         }
-        state.put("entities", entitiesData);
+        
+        state.put("entities", entityArray);
+        state.put("entity_id_map", entityIds);
 
         return state;
     }
@@ -119,6 +191,8 @@ public class RLBotClient extends BotClient {
             logger.warn("Python not connected! Proceeding with empty sub-action.");
             return null;
         }
+        
+        ensureTopologySent();
         
         try {
             Map<String, Object> payload = new HashMap<>();
@@ -225,9 +299,9 @@ public class RLBotClient extends BotClient {
 
             Map<String, Object> pm = new HashMap<>();
             pm.put("path_index", i);
-            if (p.getFinalCoords() != null) {
-                pm.put("dest_x", p.getFinalCoords().getX());
-                pm.put("dest_y", p.getFinalCoords().getY());
+            if (p.getFinalCoords() != null && game.getBoard() != null) {
+                int destIndex = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
+                pm.put("dest_index", destIndex);
             }
             pm.put("dest_facing", p.getFinalFacing());
             pm.put("mp_used", p.getMpUsed());
@@ -241,7 +315,8 @@ public class RLBotClient extends BotClient {
     protected MovePath continueMovementFor(Entity entity) {
         try {
             Map<String, Object> maskData = new HashMap<>();
-            maskData.put("active_entity", entity.getId());
+            int activeIndex = game.getEntitiesVector().indexOf(entity);
+            maskData.put("active_entity_index", activeIndex);
             maskData.put("valid_paths", buildMovementMask(entity));
 
             Map<String, Object> response = queryPython("MOVEMENT", maskData, Map.class);
@@ -293,7 +368,8 @@ public class RLBotClient extends BotClient {
             
             if (!validWeapons.isEmpty()) {
                 Map<String, Object> tm = new HashMap<>();
-                tm.put("target_entity_id", target.getId());
+                int targetIndex = game.getEntitiesVector().indexOf(target);
+                tm.put("target_entity_index", targetIndex);
                 tm.put("valid_weapons", validWeapons);
                 targetsMask.add(tm);
             }

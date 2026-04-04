@@ -24,8 +24,8 @@ class MegaMekHANEncoder(nn.Module):
             
         # 1. Node Linear Embeddings
         # Assumes input features for hexes and mechs are projected into a shared latent space
-        self.hex_proj = nn.Linear(3, hidden_dim)  # Adjust input dims based on final java payload
-        self.mech_proj = nn.Linear(3, hidden_dim) 
+        self.hex_proj = nn.Linear(5, hidden_dim)
+        self.mech_proj = nn.Linear(12, hidden_dim) 
         
         # 2. HAN Layers (Intra-Meta-Path Attention & Semantic Fusing)
         # We define the meta-paths natively

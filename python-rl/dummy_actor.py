@@ -1,70 +1,43 @@
-import socket
-import struct
-import msgpack
 import time
-import sys
+from env import MegaMekEnvironment
 
 def main():
-    host = 'localhost'
-    port = 12346  # 2346 (MegaMek default) + 10000
-
-    print(f"Connecting to MegaMek RLServer at {host}:{port}...")
+    env = MegaMekEnvironment(host='localhost', port=12346)
     
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    while True:
-        try:
-            sock.connect((host, port))
-            print("Connected successfully!")
-            break
-        except ConnectionRefusedError:
-            print("Waiting for MegaMek server to start...")
-            time.sleep(2)
-
+    print("Initializing environment...")
+    state, mask = env.reset()
+    
+    print("\n--- Initial State (HeteroData) parsed successfully! ---")
+    if getattr(state, "node_types", None):
+        for nt in state.node_types:
+            print(f"Node Type '{nt}': {state[nt].x.shape}")
+        for et in state.edge_types:
+            print(f"Edge Type '{et}': {state[et].edge_index.shape}")
+    else:
+        print(state)
+        
+    print("\nStarting Actor Loop...")
+    
     try:
         while True:
-            # Read length prefixed (4 bytes big-endian)
-            length_buf = sock.recv(4)
-            if not length_buf:
-                print("Server disconnected.")
-                break
-            
-            payload_len = struct.unpack('>I', length_buf)[0]
-            
-            # Read exact payload length bytes
-            data = b''
-            while len(data) < payload_len:
-                packet = sock.recv(payload_len - len(data))
-                if not packet:
-                    print("Connection dropped during payload receive.")
-                    return
-                data += packet
-                
-            payload = msgpack.unpackb(data, raw=False)
-            
-            context = payload.get("context")
-            state = payload.get("state", {})
-            mask = payload.get("mask", {})
-            
-            print(f"--- Received Action Context: {context} ---")
-            print(f"State Phase: {state.get('phase_main')} (Turn: {state.get('turn_number')})")
-            
-            # Form dummy response
+            # Dummy response logic
             response = {"selected_path_index": 0}
             
-            # Send MessagePack response
-            res_bytes = msgpack.packb(response, use_bin_type=True)
-            sock.sendall(struct.pack('>I', len(res_bytes)))
-            sock.sendall(res_bytes)
+            state, mask, done = env.step(response)
             
-            time.sleep(0.01)
+            if done:
+                print("Environment episode finished.")
+                break
+                
+            if state is not None and getattr(state, "node_types", None):
+                print(f"Update -> Mechs: {state['mech'].x.shape[0]} nodes | Active Hex Occupancies: {state['mech', 'occupies', 'hex'].edge_index.shape[1]}")
             
     except KeyboardInterrupt:
         print("\nDummy Actor terminated by user.")
     except Exception as e:
-        print(f"Connection error: {e}")
+        print(f"Error during runtime: {e}")
     finally:
-        sock.close()
-        print("Connection closed.")
+        env.close()
 
 if __name__ == "__main__":
     main()
