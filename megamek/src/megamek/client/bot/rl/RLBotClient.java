@@ -1,8 +1,6 @@
 package megamek.client.bot.rl;
 
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
@@ -10,235 +8,21 @@ import java.util.Vector;
 import java.util.List;
 import java.util.ArrayList;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.msgpack.jackson.dataformat.MessagePackFactory;
-
 import megamek.client.bot.BotClient;
 import megamek.client.bot.PhysicalOption;
 import megamek.common.BoardLocation;
 import megamek.common.Entity;
 import megamek.common.event.GamePlayerChatEvent;
 import megamek.common.moves.MovePath;
-import megamek.logging.MMLogger;
-import megamek.common.Board;
-import megamek.common.Hex;
-import megamek.common.Terrains;
-
 
 public class RLBotClient extends BotClient {
-    private static final MMLogger logger = MMLogger.create(RLBotClient.class);
     
-    private ObjectMapper msgpackMapper;
-    private ServerSocket pythonServerSocket;
-    private Socket pythonSocket;
-    private InputStream pythonIn;
-    private OutputStream pythonOut;
-    private int listenPort;
-    
-    private List<MovePath> lastCalculatedPaths = new ArrayList<>();
-    private boolean hasSentTopology = false;
-
-    private void ensureTopologySent() {
-        if (!hasSentTopology && game != null && game.getBoard() != null && pythonSocket != null && pythonSocket.isConnected()) {
-            sendTopologyToPython();
-            hasSentTopology = true;
-        }
-    }
-
-    private void sendTopologyToPython() {
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("context", "TOPOLOGY");
-            
-            Board board = game.getBoard();
-            int width = board.getWidth();
-            int height = board.getHeight();
-            payload.put("width", width);
-            payload.put("height", height);
-            
-            List<float[]> hexes = new ArrayList<>();
-            List<int[]> edges = new ArrayList<>();
-            
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    Hex hex = board.getHex(x, y);
-                    if (hex == null) {
-                        hexes.add(new float[]{0f, 0f, 0f, 0f, 0f});
-                        continue;
-                    }
-                    
-                    float elev = hex.getLevel();
-                    float woods = Math.max(hex.terrainLevel(Terrains.WOODS), hex.terrainLevel(Terrains.JUNGLE));
-                    if (woods < 0) woods = 0;
-                    float water = hex.terrainLevel(Terrains.WATER);
-                    if (water < 0) water = 0;
-                    float isPavement = hex.hasPavement() ? 1f : 0f;
-                    float isBuilding = hex.containsTerrain(Terrains.BUILDING) ? 1f : 0f;
-                    
-                    hexes.add(new float[]{elev, woods, water, isPavement, isBuilding});
-                    
-                    int currentIndex = y * width + x;
-                    for (int dir = 0; dir < 6; dir++) {
-                        Hex adj = board.getHexInDir(x, y, dir);
-                        if (adj != null) {
-                            int adjIndex = adj.getCoords().getY() * width + adj.getCoords().getX();
-                            edges.add(new int[]{currentIndex, adjIndex});
-                        }
-                    }
-                }
-            }
-            
-            payload.put("hex_nodes", hexes);
-            payload.put("hex_edges", edges);
-            
-            byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
-            pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
-            pythonOut.write(bytes);
-            pythonOut.flush();
-            System.err.println("RLBOTCLIENT: Topology payload (" + bytes.length + " bytes) sent.");
-        } catch (Exception e) {
-            System.err.println("RLBOTCLIENT: Failed to send topology " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
+    private RLDataPipeline dataPipeline;
 
     public RLBotClient(String playerName, String host, int port, int listenPort) {
         super(playerName, host, port);
-        this.listenPort = listenPort;
-        this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
-        
-        // Wait for python connection before proceeding
-        listenForPython();
-    }
-    
-    private void listenForPython() {
-        try {
-            pythonServerSocket = new ServerSocket(listenPort);
-            pythonServerSocket.setSoTimeout(30000); // 30 seconds to connect
-            logger.info("RLBotClient waiting for Python connection on port " + listenPort);
-            try {
-                pythonSocket = pythonServerSocket.accept();
-                pythonSocket.setSoTimeout(10000); // 10 seconds read timeout on actual communications
-                pythonIn = pythonSocket.getInputStream();
-                pythonOut = pythonSocket.getOutputStream();
-                logger.info("Python connected on port " + listenPort);
-            } catch (java.net.SocketTimeoutException e) {
-                logger.warn("Python client did not connect within 30 seconds. Running without Python actor.");
-            }
-        } catch (Exception e) {
-            logger.error(e, "Error accepting Python connection.");
-        }
-    }
-    
-    private float[] extractEntityFeatures(Entity e) {
-        float isMine = (getLocalPlayer() != null && e.getOwnerId() == getLocalPlayer().getId()) ? 1f : 0f;
-        float x = e.getPosition() != null ? e.getPosition().getX() : -1f;
-        float y = e.getPosition() != null ? e.getPosition().getY() : -1f;
-        float facing = e.getFacing();
-        float heat = e.getHeat();
-        float maxHeat = e.getHeatCapacity();
-        float armor = e.getTotalArmor();
-        float structure = e.getTotalInternal();
-        float tmm = megamek.common.Compute.getTargetMovementModifier(game, e.getId()).getValue();
-        
-        float speedMode = 0f;
-        if (e.moved != megamek.common.EntityMovementType.MOVE_NONE) {
-            if (e.moved == megamek.common.EntityMovementType.MOVE_WALK) speedMode = 1f;
-            else if (e.moved == megamek.common.EntityMovementType.MOVE_RUN) speedMode = 2f;
-            else if (e.moved == megamek.common.EntityMovementType.MOVE_JUMP) speedMode = 3f;
-        }
-        
-        float gunnery = e.getCrew() != null ? e.getCrew().getGunnery() : 4f;
-        float piloting = e.getCrew() != null ? e.getCrew().getPiloting() : 5f;
-        
-        return new float[]{
-            isMine, x, y, facing, heat, maxHeat, armor, structure, tmm, speedMode, gunnery, piloting
-        };
-    }
-
-    private Map<String, Object> serializeGameState() {
-        Map<String, Object> state = new HashMap<>();
-        
-        state.put("phase_main", game.getPhase().name());
-        state.put("turn_number", game.getTurnIndex());
-        state.put("round_number", game.getRoundCount());
-        
-        int myActivations = 0;
-        if (getLocalPlayer() != null) {
-            state.put("current_player_id", getLocalPlayer().getId());
-            for (Entity e : getEntitiesOwned()) {
-                if (!e.isDone()) myActivations++;
-            }
-        }
-        state.put("my_activations_left", myActivations);
-
-        List<float[]> entityArray = new ArrayList<>();
-        List<Integer> entityIds = new ArrayList<>();
-        
-        for (Entity e : game.getEntitiesVector()) {
-            entityIds.add(e.getId());
-            entityArray.add(extractEntityFeatures(e));
-        }
-        
-        state.put("entities", entityArray);
-        state.put("entity_id_map", entityIds);
-
-        return state;
-    }
-    
-    private <T> T queryPython(String actionContext, Map<String, Object> mask, Class<T> responseType) {
-        if (pythonSocket == null || !pythonSocket.isConnected()) {
-            logger.warn("Python not connected! Proceeding with empty sub-action.");
-            return null;
-        }
-        
-        ensureTopologySent();
-        
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("context", actionContext);
-            payload.put("state", serializeGameState());
-            payload.put("mask", mask);
-            
-            // Send to python
-            byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
-            System.err.println("RLBOTCLIENT: Serialized payload to " + bytes.length + " bytes. Writing...");
-            // Write length integer first (4 bytes)
-            pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
-            pythonOut.write(bytes);
-            pythonOut.flush();
-            System.err.println("RLBOTCLIENT: Flushed payload. Awaiting response length...");
-            
-            // Read response length
-            byte[] lenBytes = new byte[4];
-            int read = pythonIn.read(lenBytes);
-            System.err.println("RLBOTCLIENT: Read " + read + " bytes for length prefix.");
-            if (read < 4) return null;
-            int length = java.nio.ByteBuffer.wrap(lenBytes).getInt();
-            System.err.println("RLBOTCLIENT: Parsed length as " + length + " bytes. Awaiting payload...");
-            
-            // Read payload
-            byte[] data = new byte[length];
-            int offset = 0;
-            while (offset < length) {
-                int r = pythonIn.read(data, offset, length - offset);
-                if (r < 0) break;
-                offset += r;
-            }
-            
-            return msgpackMapper.readValue(data, responseType);
-            
-        } catch (java.net.SocketTimeoutException e) {
-            System.err.println("RLBOTCLIENT FATAL: Python SocketTimeoutException: " + e.getMessage());
-            logger.warn("Python client timed out responding. Closing connection to prevent hang.");
-            try { pythonSocket.close(); } catch (Exception ignored) {}
-            return null;
-        } catch (Exception e) {
-            System.err.println("RLBOTCLIENT FATAL EXCEPTION: " + e.getMessage());
-            e.printStackTrace();
-            logger.error(e, "Error communicating with python");
-            return null;
-        }
+        this.dataPipeline = new RLDataPipeline(this);
+        this.dataPipeline.listenForPython(listenPort);
     }
 
     @Override
@@ -270,61 +54,23 @@ public class RLBotClient extends BotClient {
         return null;
     }
 
-    private List<Map<String, Object>> buildMovementMask(Entity mover) {
-        lastCalculatedPaths.clear();
-        List<Map<String, Object>> serializedMask = new ArrayList<>();
-        
-        // Ground path generation
-        int maxMove = Math.min(mover.getRunMPwithoutMASC(), mover.getRunMP(megamek.common.MPCalculationSetting.NO_GRAVITY));
-        if (maxMove > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
-            spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
-            lastCalculatedPaths.addAll(spfGround.getAllComputedPathsUncategorized());
-        }
-        
-        // Add jump paths if applicable
-        if (mover.getAnyTypeMaxJumpMP() > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
-            spfJump.run(new megamek.common.moves.MovePath(game, mover, null).addStep(megamek.common.moves.MovePath.MoveStepType.START_JUMP));
-            lastCalculatedPaths.addAll(spfJump.getAllComputedPathsUncategorized());
-        }
-
-        for (int i = 0; i < lastCalculatedPaths.size(); i++) {
-            MovePath p = lastCalculatedPaths.get(i);
-            
-            // Filter out illegal destination states (stacking violations)
-            if (!p.isMoveLegal() || megamek.common.Compute.stackingViolation(game, mover.getId(), p.getFinalCoords(), mover.climbMode()) != null) {
-                continue;
-            }
-
-            Map<String, Object> pm = new HashMap<>();
-            pm.put("path_index", i);
-            if (p.getFinalCoords() != null && game.getBoard() != null) {
-                int destIndex = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
-                pm.put("dest_index", destIndex);
-            }
-            pm.put("dest_facing", p.getFinalFacing());
-            pm.put("mp_used", p.getMpUsed());
-            pm.put("is_jump", p.isJumping());
-            serializedMask.add(pm);
-        }
-        return serializedMask;
-    }
-
     @Override
     protected MovePath continueMovementFor(Entity entity) {
         try {
             Map<String, Object> maskData = new HashMap<>();
             int activeIndex = game.getEntitiesVector().indexOf(entity);
             maskData.put("active_entity_index", activeIndex);
-            maskData.put("valid_paths", buildMovementMask(entity));
+            
+            List<Map<String, Object>> serializedMask = new java.util.ArrayList<>();
+            List<MovePath> calculatedPaths = dataPipeline.buildMovementMask(entity, serializedMask);
+            maskData.put("valid_paths", serializedMask);
 
-            Map<String, Object> response = queryPython("MOVEMENT", maskData, Map.class);
+            Map<String, Object> response = dataPipeline.queryPython("MOVEMENT", maskData, Map.class);
             
             if (response != null && response.containsKey("selected_path_index")) {
                 int idx = ((Number) response.get("selected_path_index")).intValue();
-                if (idx >= 0 && idx < lastCalculatedPaths.size()) {
-                    return lastCalculatedPaths.get(idx);
+                if (idx >= 0 && idx < calculatedPaths.size()) {
+                    return calculatedPaths.get(idx);
                 }
             }
             
@@ -390,7 +136,7 @@ public class RLBotClient extends BotClient {
         maskData.put("active_entity", shooter.getId());
         maskData.put("valid_targets", buildFiringMask(shooter));
 
-        Map<String, Object> response = queryPython("FIRING", maskData, Map.class);
+        Map<String, Object> response = dataPipeline.queryPython("FIRING", maskData, Map.class);
 
         Vector<megamek.common.actions.EntityAction> actions = new Vector<>();
         if (response != null && response.containsKey("attacks")) {
@@ -407,7 +153,7 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected void calculateDeployment() throws Exception {
-        Map<String, Object> map = queryPython("DEPLOYMENT", new HashMap<>(), Map.class);
+        Map<String, Object> map = dataPipeline.queryPython("DEPLOYMENT", new HashMap<>(), Map.class);
         sendDone(true);
     }
 
@@ -482,7 +228,7 @@ public class RLBotClient extends BotClient {
         maskData.put("active_entity", shooter.getId());
         maskData.put("valid_targets", buildPhysicalMask(shooter));
 
-        Map<String, Object> response = queryPython("PHYSICAL", maskData, Map.class);
+        Map<String, Object> response = dataPipeline.queryPython("PHYSICAL", maskData, Map.class);
         
         if (response != null && response.containsKey("attack")) {
             Map<String, Object> att = (Map<String, Object>) response.get("attack");
