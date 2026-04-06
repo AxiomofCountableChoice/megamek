@@ -25,12 +25,14 @@ def run_megamek_episode(all_meks):
     print(f"[bc_generator] Starting Episode with Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
     
     cmd = [
-        "./gradlew", "run", 
-        f"--args=-rlexport -autogen -randomMap -p1meks '{p1_meks}' -p2meks '{p2_meks}'"
+        "megamek/build/install/MegaMek/bin/MegaMek", 
+        "-rlexport", "-autogen", "-randomMap", 
+        "-p1meks", p1_meks, 
+        "-p2meks", p2_meks
     ]
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     # Launch subprocess. Wait for it to boot.
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=None)
     return proc
 
 def collect_trajectories(port, target_trajectories, collected_dataset):
@@ -46,7 +48,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
             time.sleep(2)
             retries -= 1
             
-    if not env.socket:
+    if not env.sock:
         print(f"[Worker {port}] Failed to connect after retries.")
         return 0
         
@@ -80,11 +82,8 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                 state_graph, mask = env._parse_to_heterodata(payload)
                 if state_graph is not None:
                     # state_graph is natively CPU in env.py
-                    target_action = payload.get("target_action", {})
-                    selected_idx = target_action.get("selected_path_index", -1)
-                    
-                    if selected_idx != -1:
-                        state_graph.y = torch.tensor([selected_idx], dtype=torch.long)
+                    # env.py automatically computes target tree subset mappings
+                    if hasattr(state_graph, 'y_sequence'):
                         collected_dataset.append(state_graph)
                         collected_this_episode += 1
                         
