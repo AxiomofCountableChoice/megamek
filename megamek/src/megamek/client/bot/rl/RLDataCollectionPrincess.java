@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MegaMek.
+ *
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ */
 package megamek.client.bot.rl;
 
 import megamek.client.bot.princess.Princess;
@@ -32,4 +50,19 @@ public class RLDataCollectionPrincess extends Princess {
         
         return chosenPath;
     }
+
+    @Override
+    protected void calculateDeployment() {
+        megamek.common.GameTurn myTurn = getGame().getTurnForPlayer(getLocalPlayer().getId());
+        if (myTurn != null) {
+            int entityNum = getGame().getFirstDeployableEntityNum(myTurn);
+            // ...
+        } else {
+            sendDone(true);
+            return;
+        }
+
+        super.calculateDeployment();
+    }
+    
 }

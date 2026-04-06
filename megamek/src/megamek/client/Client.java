@@ -778,7 +778,7 @@ public class Client extends AbstractClient {
      * Hashtable for storing img tags containing base64Text src.
      */
     protected void cacheImgTag(Entity entity) {
-        if (entity == null) {
+        if (entity == null || java.awt.GraphicsEnvironment.isHeadless()) {
             return;
         }
 

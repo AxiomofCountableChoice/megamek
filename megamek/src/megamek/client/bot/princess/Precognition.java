@@ -332,9 +332,14 @@ public class Precognition implements Runnable {
 
     private void pause() {
         getWaitWhenDone().set(true);
+        int sleepCount = 0;
         while (!getWaiting().get() && !getDone().get()) {
             try {
                 Thread.sleep(100);
+                sleepCount++;
+                if (sleepCount > 100) {
+                    break;
+                }
             } catch (Exception ignored) {
 
             }

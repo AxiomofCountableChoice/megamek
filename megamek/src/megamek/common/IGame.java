@@ -53,7 +53,7 @@ public interface IGame {
      *         should be at size()-1, but apparently this works
      */
     default boolean hasMoreTurns() {
-        return getTurnsList().size() > getTurnIndex();
+        return getTurnsList().size() > (getTurnIndex() + 1);
     }
 
     /**

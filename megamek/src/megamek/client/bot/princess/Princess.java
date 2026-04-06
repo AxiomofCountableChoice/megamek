@@ -2128,8 +2128,8 @@ public class Princess extends BotClient {
                 friendlyHeatMap.updateTrackers(path);
             }
             return path;
-        } catch (Exception ignored) {
-            LOGGER.error("Error while calculating movement");
+        } catch (Exception ex) {
+            LOGGER.error("Error while calculating movement", ex);
             return null;
         }
     }

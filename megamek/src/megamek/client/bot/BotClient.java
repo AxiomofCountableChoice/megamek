@@ -37,6 +37,7 @@ import megamek.client.bot.princess.CardinalEdge;
 import megamek.client.ui.clientGUI.ClientGUI;
 import megamek.common.*;
 import megamek.common.AmmoType.AmmoTypeEnum;
+import megamek.common.containers.PlayerIDAndList;
 import megamek.common.AmmoType.Munitions;
 import megamek.common.actions.EntityAction;
 import megamek.common.actions.WeaponAttackAction;
@@ -591,7 +592,12 @@ public abstract class BotClient extends Client {
             } else if (game.getPhase().isSetArtilleryAutohitHexes()) {
                 // For now, declare no auto hit hexes.
                 Vector<BoardLocation> autoHitHexes = calculateArtyAutoHitHexes();
-                sendArtyAutoHitHexes(autoHitHexes);
+                PlayerIDAndList<BoardLocation> autoHitHexesWrapped = new PlayerIDAndList<>();
+                autoHitHexesWrapped.setPlayerID(getLocalPlayer().getId());
+                if (autoHitHexes != null) {
+                    autoHitHexesWrapped.addAll(autoHitHexes);
+                }
+                sendArtyAutoHitHexes(autoHitHexesWrapped);
             } else if (game.getPhase().isTargeting() || game.getPhase().isOffboard()) {
                 // Princess implements arty targeting
                 // TODO: TAG should be handled separately.

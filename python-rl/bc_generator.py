@@ -25,14 +25,23 @@ def run_megamek_episode(all_meks):
     print(f"[bc_generator] Starting Episode with Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
     
     cmd = [
-        "megamek/build/install/MegaMek/bin/MegaMek", 
+        "build/install/MegaMek/bin/MegaMek", 
         "-rlexport", "-autogen", "-randomMap", 
         "-p1meks", p1_meks, 
         "-p2meks", p2_meks
     ]
-    cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
+    
     # Launch subprocess. Wait for it to boot.
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=None)
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    
+    # Start a thread to stream server output to python stdout
+    import threading
+    def stream_output(pipe):
+        for line in iter(pipe.readline, ''):
+            print(f"[MegaMek Server] {line}", end='')
+    threading.Thread(target=stream_output, args=(proc.stdout,), daemon=True).start()
+    
     return proc
 
 def collect_trajectories(port, target_trajectories, collected_dataset):
@@ -83,7 +92,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                 if state_graph is not None:
                     # state_graph is natively CPU in env.py
                     # env.py automatically computes target tree subset mappings
-                    if hasattr(state_graph, 'y_sequence'):
+                    if getattr(state_graph, 'y_sequence', None) is not None:
                         collected_dataset.append(state_graph)
                         collected_this_episode += 1
                         
@@ -123,13 +132,11 @@ if __name__ == "__main__":
         t1.start()
         t2.start()
         
-        # Wait for this episode to naturally conclude (disconnect) or hang
-        t1.join(timeout=180) # 3 min max
-        t2.join(timeout=180)
-        
-        # End episode
-        if proc.poll() is None:
-            print(f"[bc_generator] Terminating Headless Server...")
+        try:
+            t1.join(timeout=180) # 3 min max
+            t2.join(timeout=180)
+        finally:
+            print("[bc_generator] Terminating Headless Server...")
             proc.terminate()
             proc.wait(timeout=5)
             if proc.poll() is None:

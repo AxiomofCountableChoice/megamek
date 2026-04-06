@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MegaMek.
+ *
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ */
 package megamek.client.bot.rl;
 
 import java.io.InputStream;
@@ -297,6 +315,21 @@ public class RLDataPipeline {
                 return; 
             }
             
+            // Translate the absolute calculated path index into the continuous subset index
+            int subsetChoiceIndex = -1;
+            for (int k = 0; k < serializedMask.size(); k++) {
+                int absIdx = (Integer) serializedMask.get(k).get("path_index");
+                if (absIdx == chosenIndex) {
+                    subsetChoiceIndex = k;
+                    break;
+                }
+            }
+            
+            // If the maneuver was filtered out (e.g. stacking limit hit), discard this payload
+            if (subsetChoiceIndex == -1) {
+                return;
+            }
+            
             Map<String, Object> maskData = new HashMap<>();
             int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(mover);
             maskData.put("active_entity_index", activeIndex);
@@ -308,7 +341,7 @@ public class RLDataPipeline {
             payload.put("mask", maskData);
             
             Map<String, Object> targetAction = new HashMap<>();
-            targetAction.put("selected_path_index", chosenIndex);
+            targetAction.put("selected_path_index", subsetChoiceIndex);
             payload.put("target_action", targetAction);
             
             sendPayload(payload);
