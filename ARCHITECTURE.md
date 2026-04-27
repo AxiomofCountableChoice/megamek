@@ -211,14 +211,14 @@ Recall the V-trace is defined as
 
 $$v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_k V$$
 
-where 
-$$
+where
+```math
 \begin{aligned}
 \delta_k V &= \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))\\
 \bar{\rho}_k &= \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)\\
 c_j &= \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)
 \end{aligned}
-$$
+```
 
 and $`\bar{\rho}, \bar{c} \in (0,1)`$ and $`\bar{c} \leq \bar{\rho}`$. In particular we see the following recursive representation
 
