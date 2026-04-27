@@ -31,7 +31,7 @@ We define the following sets of nodes:
 
 We also define the following sets of edges, which are used to encode game specific geometry, we may incorporate more as we progress.
 
-1. Edges for showing two hexes are adjacent, and which of the 6 hex-sides they connect via ($i \in \lbrace 0, \dots, 5 \rbrace$).
+1. Edges for showing two hexes are adjacent, and which of the 6 hex-sides they connect via ($i \in \left\lbrace 0, \dots, 5 \right\rbrace$).
 ```math
 \mathcal{E}_{\text{hexAdj}_i}: \mathcal{V}_H \to \mathcal{V}_H
 ```
@@ -79,7 +79,7 @@ We also define the following sets of edges, which are used to encode game specif
 Defining the sets:
 
 ```math
-\mathcal{V} = \mathcal{V}_U \cup \mathcal{V}_W \cup \mathcal{V}_H, \quad \mathcal{E} = \bigcup_{e \in \mathcal{T}} \mathcal{E}_{e}, \quad \mathcal{T} = \lbrace \text{hexAdj}_i, \text{occupies}, \text{equips}, \dots \rbrace
+\mathcal{V} = \mathcal{V}_U \cup \mathcal{V}_W \cup \mathcal{V}_H, \quad \mathcal{E} = \bigcup_{e \in \mathcal{T}} \mathcal{E}_{e}, \quad \mathcal{T} = \left\lbrace \text{hexAdj}_i, \text{occupies}, \text{equips}, \dots \right\rbrace
 ```
 we have that the graph $(\mathcal{V}, \mathcal{E})$ represents the game board-state at any given time. However, to capture the meta information, we need as well to have information regarding the current phase, information regarding who had initiative during the turn, etc.
 
@@ -116,7 +116,7 @@ Additionally, we allow for deterministic mechanisms to resolve all other declara
 
 As a final point, we recognise that the action space is actually defined as the Cartesian product of the two players action spaces, specifically we define $\mathcal{A} = \mathcal{A}^1 \times \mathcal{A}^2$, where the non-active players valid action space is simply $\emptyset$.
 
-Letting the active player be $\eta \in \lbrace 0, 1 \rbrace$, then we have that we represent $`\mathcal{A}_{g^{\eta}}`$ as the tree-structure described above, having nodes $`\mathcal{V}_{\mathcal{A}_{g^{\eta}}}`$ representing the set of sub-actions, with edges between consecutive sub-actions being given by the valid action-mask that Megamek generates. We associated $`\mathcal{A}_{g^{\eta}}`$ with the valid action mask structure.
+Letting the active player be $\eta \in \left\lbrace 0, 1 \right\rbrace$, then we have that we represent $`\mathcal{A}_{g^{\eta}}`$ as the tree-structure described above, having nodes $`\mathcal{V}_{\mathcal{A}_{g^{\eta}}}`$ representing the set of sub-actions, with edges between consecutive sub-actions being given by the valid action-mask that Megamek generates. We associated $`\mathcal{A}_{g^{\eta}}`$ with the valid action mask structure.
 
 ### 1.3 Specification of the transition dynamics
 Considering the formulation of the problem as a turn-based Markov game, we can specify the transition dynamics via the following transition measure:
@@ -132,9 +132,9 @@ The rewards cover the change in Battle Value (BV) experienced by players during 
 
 $$\mathcal{R}^{(1)}_t = \beta_{BV} \left( \frac{\Delta \text{BV}^{(2)}_t - \Delta \text{BV}^{(1)}_t}{\text{TotalMatchBV}} \right) + \beta_{obj} \left( \frac{\Delta \text{VP}_t^{(1)} - \Delta \text{VP}_t^{(2)}}{\text{MaxVP}} \right) + \beta_{TP} \left( \sum_{i \in \texttt{units}_2}\text{TP}^{(2)}_{i, t} - \sum_{j \in \texttt{units}_1} \text{TP}^{(1)}_{j, t} \right)$$
 
-Let $\mathbb{I}$ denote an indicator function. Tertiary penalties shape behaviour strictly around rule-set de-buffs or unforced Piloting Skill Rolls (PSRs). Any penalty incurred by Player 1 is explicitly awarded to Player 2, preserving the zero-sum mirror and natively rewarding the offensive use of heat-inducing weapons (e.g., Flamers) - for the $i$-th unit for player $\eta \in \lbrace 1, 2 \rbrace$ on the $t$-th round:
+Let $\mathbb{I}$ denote an indicator function. Tertiary penalties shape behaviour strictly around rule-set de-buffs or unforced Piloting Skill Rolls (PSRs). Any penalty incurred by Player 1 is explicitly awarded to Player 2, preserving the zero-sum mirror and natively rewarding the offensive use of heat-inducing weapons (e.g., Flamers) - for the $i$-th unit for player $\eta \in \left\lbrace 1, 2 \right\rbrace$ on the $t$-th round:
 
-$$\text{TP}^{(\eta)}_{i, t} = \epsilon_{mov}\mathbb{I}_{\lbrace\text{Heat} \ge 5\rbrace} + \epsilon_{acc}\mathbb{I}_{\lbrace\text{Heat} \ge 8\rbrace} + \epsilon_{shut}\mathbb{I}_{\lbrace\text{Heat} \ge 14\rbrace} + \epsilon_{ammo}\mathbb{I}_{\lbrace\text{Heat} \ge 19 \land \text{Ammo}\rbrace} + \epsilon_{psr}\mathbb{I}_{\lbrace\text{UnforcedPSR}\rbrace}$$
+$$\text{TP}^{(\eta)}_{i, t} = \epsilon_{mov}\mathbb{I}_{\left\lbrace\text{Heat} \ge 5\right\rbrace} + \epsilon_{acc}\mathbb{I}_{\left\lbrace\text{Heat} \ge 8\right\rbrace} + \epsilon_{shut}\mathbb{I}_{\left\lbrace\text{Heat} \ge 14\right\rbrace} + \epsilon_{ammo}\mathbb{I}_{\left\lbrace\text{Heat} \ge 19 \land \text{Ammo}\right\rbrace} + \epsilon_{psr}\mathbb{I}_{\left\lbrace\text{UnforcedPSR}\right\rbrace}$$
 
 ### 1.5 Definition of the Markov Game
 We formally define the game of BattleTech as the discrete-time, fully-observable Markov Game tuple:
@@ -161,7 +161,7 @@ The dynamically sized node matrix is compressed into a fixed-size graph embeddin
 $$
 \begin{aligned}
 z_{graph} &= \text{GlobalAttentionPooling}\left(\text{HGT}(b_t)\right)\\
-&= \text{GlobalAttentionPooling}\left(\lbrace h_{n_i}\rbrace_{n_i \in \mathcal{V}_{b_t}}\right)\\
+&= \text{GlobalAttentionPooling}\left(\left\lbrace h_{n_i}\rbrace_{n_i \in \mathcal{V}_{b_t}}\right)\\
 &= \sum_{n_i \in \mathcal{V}_{b_t}} \text{softmax}(W_{gate} h_{n_i}) \odot (W_{feat} h_{n_i})\\
 \implies z_t &= z_{graph} \oplus \text{MLP}(p_t).
 \end{aligned}
@@ -200,7 +200,7 @@ where $\omega = \oplus_{e=1}^E \omega_e$, and we use a bit of abuse of notation 
 ### 3.1 V-Trace & Entropy Smoothing
 Aligned with the algorithmic implementation outlined within Espeholt et. al. (IMPALA), we compute clipped importance weights in order to compute the V-trace, and utilise an Entropy regularisation term in order to ensure that we do not have vanishing importance sampling weights. In the following we assume that we have $N$ samples of trajectories
 
-$$\lbrace g_{t,i}, a_{t,i}, r_{t,i}\rbrace_{t = 1}^{T_i} \sim \mu_i$$
+$$\left\lbrace g_{t,i}, a_{t,i}, r_{t,i}\rbrace_{t = 1}^{T_i} \sim \mu_i$$
 
 generated under some behaviour policy $\mu_i$, for $i \in 1, \dots, N$, and $\hat{\mathbb{E}}$ is the empirical expectation over samples across these trajectories from some replay-buffer capturing them.
 
@@ -227,7 +227,7 @@ $$v_t(\omega) = \bar{V}_{\omega}(g_t) + \delta_t V + \gamma \cdot c_t \left( v_{
 #### 3.1.2 Actor Gradient (Policy Gradient with V-Trace)
 To incorporate our epistemic exploration bonus, we bake into the advantage function utilised for the actor loss a posterior-variance term determined by the ensemble as a form of bonus toward unexplored state, action pairs. We express the gradient of the actor as
 
-$$\nabla_{\theta} \hat{L}_{actor}(\theta) = -\hat{\mathbb{E}} \left[ \rho_t \nabla_{\theta} \left[ \log \pi_\theta(a_t \mid g_t) \right] \left( r_t + \gamma \lbrace v_{t+1}(\omega) + \lambda \sqrt{\sigma_{\omega}^2(g_{t+1})} \rbrace - \bar{V}_\omega(g_t) \right) \right].$$
+$$\nabla_{\theta} \hat{L}_{actor}(\theta) = -\hat{\mathbb{E}} \left[ \rho_t \nabla_{\theta} \left[ \log \pi_\theta(a_t \mid g_t) \right] \left( r_t + \gamma \left\left\lbrace v_{t+1}(\omega) + \lambda \sqrt{\sigma_{\omega}^2(g_{t+1})} \right\right\rbrace - \bar{V}_\omega(g_t) \right) \right].$$
 
 We see that for larger ensemble variance we have a larger gradient for the actor, and hence the gradient nudges actor parameters towards values that maximise the expected returns, and so which place more mass on state, action pairs that have higher return as estimated by the V-trace or epistemic variance. Furthermore, to encourage that we do not have vanishing mass on actions for our actor policy, we employ the aforementioned entropy regularisation term
 
@@ -256,7 +256,7 @@ Prior to RL training, the Actor network undergoes Behavioural Cloning via Teache
 
 $$\mathcal{L}_{BC} = \hat{\mathbb{E}} \left[ -\sum_{k=0}^{K_t-1} \log \left( \frac{\exp((s_{t,k})^T \cdot e_{a_{t,k}^{\ast}})}{\sum_{a_j \in \mathcal{C}(a_{k-1})} \exp((s_{t,k})^T \cdot e_{a_j})} \right) \right]$$
 
-where $\lbrace g_t, a_t = \lbrace a_{t,k}^{\ast} \rbrace_{k=0}^{K_t-1}\rbrace_{t=1}^T$ are the observations used to compute the loss estimate. This establishes baseline competency in movement, line-of-sight pathing, and weapon bracketing before the IMPALA gradients are engaged.
+where $\left\left\lbrace g_t, a_t = \left\lbrace a_{t,k}^{\ast} \rbrace_{k=0}^{K_t-1}\rbrace_{t=1}^T$ are the observations used to compute the loss estimate. This establishes baseline competency in movement, line-of-sight pathing, and weapon bracketing before the IMPALA gradients are engaged.
 
 ### 4.2 Learning Curriculum & League Training
 Following Behavioral Cloning, the RL agent undergoes a phased learning curriculum:
