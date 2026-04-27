@@ -32,37 +32,37 @@ We define the following sets of nodes:
 We also define the following sets of edges, which are used to encode game specific geometry, we may incorporate more as we progress.
 
 1. Edges for showing two hexes are adjacent, and which of the 6 hex-sides they connect via ($i \in \lbrace 0, \dots, 5 \rbrace$).
-   $$
-   \mathcal{E}_{\text{hexAdj}_i}: \mathcal{V}_H \to \mathcal{V}_H
-   $$
+$$
+\mathcal{E}_{\text{hexAdj}_i}: \mathcal{V}_H \to \mathcal{V}_H
+$$
 2. Edges for showing what hex a unit occupies.
-   $$
-   \mathcal{E}_{\text{occupies}}: \mathcal{V}_U \to \mathcal{V}_H
-   $$
+$$
+\mathcal{E}_{\text{occupies}}: \mathcal{V}_U \to \mathcal{V}_H
+$$
 3. Edges for showing what unit a weapon is equipped to.
-   $$
-   \mathcal{E}_{\text{equips}}: \mathcal{V}_W \to \mathcal{V}_U
-   $$
+$$
+\mathcal{E}_{\text{equips}}: \mathcal{V}_W \to \mathcal{V}_U
+$$
 4. Edges for showing what hexes a unit can move to.
-   $$
-   \mathcal{E}_{\text{moveTypeTMM}_{\text{bracket}_i}}: \mathcal{V}_U \to \mathcal{V}_H
-   $$
+$$
+\mathcal{E}_{\text{moveTypeTMM}_{\text{bracket}_i}}: \mathcal{V}_U \to \mathcal{V}_H
+$$
 5. Edges for showing which hexes an inactivated enemy can move to, which are in movement range of a unit to be activated.
-   $$
-   \mathcal{E}_{\text{movementThreat}}: \mathcal{V}_U \to \mathcal{V}_H
-   $$
+$$
+\mathcal{E}_{\text{movementThreat}}: \mathcal{V}_U \to \mathcal{V}_H
+$$
 6. Edges for showing which hexes are in LOS of enemy units, which are in movement range of a unit to be activated. A consideration required is if it's possible to compute as a function of the unit to be activated, as their height will impact LOS calculations.
-   $$
-   \mathcal{E}_{\text{LOSThreat}}: \mathcal{V}_U \to \mathcal{V}_H
-   $$
+$$
+\mathcal{E}_{\text{LOSThreat}}: \mathcal{V}_U \to \mathcal{V}_H
+$$
 7. Edges for showing which enemies are in LOS of a unit to be activated.
-   $$
-   \mathcal{E}_{\text{LOSTarget}}: \mathcal{V}_U \to \mathcal{V}_U
-   $$
+$$
+\mathcal{E}_{\text{LOSTarget}}: \mathcal{V}_U \to \mathcal{V}_U
+$$
 8. Edges for showing which hexes a unit to be activated have partial cover from already activated enemy units.
-   $$
-   \mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H
-   $$
+$$
+\mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H
+$$
 
 Defining the sets:
 
@@ -107,7 +107,7 @@ Additionally, we allow for deterministic mechanisms to resolve all other declara
 
 As a final point, we recognise that the action space is actually defined as the Cartesian product of the two players action spaces, specifically we define $\mathcal{A} = \mathcal{A}^1 \times \mathcal{A}^2$, where the non-active players valid action space is simply $\emptyset$.
 
-Letting the active player be $\eta \in \lbrace 0, 1 \rbrace$, then we have that we represent $\mathcal{A}_g^{\eta}$ as the tree-structure described above, having nodes $ \mathcal{V}_{\mathcal{A}_g^{\eta}}$ representing the set of sub-actions, with edges between consecutive sub-actions being given by the valid action-mask that Megamek generates. We associated $\mathcal{A}_g^{\eta}$ with the valid action mask structure.
+Letting the active player be $\eta \in \lbrace 0, 1 \rbrace$, then we have that we represent $\mathcal{A}_g^{\eta}$ as the tree-structure described above, having nodes $\mathcal{V}_{\mathcal{A}_g^{\eta}}$ representing the set of sub-actions, with edges between consecutive sub-actions being given by the valid action-mask that Megamek generates. We associated $\mathcal{A}_g^{\eta}$ with the valid action mask structure.
 
 ### 1.3 Specification of the transition dynamics
 Considering the formulation of the problem as a turn-based Markov game, we can specify the transition dynamics via the following transition measure:
@@ -178,7 +178,7 @@ $$
 The Actor policy $\pi_{\theta}$ navigates the valid action space $\mathcal{A}_{g_t}^{\eta}$ using an autoregressive causal transformer. Candidates sub-actions are mapped to continuous embeddings via an `ActionMLP`:
 
 $$
-e_{a_k} = \text{ActionMLP}( h_{\text{active\_unit}} \oplus h_{\text{target\_node}} \oplus x_{a_k} ) \quad \forall a_k \in \mathcal{V}_{\mathcal{A}_g^{\eta}}
+e_{a_k} = \text{ActionMLP}( h_{\text{activeUnit}} \oplus h_{\text{targetNode}} \oplus x_{a_k} ) \quad \forall a_k \in \mathcal{V}_{\mathcal{A}_g^{\eta}}
 $$
 
 where $x_{a_k}$ represents features that we compute for the given sub-action $a_k$, and $\mathcal{V}_{\mathcal{A}_g^{\eta}}$ is the set of nodes in the tree defined by $\mathcal{A}_{g_t}^{\eta}$. The causal transformer processes the latent state $z_t$ and prefix embeddings to generate a query vector $s_k$. Policy logits are evaluated via a pointer-network dot product:
