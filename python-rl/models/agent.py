@@ -1,18 +1,19 @@
 import torch
 import torch.nn as nn
-from models.encoder import MegaMekHANEncoder
+from models.encoder import MegaMekHGTEncoder
+from models.actor import ActionConditionedPointer
 
 class MegaMekAgent(nn.Module):
     """
     Main IMPALA Actor-Critic Module defined in ARCHITECTURE.md (Sections 3c & 3d).
     Contains:
-      - The frozen cache HAN Encoder.
-      - The Value Ensemble (E=3 by default for Epistemic Exploration).
+      - The frozen cache HGT Encoder.
+      - The Value Ensemble (E=8 by default for Epistemic Exploration).
       - The Autoregressive Pointer Decoder (Action head).
     """
-    def __init__(self, hidden_dim=128, ensemble_size=3):
+    def __init__(self, hidden_dim=128, ensemble_size=8):
         super().__init__()
-        self.encoder = MegaMekHANEncoder(hidden_dim=hidden_dim)
+        self.encoder = MegaMekHGTEncoder(hidden_dim=hidden_dim)
         
         # 1. Epistemic Value Ensemble (Critic)
         # Branching from z (dim = hidden_dim * 2 since z_graph + z_context)
@@ -26,19 +27,8 @@ class MegaMekAgent(nn.Module):
             ) for _ in range(ensemble_size)
         ])
         
-        # 2. Pointer Embedder (Action MLP)
-        # Represents non-spatial sub-actions (e.g. Weapon Selections) dynamically
-        self.action_mlp = nn.Sequential(
-            nn.Linear(5, hidden_dim), # e.g. Base Dmg, Heat, Range, Is_Cluster, Size
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim)
-        )
-        
-        # 3. Autoregressive Transformer Decoder
-        # A lightweight cross-attention layer pointing back to the valid H_updated graphs
-        # We manually implement a scaled dot-product attention projection here.
-        self.query_proj = nn.Linear(latent_dim, hidden_dim)
-        self.key_proj = nn.Linear(hidden_dim, hidden_dim)
+        # 2. Autoregressive Transformer Decoder (Teacher Forcing & Action Scoring)
+        self.actor_pointer = ActionConditionedPointer(hidden_dim=hidden_dim, action_feature_dim=3)
         
     def compute_values(self, z):
         """
@@ -59,28 +49,32 @@ class MegaMekAgent(nn.Module):
         # 1. Forward Encoder
         z, x_dict = self.encoder(hetero_data)
         
-        # 2. Extract Value Ensembles for logging (not strictly needed for sampling)
+        # 2. Extract Value Ensembles
         v_mean, v_var = self.compute_values(z)
         
         # 3. Autoregressive Sampling (Pointer logic)
-        # The mask_tree determines what node indices are structurally valid destinations right now.
-        # e.g., action dictates picking an adjacent hex:
-        # We grab the hex node embeddings: H_valid = x_dict['hex'][mask_tree['valid_hex_indices']]
+        # Assuming we are querying k=0 (the root move hex selection) for sampling here
+        # (For structured multi-step sequence decoding, we'd iteratively sample logic in a loop)
         
-        # For scaffolding, we mock a dot product against the first valid selection
-        q = self.query_proj(z) # [batch, hidden_dim]
+        # Compute embeddings for valid action nodes
+        e_actions = self.actor_pointer.compute_action_embeddings(x_dict, hetero_data)
         
-        # Example: Mocking checking hexes
-        k = self.key_proj(x_dict['hex']) # [num_hexes, hidden_dim]
+        # Decode the initial pointer context
+        s_k = self.actor_pointer.decode_sequence(z, None) 
         
-        # Dot product scores scaling
-        scores = torch.matmul(q, k.T) / (q.size(-1) ** 0.5) # [batch, num_hexes]
+        # Batch indexing
+        batch_idx = hetero_data['action'].batch if hasattr(hetero_data['action'], 'batch') and getattr(hetero_data['action'], 'batch') is not None else None
         
-        # In production:
-        # apply masks (scores[~mask] = -1e9)
-        # then sample:
-        probs = torch.softmax(scores, dim=-1)
-        action_idx = torch.multinomial(probs, num_samples=1).item()
+        # Score the action logits
+        logits = self.actor_pointer.score_actions(s_k, e_actions, batch_idx)
         
+        # Action distribution
+        if logits.size(0) > 0:
+            probs = torch.softmax(logits, dim=-1)
+            action_idx = torch.multinomial(probs, num_samples=1).item()
+        else:
+            action_idx = -1
+            probs = torch.empty((0,))
+            
         # Returns action format matching Java expectations
-        return {"selected_path_index": action_idx}, v_mean.item(), probs
+        return {"selected_path_index": action_idx}, v_mean, probs

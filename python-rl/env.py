@@ -63,15 +63,17 @@ class MegaMekEnvironment:
                 edges = payload.get("hex_edges", [])
                 
                 if nodes:
-                    self.static_hex_features = torch.tensor(nodes, dtype=torch.float32)
+                    t = torch.tensor(nodes, dtype=torch.float32)
+                    self.static_hex_features = t
                 else:
                     self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
                     
                 if edges:
-                    edge_array = np.array(edges, dtype=np.int64).T
-                    self.static_hex_adjacency_edges = torch.tensor(edge_array, dtype=torch.long)
+                    import numpy as np
+                    edge_array = np.array(edges, dtype=np.int64)
+                    self.static_hex_adjacency_edges = edge_array
                 else:
-                    self.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
+                    self.static_hex_adjacency_edges = None
                     
             print("Topology cached. Awaiting actual initial state...")
             payload = self._receive_payload()
@@ -151,17 +153,44 @@ class MegaMekEnvironment:
         # 2. Dynamic Entity Nodes ($V_U$)
         raw_entities = raw_state.get("entities", [])
         if raw_entities:
-            data['mech'].x = torch.tensor(raw_entities, dtype=torch.float32)
+            t = torch.tensor(raw_entities, dtype=torch.float32)
+            pad = torch.zeros((t.size(0), 36 - t.size(1)), dtype=torch.float32)
+            data['unit'].x = torch.cat([t, pad], dim=1)
         else:
-            # 12 covariates: isMine, x, y, facing, heat, maxHeat, armor, structure, tmm, speedMode, gunnery, piloting
-            data['mech'].x = torch.empty((0, 12), dtype=torch.float32)
+            # Padded to 36 covariates based on ARCHITECTURE.md specifications
+            data['unit'].x = torch.empty((0, 36), dtype=torch.float32)
         
         # 3. Static Hex/Topology Cache ($V_H$ and $E_{adj}$)
         if self.static_hex_features is not None:
-            data['hex'].x = self.static_hex_features
+            t = self.static_hex_features
+            if t.size(0) > 0:
+                pad = torch.zeros((t.size(0), 14 - t.size(1)), dtype=torch.float32)
+                data['hex'].x = torch.cat([t, pad], dim=1)
+            else:
+                data['hex'].x = torch.empty((0, 14), dtype=torch.float32)
         
         if self.static_hex_adjacency_edges is not None:
-            data['hex', 'adjacent_to', 'hex'].edge_index = self.static_hex_adjacency_edges
+            edge_arr = self.static_hex_adjacency_edges
+            if len(edge_arr.shape) > 1 and edge_arr.shape[1] == 3:
+                for dir_idx in range(6):
+                    mask = edge_arr[:, 2] == dir_idx
+                    if mask.any():
+                        data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.tensor(edge_arr[mask, :2].T, dtype=torch.long)
+                    else:
+                        data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+            else:
+                # Legacy, fallback to undirected edge mapping for index 0
+                edge_t = torch.tensor(edge_arr.T, dtype=torch.long) if len(edge_arr.shape) > 1 else torch.empty((2,0), dtype=torch.long)
+                data['hex', 'hexAdj_0', 'hex'].edge_index = edge_t
+                for dir_idx in range(1, 6):
+                    data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+        else:
+            for dir_idx in range(6):
+                data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+            
+        # 3.5 Dummy Weapon Nodes ($V_W$)
+        data['weapon'].x = torch.empty((0, 10), dtype=torch.float32)
+        data['weapon', 'equips', 'unit'].edge_index = torch.empty((2, 0), dtype=torch.long)
         
         # 4. Ephemeral Edges ($E_{occ}$)
         width = raw_state.get("global_state", {}).get("board_width", 0)
@@ -176,9 +205,9 @@ class MegaMekEnvironment:
                 hex_indices.append(hex_idx)
                 
         if mech_indices:
-            data['mech', 'occupies', 'hex'].edge_index = torch.tensor([mech_indices, hex_indices], dtype=torch.long)
+            data['unit', 'occupies', 'hex'].edge_index = torch.tensor([mech_indices, hex_indices], dtype=torch.long)
         else:
-            data['mech', 'occupies', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+            data['unit', 'occupies', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
 
         # 5. Dynamic Action Nodes ($V_A$) for Autoregressive Trees
         valid_paths = mask.get("valid_paths", [])
@@ -204,10 +233,8 @@ class MegaMekEnvironment:
             
             # Formulate Tier 0 candidates
             action_features = []
-            action_targets_hex_src = []
-            action_targets_hex_dst = []
-            mech_considers_action_src = []
-            mech_considers_action_dst = []
+            action_target_hex_idx = []
+            action_source_unit_idx = []
             step_indices = []
             
             # Ground-truth targets
@@ -226,13 +253,8 @@ class MegaMekEnvironment:
                 # Abstract representation for "Hex Selection". Feature values are 0 since the spatial target edge provides context.
                 action_features.append([0.0, 0.0, 0.0])
                 
-                if dest_idx != -1:
-                    action_targets_hex_src.append(action_idx)
-                    action_targets_hex_dst.append(dest_idx)
-                
-                if active_entity_idx != -1:
-                    mech_considers_action_src.append(active_entity_idx)
-                    mech_considers_action_dst.append(action_idx)
+                action_target_hex_idx.append(dest_idx if dest_idx != -1 else -1)
+                action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                     
                 if dest_idx == true_dest_index:
                     true_a0_idx = action_idx
@@ -253,12 +275,8 @@ class MegaMekEnvironment:
                     action_features.append([mp_used, facing, is_jump])
                     
                     # Target is still the hex to ground it spatially
-                    action_targets_hex_src.append(action_idx)
-                    action_targets_hex_dst.append(true_dest_index)
-                    
-                    if active_entity_idx != -1:
-                        mech_considers_action_src.append(active_entity_idx)
-                        mech_considers_action_dst.append(action_idx)
+                    action_target_hex_idx.append(true_dest_index)
+                    action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                         
                     if raw_path_idx == true_selected_idx:
                         true_a1_idx = action_idx
@@ -267,21 +285,21 @@ class MegaMekEnvironment:
             if action_features:
                 data['action'].x = torch.tensor(action_features, dtype=torch.float32)
                 data['action'].step_idx = torch.tensor(step_indices, dtype=torch.long)
-                data['action', 'targets', 'hex'].edge_index = torch.tensor([action_targets_hex_src, action_targets_hex_dst], dtype=torch.long)
-                data['mech', 'considers', 'action'].edge_index = torch.tensor([mech_considers_action_src, mech_considers_action_dst], dtype=torch.long)
+                data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
+                data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)
                 
                 if true_a0_idx != -1 and true_a1_idx != -1:
                     data.y_sequence = torch.tensor([true_a0_idx, true_a1_idx], dtype=torch.long)
             else:
                 data['action'].x = torch.empty((0, 3), dtype=torch.float32)
                 data['action'].step_idx = torch.empty((0,), dtype=torch.long)
-                data['action', 'targets', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
-                data['mech', 'considers', 'action'].edge_index = torch.empty((2, 0), dtype=torch.long)
+                data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
         else:
             data['action'].x = torch.empty((0, 3), dtype=torch.float32)
             data['action'].step_idx = torch.empty((0,), dtype=torch.long)
-            data['action', 'targets', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
-            data['mech', 'considers', 'action'].edge_index = torch.empty((2, 0), dtype=torch.long)
+            data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+            data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
 
         return data, mask
 

@@ -5,9 +5,9 @@ class ActionConditionedPointer(nn.Module):
     def __init__(self, hidden_dim=128, action_feature_dim=3):
         super().__init__()
         
-        # e_action = ActionMLP( H_unit (+) H_target_hex (+) X_action_node )
+        # e_action = ActionMLP( H_unit (+) H_target_node (+) X_action_node )
         # H_unit is hidden_dim
-        # H_target_hex is hidden_dim
+        # H_target_node is hidden_dim
         # X_action_node is action_feature_dim
         # Total input is hidden_dim*2 + action_feature_dim
         
@@ -69,46 +69,59 @@ class ActionConditionedPointer(nn.Module):
         return s_k
 
     def compute_action_embeddings(self, node_embeddings_dict, hetero_data):
-        """ Evaluates e_action_j for all available interim action roots. """
-        z: Global context tensor (B, hidden_dim*2)
-        node_embeddings_dict: Dict from encoder containing 'hex', 'mech' tensors (num_nodes, hidden_dim)
+        """ Evaluates e_action_j for all available interim action roots. 
+        node_embeddings_dict: Dict from encoder containing 'hex', 'unit', 'weapon' tensors (num_nodes, hidden_dim)
         hetero_data: The PyG HeteroData batch
         
         Returns:
-            logits: (num_actions,) vector of unnormalized scores per action.
+            e_action: (num_actions, hidden_dim) action embeddings.
         """
         device = node_embeddings_dict['hex'].device
-        if 'action' not in hetero_data.node_types or hetero_data['action'].x.size(0) == 0:
+        if 'action' not in hetero_data.node_types or hetero_data['action'].x is None or hetero_data['action'].x.size(0) == 0:
             return torch.empty((0, self.action_mlp[-1].out_features), device=device)
             
         action_features = hetero_data['action'].x  # (num_actions, action_feature_dim)
         num_actions = action_features.size(0)
         
-        # We need to gather the embeddings of the corresponding source mechs and target hexes for each action.
-        # 1. Target Hexes: using ['action', 'targets', 'hex'].edge_index
-        target_edges = hetero_data['action', 'targets', 'hex'].edge_index
-        # target_edges[0] is the action idx, target_edges[1] is the hex idx
+        # We need to gather the embeddings of the corresponding source units and target nodes for each action.
+        H_targets = torch.zeros((num_actions, node_embeddings_dict['hex'].size(-1)), device=device)
         
-        # Sort or map hexes to actions
-        # Action edges should be 1-to-1 for MOVEMENT roots.
-        H_hexes = torch.zeros((num_actions, node_embeddings_dict['hex'].size(-1)), device=device)
-        H_hexes[target_edges[0]] = node_embeddings_dict['hex'][target_edges[1]]
+        # Check all valid spatial targets for actions (Hexes, Units, Weapons)
+        if hasattr(hetero_data['action'], 'target_hex_idx'):
+            tgt_idx = hetero_data['action'].target_hex_idx
+            valid_mask = tgt_idx >= 0
+            if valid_mask.any():
+                H_targets[valid_mask] = node_embeddings_dict['hex'][tgt_idx[valid_mask]]
+                
+        if hasattr(hetero_data['action'], 'target_unit_idx'):
+            tgt_idx = hetero_data['action'].target_unit_idx
+            valid_mask = tgt_idx >= 0
+            if valid_mask.any():
+                H_targets[valid_mask] = node_embeddings_dict['unit'][tgt_idx[valid_mask]]
+                
+        if hasattr(hetero_data['action'], 'target_weapon_idx'):
+            tgt_idx = hetero_data['action'].target_weapon_idx
+            valid_mask = tgt_idx >= 0
+            if valid_mask.any():
+                H_targets[valid_mask] = node_embeddings_dict['weapon'][tgt_idx[valid_mask]]
         
-        # 2. Source Mechs: using ['mech', 'considers', 'action'].edge_index
-        source_edges = hetero_data['mech', 'considers', 'action'].edge_index
-        # source_edges[0] is mech idx, source_edges[1] is action idx
-        H_mechs = torch.zeros((num_actions, node_embeddings_dict['mech'].size(-1)), device=device)
-        H_mechs[source_edges[1]] = node_embeddings_dict['mech'][source_edges[0]]
+        # Source Units
+        H_units = torch.zeros((num_actions, node_embeddings_dict['unit'].size(-1)), device=device)
+        if hasattr(hetero_data['action'], 'source_unit_idx'):
+            src_idx = hetero_data['action'].source_unit_idx
+            valid_mask = src_idx >= 0
+            if valid_mask.any():
+                H_units[valid_mask] = node_embeddings_dict['unit'][src_idx[valid_mask]]
         
-        # Concat: H_unit (+) H_target_hex (+) X_action_node
-        fused_inputs = torch.cat([H_mechs, H_hexes, action_features], dim=-1)
+        # Concat: H_unit (+) H_target_node (+) X_action_node
+        fused_inputs = torch.cat([H_units, H_targets, action_features], dim=-1)
         
         # Compute dynamic action embeddings (e_action)
         e_action = self.action_mlp(fused_inputs) # (num_actions, hidden_dim)
         
         return e_action
 
-    def score_actions(self, s_k, e_action, hetero_data):
+    def score_actions(self, s_k, e_action, action_batch_idx=None):
         """
         Computes dot-product logits for the current state s_k against action embeddings.
         Returns unnormalized logits (num_actions,).
@@ -117,14 +130,10 @@ class ActionConditionedPointer(nn.Module):
         if num_actions == 0:
             return torch.empty((0,), device=s_k.device)
             
-        # Broadcast the internal state s_k to each action evaluating 
-        # using PyG batch indexes.
-        s_0 = self.s_0_proj(z) # (B, hidden_dim)
+        device = s_k.device
         
-        # Get the batch index for each action from PyG
-        # if PyG DataLoader batched it, hetero_data['action'].batch has the batch indices.
-        if hasattr(hetero_data['action'], 'batch') and getattr(hetero_data['action'], 'batch') is not None:
-            batch_idx = hetero_data['action'].batch
+        if action_batch_idx is not None:
+            batch_idx = action_batch_idx
         else: # Single graph
             batch_idx = torch.zeros(num_actions, dtype=torch.long, device=device)
             

@@ -126,7 +126,7 @@ public class RLDataPipeline {
                         Hex adj = board.getHexInDir(x, y, dir);
                         if (adj != null) {
                             int adjIndex = adj.getCoords().getY() * width + adj.getCoords().getX();
-                            edges.add(new int[]{currentIndex, adjIndex});
+                            edges.add(new int[]{currentIndex, adjIndex, dir});
                         }
                     }
                 }
