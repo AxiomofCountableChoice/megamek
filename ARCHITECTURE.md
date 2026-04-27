@@ -158,14 +158,14 @@ $$h_{n_{\iota}}^{(l)} = \text{GELU} \left( \sum_{n_s \in \mathcal{N}_{b_t}(n_{\i
 
 The dynamically sized node matrix is compressed into a fixed-size graph embedding via Global Attention Pooling and concatenated with the phase context MLP to form the global latent state $z_t$:
 
-$$
+```math
 \begin{aligned}
 z_{graph} &= \text{GlobalAttentionPooling}\left(\text{HGT}(b_t)\right)\\
-&= \text{GlobalAttentionPooling}\left(\left\lbrace h_{n_i}\rbrace_{n_i \in \mathcal{V}_{b_t}}\right)\\
+&= \text{GlobalAttentionPooling}\left(\left\lbrace h_{n_i}\right\rbrace_{n_i \in \mathcal{V}_{b_t}}\right)\\
 &= \sum_{n_i \in \mathcal{V}_{b_t}} \text{softmax}(W_{gate} h_{n_i}) \odot (W_{feat} h_{n_i})\\
 \implies z_t &= z_{graph} \oplus \text{MLP}(p_t).
 \end{aligned}
-$$
+```
 
 ### 2.2 Action-Conditioned Pointer Execution (Actor)
 The Actor policy $\pi_{\theta}$ navigates the valid action space $\mathcal{A}_{g_t}^{\eta}$ using an autoregressive causal transformer. Candidates sub-actions are mapped to continuous embeddings via an `ActionMLP`:
@@ -200,7 +200,7 @@ where $\omega = \oplus_{e=1}^E \omega_e$, and we use a bit of abuse of notation 
 ### 3.1 V-Trace & Entropy Smoothing
 Aligned with the algorithmic implementation outlined within Espeholt et. al. (IMPALA), we compute clipped importance weights in order to compute the V-trace, and utilise an Entropy regularisation term in order to ensure that we do not have vanishing importance sampling weights. In the following we assume that we have $N$ samples of trajectories
 
-$$\left\lbrace g_{t,i}, a_{t,i}, r_{t,i}\rbrace_{t = 1}^{T_i} \sim \mu_i$$
+$$\left\lbrace g_{t,i}, a_{t,i}, r_{t,i}\right\rbrace_{t = 1}^{T_i} \sim \mu_i$$
 
 generated under some behaviour policy $\mu_i$, for $i \in 1, \dots, N$, and $\hat{\mathbb{E}}$ is the empirical expectation over samples across these trajectories from some replay-buffer capturing them.
 
@@ -227,7 +227,7 @@ $$v_t(\omega) = \bar{V}_{\omega}(g_t) + \delta_t V + \gamma \cdot c_t \left( v_{
 #### 3.1.2 Actor Gradient (Policy Gradient with V-Trace)
 To incorporate our epistemic exploration bonus, we bake into the advantage function utilised for the actor loss a posterior-variance term determined by the ensemble as a form of bonus toward unexplored state, action pairs. We express the gradient of the actor as
 
-$$\nabla_{\theta} \hat{L}_{actor}(\theta) = -\hat{\mathbb{E}} \left[ \rho_t \nabla_{\theta} \left[ \log \pi_\theta(a_t \mid g_t) \right] \left( r_t + \gamma \left\left\lbrace v_{t+1}(\omega) + \lambda \sqrt{\sigma_{\omega}^2(g_{t+1})} \right\right\rbrace - \bar{V}_\omega(g_t) \right) \right].$$
+$$\nabla_{\theta} \hat{L}_{actor}(\theta) = -\hat{\mathbb{E}} \left[ \rho_t \nabla_{\theta} \left[ \log \pi_\theta(a_t \mid g_t) \right] \left( r_t + \gamma \left\lbrace v_{t+1}(\omega) + \lambda \sqrt{\sigma_{\omega}^2(g_{t+1})} \right\rbrace - \bar{V}_\omega(g_t) \right) \right].$$
 
 We see that for larger ensemble variance we have a larger gradient for the actor, and hence the gradient nudges actor parameters towards values that maximise the expected returns, and so which place more mass on state, action pairs that have higher return as estimated by the V-trace or epistemic variance. Furthermore, to encourage that we do not have vanishing mass on actions for our actor policy, we employ the aforementioned entropy regularisation term
 
@@ -256,7 +256,7 @@ Prior to RL training, the Actor network undergoes Behavioural Cloning via Teache
 
 $$\mathcal{L}_{BC} = \hat{\mathbb{E}} \left[ -\sum_{k=0}^{K_t-1} \log \left( \frac{\exp((s_{t,k})^T \cdot e_{a_{t,k}^{\ast}})}{\sum_{a_j \in \mathcal{C}(a_{k-1})} \exp((s_{t,k})^T \cdot e_{a_j})} \right) \right]$$
 
-where $\left\left\lbrace g_t, a_t = \left\lbrace a_{t,k}^{\ast} \rbrace_{k=0}^{K_t-1}\rbrace_{t=1}^T$ are the observations used to compute the loss estimate. This establishes baseline competency in movement, line-of-sight pathing, and weapon bracketing before the IMPALA gradients are engaged.
+where $\left\lbrace g_t, a_t = \left\lbrace a_{t,k}^{\ast} \right\rbrace_{k=0}^{K_t-1}\right\rbrace_{t=1}^T$ are the observations used to compute the loss estimate. This establishes baseline competency in movement, line-of-sight pathing, and weapon bracketing before the IMPALA gradients are engaged.
 
 ### 4.2 Learning Curriculum & League Training
 Following Behavioral Cloning, the RL agent undergoes a phased learning curriculum:
