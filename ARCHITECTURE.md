@@ -211,7 +211,16 @@ Recall the V-trace is defined as
 
 $$v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_k V$$
 
-where $`\delta_k V = \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))`$, $`\bar{\rho}_k = \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)`$, and $`c_j = \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)`$, and $`\bar{\rho}, \bar{c} \in (0,1)`$ and $`\bar{c} \leq \bar{\rho}`$. In particular we see the following recursive representation
+where 
+$$
+\begin{aligned}
+\delta_k V &= \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))
+\bar{\rho}_k &= \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)
+c_j &= \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)
+\end{aligned}
+$$
+
+and $`\bar{\rho}, \bar{c} \in (0,1)`$ and $`\bar{c} \leq \bar{\rho}`$. In particular we see the following recursive representation
 
 $$v_t(\omega) = \bar{V}_{\omega}(g_t) + \delta_t V + \gamma \cdot c_t \left( v_{t+1}(\omega) - \bar{V}_{\omega}(g_{t+1}) \right).$$
 
@@ -270,7 +279,7 @@ One other important fact to note, is that in many ways MuZero approaches the pro
 
 ### 5.1 MegaMek API Contract & Delta Serialization
 A Python-based Asynchronous Environment Manager handles the headless MegaMek instances. To prevent the multiprocessing queue from bottlenecking on massive graph serializations, the IPC pipeline utilizes _Delta Encoding_:
-* **_Initialization:_** Java sends the static topology ($`\mathcal{V}_H$, $\mathcal{E}_{adj}`$) once per match. The Python Actor caches this in RAM.
+* **_Initialization:_** Java sends the static topology ($`\mathcal{V}_H`$, $`\mathcal{E}_{adj}`$) once per match. The Python Actor caches this in RAM.
 * **_Step Payload (Deltas):_** At each step, Java transmits only the dynamic state ($`\mathcal{V}_U`$ covariates, $`\mathcal{E}_{occ}`$, $`\mathcal{E}_{LoS}`$) and the current hierarchical Action Mask Tree.
 * **_Actors:_** CPU threads push these lightweight, flat arrays into a high-speed shared memory queue.
 * **_Learner:_** A dedicated GPU thread pulls the arrays, dynamically reconstructs the PyG batches, computes gradients, and asynchronously broadcasts updated weights back to the Actors.
