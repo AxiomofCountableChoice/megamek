@@ -33,10 +33,12 @@ import org.msgpack.jackson.dataformat.MessagePackFactory;
 import megamek.client.bot.BotClient;
 import megamek.common.Board;
 import megamek.common.Entity;
+import megamek.common.Mounted;
 import megamek.common.Hex;
 import megamek.common.Game;
 import megamek.common.Player;
 import megamek.common.Terrains;
+import megamek.common.WeaponType;
 import megamek.common.moves.MovePath;
 import megamek.logging.MMLogger;
 
@@ -210,6 +212,32 @@ public class RLDataPipeline {
         };
     }
 
+    public float[] extractWeaponFeatures(Mounted<?> weapon) {
+        WeaponType wt = (WeaponType) weapon.getType();
+        float minRange = wt.getMinimumRange();
+        float shortRange = wt.getShortRange();
+        float mediumRange = wt.getMediumRange();
+        float longRange = wt.getLongRange();
+        float damage = wt.getDamage();
+        float isOperational = weapon.isOperable() ? 1f : 0f;
+        float isCluster = (wt.getRackSize() > 1 || wt.hasFlag(WeaponType.F_MISSILE)) ? 1f : 0f;
+        float numClusters = wt.getRackSize();
+        
+        float salvosRemaining = 99f;
+        if (wt.getAmmoType() != null && wt.getAmmoType() != megamek.common.AmmoType.AmmoTypeEnum.NA) {
+            Mounted<?> ammo = weapon.getLinked();
+            if (ammo != null) {
+                salvosRemaining = ammo.getUsableShotsLeft();
+            } else {
+                salvosRemaining = 0f;
+            }
+        }
+        
+        float heat = wt.getHeat();
+        
+        return new float[]{minRange, shortRange, mediumRange, longRange, damage, isOperational, isCluster, numClusters, salvosRemaining, heat};
+    }
+
     public Map<String, Object> serializeGameState() {
         Game game = (Game) baseClient.getGame();
         Player localPlayer = baseClient.getLocalPlayer();
@@ -231,14 +259,86 @@ public class RLDataPipeline {
 
         List<float[]> entityArray = new ArrayList<>();
         List<Integer> entityIds = new ArrayList<>();
+        List<float[]> weaponArray = new ArrayList<>();
+        List<int[]> equipsEdges = new ArrayList<>();
+        List<int[]> losTargetEdges = new ArrayList<>();
+        List<int[]> losThreatEdges = new ArrayList<>();
+        List<int[]> partialCoverEdges = new ArrayList<>();
+        List<int[]> movementThreatEdges = new ArrayList<>();
         
-        for (Entity e : game.getEntitiesVector()) {
-            entityIds.add(e.getId());
-            entityArray.add(extractEntityFeatures(e));
+        int weaponNodeId = 0;
+        int boardWidth = game.getBoard().getWidth();
+        int boardHeight = game.getBoard().getHeight();
+        
+        for (int i = 0; i < game.getEntitiesVector().size(); i++) {
+            Entity e1 = game.getEntitiesVector().get(i);
+            entityIds.add(e1.getId());
+            entityArray.add(extractEntityFeatures(e1));
+            
+            for (Mounted<?> m : e1.getEquipment()) {
+                if (m.getType() instanceof WeaponType) {
+                    weaponArray.add(extractWeaponFeatures(m));
+                    equipsEdges.add(new int[]{weaponNodeId, i});
+                    weaponNodeId++;
+                }
+            }
+            
+            // LOS Target Edges
+            for (int j = 0; j < game.getEntitiesVector().size(); j++) {
+                if (i == j) continue;
+                Entity e2 = game.getEntitiesVector().get(j);
+                megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, e2);
+                if (los.canSee()) {
+                    losTargetEdges.add(new int[]{i, j});
+                }
+            }
+            
+            // LOS Threat and Partial Cover Edges
+            for (int hexY = 0; hexY < boardHeight; hexY++) {
+                for (int hexX = 0; hexX < boardWidth; hexX++) {
+                    megamek.common.Coords targetCoords = new megamek.common.Coords(hexX, hexY);
+                    megamek.common.HexTarget target = new megamek.common.HexTarget(targetCoords, game.getBoard(), megamek.common.Targetable.TYPE_HEX_CLEAR);
+                    megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, target);
+                    if (los.canSee()) {
+                        int hexIdx = hexY * boardWidth + hexX;
+                        losThreatEdges.add(new int[]{i, hexIdx});
+                        if (los.isTargetCover()) {
+                            partialCoverEdges.add(new int[]{i, hexIdx});
+                        }
+                    }
+                }
+            }
+            
+            // Movement Threat Edges
+            java.util.Set<Integer> reachableHexes = new java.util.HashSet<>();
+            try {
+                int maxMove = Math.max(e1.getWalkMP(), e1.getRunMP());
+                if (maxMove > 0 && !e1.isImmobile()) {
+                    megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
+                    spfGround.run(new megamek.common.moves.MovePath(game, e1, null));
+                    for (megamek.common.moves.MovePath p : spfGround.getAllComputedPathsUncategorized()) {
+                        if (p.getFinalCoords() != null) {
+                            reachableHexes.add(p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX());
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                // Ignore if pathfinding fails for some entities
+            }
+            
+            for (int hexIdx : reachableHexes) {
+                movementThreatEdges.add(new int[]{i, hexIdx});
+            }
         }
         
         state.put("entities", entityArray);
         state.put("entity_id_map", entityIds);
+        state.put("weapons", weaponArray);
+        state.put("equips_edges", equipsEdges);
+        state.put("los_target_edges", losTargetEdges);
+        state.put("los_threat_edges", losThreatEdges);
+        state.put("partial_cover_edges", partialCoverEdges);
+        state.put("movement_threat_edges", movementThreatEdges);
 
         return state;
     }

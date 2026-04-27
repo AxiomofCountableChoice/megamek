@@ -57,6 +57,7 @@ class MegaMekEnvironment:
             raise ConnectionError("Server disconnected during reset.")
             
         if payload.get("context") == "TOPOLOGY":
+            self.board_width = payload.get('width', 0)
             print(f"Received TOPOLOGY payload. Parsing Board shape ({payload.get('width')}x{payload.get('height')})...")
             if HAS_PYG:
                 nodes = payload.get("hex_nodes", [])
@@ -135,7 +136,8 @@ class MegaMekEnvironment:
         """
         context = payload.get("context", "UNKNOWN")
         raw_state = payload.get("state", {})
-        mask = payload.get("mask", {})
+        mask_raw = payload.get("mask", {})
+        mask = mask_raw if isinstance(mask_raw, dict) else {}
         
         if not HAS_PYG:
             # Fallback for compilation testing before library installs
@@ -173,9 +175,9 @@ class MegaMekEnvironment:
             edge_arr = self.static_hex_adjacency_edges
             if len(edge_arr.shape) > 1 and edge_arr.shape[1] == 3:
                 for dir_idx in range(6):
-                    mask = edge_arr[:, 2] == dir_idx
-                    if mask.any():
-                        data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.tensor(edge_arr[mask, :2].T, dtype=torch.long)
+                    dir_mask = edge_arr[:, 2] == dir_idx
+                    if dir_mask.any():
+                        data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.tensor(edge_arr[dir_mask, :2].T, dtype=torch.long)
                     else:
                         data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
             else:
@@ -188,12 +190,23 @@ class MegaMekEnvironment:
             for dir_idx in range(6):
                 data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
             
-        # 3.5 Dummy Weapon Nodes ($V_W$)
-        data['weapon'].x = torch.empty((0, 10), dtype=torch.float32)
-        data['weapon', 'equips', 'unit'].edge_index = torch.empty((2, 0), dtype=torch.long)
+        # 3.5 Weapon Nodes ($V_W$)
+        weapons = raw_state.get("weapons", [])
+        if weapons:
+            data['weapon'].x = torch.tensor(weapons, dtype=torch.float32)
+        else:
+            data['weapon'].x = torch.empty((0, 10), dtype=torch.float32)
+            
+        equips = raw_state.get("equips_edges", [])
+        if equips:
+            import numpy as np
+            e_arr = np.array(equips, dtype=np.int64).T
+            data['weapon', 'equips', 'unit'].edge_index = torch.tensor(e_arr, dtype=torch.long)
+        else:
+            data['weapon', 'equips', 'unit'].edge_index = torch.empty((2, 0), dtype=torch.long)
         
         # 4. Ephemeral Edges ($E_{occ}$)
-        width = raw_state.get("global_state", {}).get("board_width", 0)
+        width = getattr(self, "board_width", 0)
         mech_indices = []
         hex_indices = []
         
@@ -208,6 +221,21 @@ class MegaMekEnvironment:
             data['unit', 'occupies', 'hex'].edge_index = torch.tensor([mech_indices, hex_indices], dtype=torch.long)
         else:
             data['unit', 'occupies', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+
+        # 4.5 Ephemeral Threat and LOS Edges
+        def add_ephemeral_edges(key, src, dst, out_type):
+            edges = raw_state.get(key, [])
+            if edges:
+                import numpy as np
+                e_arr = np.array(edges, dtype=np.int64).T
+                data[src, out_type, dst].edge_index = torch.tensor(e_arr, dtype=torch.long)
+            else:
+                data[src, out_type, dst].edge_index = torch.empty((2, 0), dtype=torch.long)
+                
+        add_ephemeral_edges("los_target_edges", "unit", "unit", "LOSTarget")
+        add_ephemeral_edges("los_threat_edges", "unit", "hex", "LOSThreat")
+        add_ephemeral_edges("partial_cover_edges", "unit", "hex", "partialCover")
+        add_ephemeral_edges("movement_threat_edges", "unit", "hex", "movementThreat")
 
         # 5. Dynamic Action Nodes ($V_A$) for Autoregressive Trees
         valid_paths = mask.get("valid_paths", [])
