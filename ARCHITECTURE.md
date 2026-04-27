@@ -146,7 +146,7 @@ $$\mathcal{M} = \langle \mathcal{G}, \mathcal{A}^1, \mathcal{A}^2, \mathbb{P}, \
 ## 2. Neural Network Architecture
 
 ### 2.1 Heterogeneous Graph Transformer (HGT)
-The state graph $g_t = (b_t, p_t)$, of board state $b_t$ and phase meta-data $p_t$ is processed via an HGT layer. We introduce the nodes $n \in \mathcal{V}_{b_t}$ and edges $\varepsilon \in \mathcal{E}_{b_t}$ as the edges and nodes of the current state graph $b_t$. Let $\tau$ and $\phi$ be the node type and edge type identifier functions and $\mathcal{N}_{b_t}(n)$ represent the 1-hop neighbourhood of node $n$ across all edge types.
+The state graph $g_t = (b_t, p_t)$, of board state $b_t$ and phase meta-data $p_t$ is processed via an HGT layer. We introduce the nodes $`n \in \mathcal{V}_{b_t}`$ and edges $`\varepsilon \in \mathcal{E}_{b_t}`$ as the edges and nodes of the current state graph $b_t$. Let $\tau$ and $\phi$ be the node type and edge type identifier functions and $\mathcal{N}_{b_t}(n)$ represent the 1-hop neighbourhood of node $n$ across all edge types.
 
 For discrete node types $\tau(n)$ and edge types $\phi(e)$ select specific learned weight matrices to dynamically route messages. For a directed edge $\varepsilon_{s,\iota}$ from source $n_s$ to target $n_{\iota}$:
 
@@ -172,7 +172,7 @@ The Actor policy $\pi_{\theta}$ navigates the valid action space $\mathcal{A}_{g
 
 $$e_{a_k} = \text{ActionMLP}( h_{\text{activeUnit}} \oplus h_{\text{targetNode}} \oplus x_{a_k} ) \quad \forall a_k \in V_{\mathcal{A}_g^{\eta}}$$
 
-where $x_{a_k}$ represents features that we compute for the given sub-action $a_k$, and $V_{\mathcal{A}_g^{\eta}}$ is the set of nodes in the tree defined by $\mathcal{A}_{g_t}^{\eta}$. The causal transformer processes the latent state $z_t$ and prefix embeddings to generate a query vector $s_k$. Policy logits are evaluated via a pointer-network dot product:
+where $x_{a_k}$ represents features that we compute for the given sub-action $a_k$, and $`V_{\mathcal{A}_g^{\eta}}`$ is the set of nodes in the tree defined by $`\mathcal{A}_{g_t}^{\eta}`$. The causal transformer processes the latent state $z_t$ and prefix embeddings to generate a query vector $s_k$. Policy logits are evaluated via a pointer-network dot product:
 
 $$s_k = \text{TransformerDecoder}\left(z_t, [e_{a_0}, \dots, e_{a_{k-1}}] \right), \quad \text{Logits}(a_k) = s_k^T \cdot e_{a_k}.$$
 
@@ -206,12 +206,12 @@ generated under some behaviour policy $\mu_i$, for $i \in 1, \dots, N$, and $\ha
 
 We note that the $\mu_i$ in our case will be the actor network defined above, but instantiated with an older iteration of the model parameters, call then $\tilde{\theta}$, that is $\mu_i = \pi_{\tilde{\theta}}$, similarly the value functions used in the V-trace, they utilise prior iteration parameters $\tilde{\omega}$. For simplicity in the following, we drop the explicit references to each trajectory sample $i$.
 
-#### 3.1.1 The V-Trace Target ($v_t(\omega)$)
+#### 3.1.1 The V-Trace Target ($`v_t(\omega)`$)
 Recall the V-trace is defined as
 
 $$v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_k V$$
 
-where $\delta_k V = \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))$, $\bar{\rho}_k = \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)$, and $c_j = \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)$, and $\bar{\rho}, \bar{c} \in (0,1)$ and $\bar{c} \leq \bar{\rho}$. In particular we see the following recursive representation
+where $`\delta_k V = \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))`$, $`\bar{\rho}_k = \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)`$, and $`c_j = \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)`$, and $`\bar{\rho}, \bar{c} \in (0,1)`$ and $`\bar{c} \leq \bar{\rho}`$. In particular we see the following recursive representation
 
 $$v_t(\omega) = \bar{V}_{\omega}(g_t) + \delta_t V + \gamma \cdot c_t \left( v_{t+1}(\omega) - \bar{V}_{\omega}(g_{t+1}) \right).$$
 
@@ -270,8 +270,8 @@ One other important fact to note, is that in many ways MuZero approaches the pro
 
 ### 5.1 MegaMek API Contract & Delta Serialization
 A Python-based Asynchronous Environment Manager handles the headless MegaMek instances. To prevent the multiprocessing queue from bottlenecking on massive graph serializations, the IPC pipeline utilizes _Delta Encoding_:
-* **_Initialization:_** Java sends the static topology ($\mathcal{V}_H$, $\mathcal{E}_{adj}$) once per match. The Python Actor caches this in RAM.
-* **_Step Payload (Deltas):_** At each step, Java transmits only the dynamic state ($\mathcal{V}_U$ covariates, $\mathcal{E}_{occ}$, $\mathcal{E}_{LoS}$) and the current hierarchical Action Mask Tree.
+* **_Initialization:_** Java sends the static topology ($`\mathcal{V}_H$, $\mathcal{E}_{adj}`$) once per match. The Python Actor caches this in RAM.
+* **_Step Payload (Deltas):_** At each step, Java transmits only the dynamic state ($`\mathcal{V}_U`$ covariates, $`\mathcal{E}_{occ}`$, $`\mathcal{E}_{LoS}`$) and the current hierarchical Action Mask Tree.
 * **_Actors:_** CPU threads push these lightweight, flat arrays into a high-speed shared memory queue.
 * **_Learner:_** A dedicated GPU thread pulls the arrays, dynamically reconstructs the PyG batches, computes gradients, and asynchronously broadcasts updated weights back to the Actors.
 
