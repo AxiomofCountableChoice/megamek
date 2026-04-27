@@ -32,21 +32,21 @@ We define the following sets of nodes:
 We also define the following sets of edges, which are used to encode game specific geometry, we may incorporate more as we progress.
 
 1. Edges for showing two hexes are adjacent, and which of the 6 hex-sides they connect via ($i \in \lbrace 0, \dots, 5 \rbrace$).
-   $$ \mathcal{E}_{\text{hexAdj}_i}: \mathcal{V}_H \to \mathcal{V}_H $$
+$$ \mathcal{E}_{\text{hexAdj}_i}: \mathcal{V}_H \to \mathcal{V}_H $$
 2. Edges for showing what hex a unit occupies.
-   $$ \mathcal{E}_{\text{occupies}}: \mathcal{V}_U \to \mathcal{V}_H $$
+$$ \mathcal{E}_{\text{occupies}}: \mathcal{V}_U \to \mathcal{V}_H $$
 3. Edges for showing what unit a weapon is equipped to.
-   $$ \mathcal{E}_{\text{equips}}: \mathcal{V}_W \to \mathcal{V}_U $$
+$$ \mathcal{E}_{\text{equips}}: \mathcal{V}_W \to \mathcal{V}_U $$
 4. Edges for showing what hexes a unit can move to.
-   $$ \mathcal{E}_{\text{moveTypeTMM}_{\text{bracket}_i}}: \mathcal{V}_U \to \mathcal{V}_H $$
+$$ \mathcal{E}_{\text{moveTypeTMM}_{\text{bracket}_i}}: \mathcal{V}_U \to \mathcal{V}_H $$
 5. Edges for showing which hexes an inactivated enemy can move to, which are in movement range of a unit to be activated.
-   $$ \mathcal{E}_{\text{movementThreat}}: \mathcal{V}_U \to \mathcal{V}_H $$
+$$ \mathcal{E}_{\text{movementThreat}}: \mathcal{V}_U \to \mathcal{V}_H $$
 6. Edges for showing which hexes are in LOS of enemy units, which are in movement range of a unit to be activated. A consideration required is if it's possible to compute as a function of the unit to be activated, as their height will impact LOS calculations.
-   $$ \mathcal{E}_{\text{LOSThreat}}: \mathcal{V}_U \to \mathcal{V}_H $$
+$$ \mathcal{E}_{\text{LOSThreat}}: \mathcal{V}_U \to \mathcal{V}_H $$
 7. Edges for showing which enemies are in LOS of a unit to be activated.
-   $$ \mathcal{E}_{\text{LOSTarget}}: \mathcal{V}_U \to \mathcal{V}_U $$
+$$ \mathcal{E}_{\text{LOSTarget}}: \mathcal{V}_U \to \mathcal{V}_U $$
 8. Edges for showing which hexes a unit to be activated have partial cover from already activated enemy units.
-   $$ \mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H $$
+$$ \mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H $$
 
 Defining the sets:
 $$ \mathcal{V} = \mathcal{V}_U \cup \mathcal{V}_W \cup \mathcal{V}_H, \quad \mathcal{E} = \bigcup_{e \in \mathcal{T}} \mathcal{E}_{e}, \quad \mathcal{T} = \lbrace \text{hexAdj}_i, \text{occupies}, \text{equips}, \dots \rbrace $$
@@ -61,7 +61,7 @@ We let the space phase meta-data be $\mathcal{P}$, we note that each element $p 
 
 Let the space of all valid board-states be $\mathcal{B}$, and let $\mathcal{G} \subset \mathcal{P} \times \mathcal{B}$ be the set of all legal game-states. Then we have that the state of a game can be represented as an element:
 
-$$ (p, B) \in \mathcal{G}, \:\: \exists (\mathcal{V}, \mathcal{E}) \in \mathcal{B}: B = (\mathcal{V}, \mathcal{E}). $$
+$$ (p, B) \in \mathcal{G}, \exists (\mathcal{V}, \mathcal{E}) \in \mathcal{B}: B = (\mathcal{V}, \mathcal{E}). $$
 
 This allows us to hence define the major component of our state-space, an encoding of the game.
 
@@ -139,7 +139,7 @@ $$
 ### 2.2 Action-Conditioned Pointer Execution (Actor)
 The Actor policy $\pi_{\theta}$ navigates the valid action space $\mathcal{A}_{g_t}^{\eta}$ using an autoregressive causal transformer. Candidates sub-actions are mapped to continuous embeddings via an `ActionMLP`:
 
-$$ e_{a_k} = \text{ActionMLP}( h_{\text{active\_unit}} \oplus h_{\text{target\_node}} \oplus x_{a_k} ) \quad \forall a_k \in V_{\mathcal{A}_g^{\eta}} $$
+$$ e_{a_k} = \text{ActionMLP}( h_{\text{activeUnit}} \oplus h_{\text{targetNode}} \oplus x_{a_k} ) \quad \forall a_k \in V_{\mathcal{A}_g^{\eta}} $$
 
 where $x_{a_k}$ represents features that we compute for the given sub-action $a_k$, and $V_{\mathcal{A}_g^{\eta}}$ is the set of nodes in the tree defined by $\mathcal{A}_{g_t}^{\eta}$. The causal transformer processes the latent state $z_t$ and prefix embeddings to generate a query vector $s_k$. Policy logits are evaluated via a pointer-network dot product:
 
