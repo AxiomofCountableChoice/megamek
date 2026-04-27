@@ -214,8 +214,8 @@ $$v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-
 where 
 $$
 \begin{aligned}
-\delta_k V &= \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))
-\bar{\rho}_k &= \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)
+\delta_k V &= \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))\\
+\bar{\rho}_k &= \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)\\
 c_j &= \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)
 \end{aligned}
 $$
