@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2023 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2023-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI;
 
@@ -22,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,14 +45,14 @@ import java.util.List;
 import java.util.Vector;
 
 import megamek.client.ui.clientGUI.boardview.CollapseWarning;
-import org.junit.jupiter.api.Test;
-
-import megamek.common.Board;
-import megamek.common.Building;
-import megamek.common.Coords;
-import megamek.common.Entity;
-import megamek.common.Game;
+import megamek.common.Hex;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
 import megamek.common.enums.GamePhase;
+import megamek.common.game.Game;
+import megamek.common.units.Entity;
+import megamek.common.units.IBuilding;
+import org.junit.jupiter.api.Test;
 
 class CollapseWarningTest {
 
@@ -102,14 +117,15 @@ class CollapseWarningTest {
         Entity e = createMockEntityWith(new Coords(3, 3), 4, 6, 45.0, true, false);
 
         Coords buildingPosition = new Coords(3, 5);
-        Building bld = createMockBuildingWith(buildingPosition, 20);
+        IBuilding bld = createMockBuildingWith(buildingPosition, 20);
 
         Board b = createMockBoardWith(buildingPosition, bld);
+        when(g.getBoard()).thenReturn(b);
 
         List<Coords> warnList = CollapseWarning.findCFWarningsMovement(g, e, b);
 
-        assertTrue(warnList.size() > 0);
-        assertEquals(buildingPosition, warnList.get(0));
+        assertFalse(warnList.isEmpty());
+        assertEquals(buildingPosition, warnList.getFirst());
     }
 
     @Test
@@ -121,7 +137,7 @@ class CollapseWarningTest {
         Entity e = createMockEntityWith(new Coords(3, 3), 5, 3, 45.0, true, true);
 
         Coords buildingPosition = new Coords(3, 5);
-        Building bld = createMockBuildingWith(buildingPosition, 20);
+        IBuilding bld = createMockBuildingWith(buildingPosition, 20);
 
         Board b = createMockBoardWith(buildingPosition, bld);
 
@@ -140,7 +156,7 @@ class CollapseWarningTest {
         Entity e = createMockEntityWith(null, 5, 3, 45.0, true, false);
 
         Coords buildingPosition = new Coords(3, 5);
-        Building bld = createMockBuildingWith(buildingPosition, 20);
+        IBuilding bld = createMockBuildingWith(buildingPosition, 20);
 
         Board b = createMockBoardWith(buildingPosition, bld);
 
@@ -159,7 +175,7 @@ class CollapseWarningTest {
         Entity e = createMockEntityWith(new Coords(3, 5), 5, 3, 45.0, true, false);
 
         Coords buildingPosition = new Coords(3, 5);
-        Building bld = createMockBuildingWith(buildingPosition, 90);
+        IBuilding bld = createMockBuildingWith(buildingPosition, 90);
 
         Board b = createMockBoardWith(buildingPosition, bld);
 
@@ -171,19 +187,15 @@ class CollapseWarningTest {
 
     @Test
     void testConstructionFactorWarningFindMovementWarningsExceptionPath() {
-        // Test an internal null condition that should be caught and return an empty
-        // list.
-        Game g = null;
-
         // Set entity to happy path.
-        Entity e = createMockEntityWith(new Coords(3, 5), 5, 3, 45.0, true, false);
+        Entity entity = createMockEntityWith(new Coords(3, 5), 5, 3, 45.0, true, false);
 
         Coords buildingPosition = new Coords(3, 5);
-        Building bld = createMockBuildingWith(buildingPosition, 20);
+        IBuilding bld = createMockBuildingWith(buildingPosition, 20);
 
-        Board b = createMockBoardWith(buildingPosition, bld);
+        Board board = createMockBoardWith(buildingPosition, bld);
 
-        List<Coords> warnList = CollapseWarning.findCFWarningsMovement(g, e, b);
+        List<Coords> warnList = CollapseWarning.findCFWarningsMovement(null, entity, board);
 
         assertNotNull(warnList);
         assertEquals(0, warnList.size());
@@ -191,11 +203,11 @@ class CollapseWarningTest {
 
     @Test
     void testConstructionFactorWarningFindDeploymentWarnings() {
-        // Test happy bath for handler when in deployment phase for a eligible
+        // Test happy bath for handler when in deployment phase for an eligible
         // deployment hex.
         Coords expectedHex = new Coords(3, 6);
-        Vector<Building> buildings = new Vector<Building>();
-        Building bld = createMockBuildingWith(expectedHex, 20);
+        Vector<IBuilding> buildings = new Vector<>();
+        IBuilding bld = createMockBuildingWith(expectedHex, 20);
         buildings.add(bld);
 
         Entity e = createMockEntityWith(null, 5, 3, 70, true, false);
@@ -207,20 +219,21 @@ class CollapseWarningTest {
         when(b.isLegalDeployment(expectedHex, e)).thenReturn(true);
 
         Game g = mock(Game.class);
+        when(g.getBoard()).thenReturn(b);
 
         List<Coords> warnList = CollapseWarning.findCFWarningsDeployment(g, e, b);
 
         assertNotNull(warnList);
-        assertEquals(expectedHex, warnList.get(0));
+        assertEquals(expectedHex, warnList.getFirst());
     }
 
     @Test
     void testConstructionFactorWarningFindDeploymentWarningsNotLegalHex() {
-        // Test happy bath for handler when in deployment phase for a eligible
+        // Test happy bath for handler when in deployment phase for an eligible
         // deployment hex.
         Coords expectedHex = new Coords(3, 6);
-        Vector<Building> buildings = new Vector<Building>();
-        Building bld = createMockBuildingWith(expectedHex, 20);
+        Vector<IBuilding> buildings = new Vector<>();
+        IBuilding bld = createMockBuildingWith(expectedHex, 20);
         buildings.add(bld);
 
         Entity e = createMockEntityWith(null, 5, 3, 70, true, false);
@@ -242,11 +255,11 @@ class CollapseWarningTest {
 
     @Test
     void testConstructionFactorWarningFindDeploymentWarningsNotGroundUnit() {
-        // Test happy bath for handler when in deployment phase for a eligible
+        // Test happy bath for handler when in deployment phase for an eligible
         // deployment hex.
         Coords expectedHex = new Coords(3, 6);
-        Vector<Building> buildings = new Vector<Building>();
-        Building bld = createMockBuildingWith(expectedHex, 20);
+        Vector<IBuilding> buildings = new Vector<>();
+        IBuilding bld = createMockBuildingWith(expectedHex, 20);
         buildings.add(bld);
 
         // Entity is not a ground unit.
@@ -269,11 +282,11 @@ class CollapseWarningTest {
 
     @Test
     void testConstructionFactorWarningFindDeploymentWarningsLightEntity() {
-        // Test happy bath for handler when in deployment phase for a eligible
+        // Test happy bath for handler when in deployment phase for an eligible
         // deployment hex.
         Coords expectedHex = new Coords(3, 6);
-        Vector<Building> buildings = new Vector<Building>();
-        Building bld = createMockBuildingWith(expectedHex, 90);
+        Vector<IBuilding> buildings = new Vector<>();
+        IBuilding bld = createMockBuildingWith(expectedHex, 90);
         buildings.add(bld);
 
         // Entity is lighter than the CF of the building in a legal deploy hex, no
@@ -301,7 +314,7 @@ class CollapseWarningTest {
         // and log an error.
         List<Coords> warnList = CollapseWarning.findCFWarningsDeployment(null, null, null);
 
-        // On exception return an non-null empty list so no warnings sprites are
+        // On exception return a non-null empty list so no warnings sprites are
         // displayed.
         assertNotNull(warnList);
         assertEquals(0, warnList.size());
@@ -334,10 +347,12 @@ class CollapseWarningTest {
 
         // Mock a 25 ton entity already on the building hex.
         Entity onBuilding = this.createMockEntityWith(new Coords(3, 7), 4, 6, onBuildingWeight, true, false);
-        List<Entity> entities = new ArrayList<Entity>();
+        List<Entity> entities = new ArrayList<>();
         entities.add(onBuilding);
 
         when(g.getEntitiesVector(new Coords(3, 7), true)).thenReturn(entities);
+        Board b = createSimpleMockBoard();
+        when(g.getBoard()).thenReturn(b);
 
         double totalWeight = CollapseWarning.calculateTotalTonnage(g, e, new Coords(3, 7));
 
@@ -355,10 +370,12 @@ class CollapseWarningTest {
         Entity e = createMockEntityWith(new Coords(3, 3), 5, 3, entityWeight, true, false);
 
         // The selected entity will show up in the entities vector for the building.
-        List<Entity> entities = new ArrayList<Entity>();
+        List<Entity> entities = new ArrayList<>();
         entities.add(e);
 
         when(g.getEntitiesVector(new Coords(3, 3), true)).thenReturn(entities);
+        Board b = createSimpleMockBoard();
+        when(g.getBoard()).thenReturn(b);
 
         double totalWeight = CollapseWarning.calculateTotalTonnage(g, e, new Coords(3, 3));
 
@@ -378,10 +395,12 @@ class CollapseWarningTest {
         // An airborne VTOL is in the entity vector over the building not contributing
         // to
         // the total weight.
-        List<Entity> entities = new ArrayList<Entity>();
+        List<Entity> entities = new ArrayList<>();
         entities.add(vtol);
 
         when(g.getEntitiesVector(new Coords(3, 7), true)).thenReturn(entities);
+        Board b = createSimpleMockBoard();
+        when(g.getBoard()).thenReturn(b);
 
         double totalWeight = CollapseWarning.calculateTotalTonnage(g, e, new Coords(3, 7));
 
@@ -400,19 +419,21 @@ class CollapseWarningTest {
 
         // Mock an aerospace unit flying over the building not contributing to the total
         // weight.
-        List<Entity> entities = new ArrayList<Entity>();
+        List<Entity> entities = new ArrayList<>();
         entities.add(aero);
 
         when(g.getEntitiesVector(new Coords(3, 7), true)).thenReturn(entities);
+        Board b = createSimpleMockBoard();
+        when(g.getBoard()).thenReturn(b);
 
         double totalWeight = CollapseWarning.calculateTotalTonnage(g, e, new Coords(3, 7));
 
         assertEquals(entityWeight, totalWeight);
     }
 
-    // Helper function to setup a mock entity with various attributes.
+    // Helper function to set up a mock entity with various attributes.
     private Entity createMockEntityWith(Coords pos, int run, int jump, double weight, boolean ground,
-            boolean offBoard) {
+          boolean offBoard) {
         Entity e = mock(Entity.class);
         when(e.getPosition()).thenReturn(pos);
         when(e.isGround()).thenReturn(ground);
@@ -424,10 +445,10 @@ class CollapseWarningTest {
         return e;
     }
 
-    // Helper function to setup mock building with position and construction factor.
-    private Building createMockBuildingWith(Coords pos, int cf) {
-        List<Coords> hexes = new ArrayList<Coords>();
-        Building building = mock(Building.class);
+    // Helper function to set up mock building with position and construction factor.
+    private IBuilding createMockBuildingWith(Coords pos, int cf) {
+        List<Coords> hexes = new ArrayList<>();
+        IBuilding building = mock(IBuilding.class);
         hexes.add(pos);
         when(building.getCurrentCF(pos)).thenReturn(cf);
         when(building.getCoordsList()).thenReturn(hexes);
@@ -435,9 +456,19 @@ class CollapseWarningTest {
     }
 
     // Helper function to create a mock board
-    private Board createMockBoardWith(Coords pos, Building bld) {
+    private Board createMockBoardWith(Coords pos, IBuilding bld) {
         Board b = mock(Board.class);
         when(b.getBuildingAt(pos)).thenReturn(bld);
+        Hex hex = mock(Hex.class);
+        when(hex.hasBridge()).thenReturn(false);
+        return b;
+    }
+
+    private Board createSimpleMockBoard() {
+        Board b = mock(Board.class);
+        Hex hex = mock(Hex.class);
+        when(hex.hasBridge()).thenReturn(false);
+        when(b.getHex(any())).thenReturn(hex);
         return b;
     }
 }

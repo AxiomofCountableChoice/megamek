@@ -1,17 +1,37 @@
 /*
- * MegaMek -
  * Copyright (C) 2000-2005 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2005-2026 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.verifier;
 
 import java.io.File;
@@ -28,15 +48,27 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import megamek.common.*;
+import jakarta.annotation.Nonnull;
+import megamek.common.Configuration;
+import megamek.common.CriticalSlot;
+import megamek.common.SimpleTechLevel;
+import megamek.common.TechConstants;
 import megamek.common.annotations.Nullable;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.bays.Bay;
 import megamek.common.enums.MPBoosters;
-import megamek.common.equipment.ArmorType;
-import megamek.common.equipment.MiscMounted;
-import megamek.common.equipment.WeaponMounted;
+import megamek.common.enums.TechBase;
+import megamek.common.equipment.*;
+import megamek.common.equipment.enums.BombType;
+import megamek.common.equipment.enums.MiscTypeFlag;
+import megamek.common.exceptions.CeilNotProvidedForWeightException;
+import megamek.common.interfaces.ITechManager;
+import megamek.common.interfaces.ITechnology;
+import megamek.common.units.*;
 import megamek.common.util.StringUtil;
-import megamek.common.weapons.battlearmor.BAFlamerWeapon;
-import megamek.common.weapons.lasers.CLChemicalLaserWeapon;
+import megamek.common.weapons.battleArmor.BAFlamerWeapon;
+import megamek.common.weapons.lasers.clan.CLChemicalLaserWeapon;
+import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * Abstract parent class for testing and validating instantiations of
@@ -45,19 +77,17 @@ import megamek.common.weapons.lasers.CLChemicalLaserWeapon;
  * @author Reinhard Vicinus
  */
 public abstract class TestEntity implements TestEntityOption {
-    public static enum Ceil {
-        TON(1.0), HALFTON(2.0), QUARTERTON(4.0), TENTHTON(10.0), KILO(1000.0);
+    protected Engine engine;
+    protected Structure structure;
+    private final TestEntityOption options;
 
-        public final double mult;
-
-        private Ceil(double mult) {
-            this.mult = mult;
-        }
-    }
-
-    protected Engine engine = null;
-    protected Structure structure = null;
-    private TestEntityOption options = null;
+    /**
+     * Optional game year to use for intro date validation instead of the unit's intro year. When set to a value > 0,
+     * {@link #hasIncorrectIntroYear(StringBuffer)} will compare equipment intro dates against this year instead of the
+     * entity's year. This supports the "Use Game Year" setting in MegaMekLab where equipment availability is determined
+     * by the configured game year rather than the unit's intro year.
+     */
+    private int gameYear = -1;
 
     public abstract Entity getEntity();
 
@@ -101,11 +131,13 @@ public abstract class TestEntity implements TestEntityOption {
 
     /**
      * @param unit The entity the supplied entity
+     *
      * @return a TestEntity instance for the supplied Entity.
      */
     public static TestEntity getEntityVerifier(Entity unit) {
-        EntityVerifier entityVerifier = EntityVerifier.getInstance(new File(
-                Configuration.unitsDir(), EntityVerifier.CONFIG_FILENAME));
+        EntityVerifier entityVerifier = EntityVerifier.getInstance(new File(Configuration.unitsDir(),
+              EntityVerifier.CONFIG_FILENAME));
+
         TestEntity testEntity = null;
 
         if (unit.hasETypeFlag(Entity.ETYPE_MEK)) {
@@ -163,6 +195,10 @@ public abstract class TestEntity implements TestEntityOption {
 
     @Override
     public Ceil getWeightCeilingStructure() {
+        if (options.getWeightCeilingEngine() == null) {
+            throw new CeilNotProvidedForWeightException();
+        }
+
         return options.getWeightCeilingStructure();
     }
 
@@ -222,8 +258,8 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     @Override
-    public boolean showUnderweightedEntity() {
-        return options.showUnderweightedEntity();
+    public boolean showUnderweightEntity() {
+        return options.showUnderweightEntity();
     }
 
     @Override
@@ -256,14 +292,35 @@ public abstract class TestEntity implements TestEntityOption {
         return options.getIntroYearMargin();
     }
 
+    /**
+     * Gets the game year to use for intro date validation. When > 0, equipment intro dates are compared against this
+     * year instead of the entity's intro year.
+     *
+     * @return The game year, or -1 if not set (use entity year)
+     */
+    public int getGameYear() {
+        return gameYear;
+    }
+
+    /**
+     * Sets the game year to use for intro date validation. When set to a value > 0, equipment intro dates will be
+     * compared against this year instead of the entity's intro year. This supports scenarios where equipment
+     * availability is determined by a campaign's current year rather than the unit's original intro year.
+     *
+     * @param gameYear The game year to use, or -1 to use entity year
+     */
+    public void setGameYear(int gameYear) {
+        this.gameYear = gameYear;
+    }
+
     @Override
     public boolean skip() {
         return !skipBuildValidation() && options.skip();
     }
 
     @Override
-    public int getTargCompCrits() {
-        return options.getTargCompCrits();
+    public int getTargetingComputerCrits() {
+        return options.getTargetingComputerCrits();
     }
 
     @Override
@@ -275,27 +332,28 @@ public abstract class TestEntity implements TestEntityOption {
      * Used to round values up based on the specified type.
      *
      * @param f    Value to round
-     * @param type Specifies the number of decimals to round to, see
-     *             TestEntity.CEIL_TON, etc.
+     * @param type Specifies the number of decimals to round to, see TestEntity.CEIL_TON, etc.
+     *
      * @return Rounded value
      */
-    public static double ceil(double f, Ceil type) {
-        return Math.ceil(f * type.mult) / type.mult;
+    public static double ceil(double f, @Nonnull Ceil type) {
+        return Math.ceil(f * type.multiplier) / type.multiplier;
     }
 
-    public static double ceilMaxHalf(double f, Ceil type) {
+    public static double ceilMaxHalf(double f, @Nonnull Ceil type) {
         if (type == Ceil.TON) {
-            return TestEntity.ceil(f, Ceil.HALFTON);
+            return TestEntity.ceil(f, Ceil.HALF_TON);
         }
+
         return TestEntity.ceil(f, type);
     }
 
-    public static double floor(double f, Ceil type) {
-        return Math.floor(f * type.mult) / type.mult;
+    public static double floor(double f, @Nonnull Ceil type) {
+        return Math.floor(f * type.multiplier) / type.multiplier;
     }
 
-    public static double round(double f, Ceil type) {
-        return Math.round(f * type.mult) / type.mult;
+    public static double round(double f, @Nonnull Ceil type) {
+        return Math.round(f * type.multiplier) / type.multiplier;
     }
 
     static String makeWeightString(double weight) {
@@ -315,36 +373,32 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Allows a value to be truncuated to an arbitrary number of decimal places.
+     * Allows a value to be truncated to an arbitrary number of decimal places.
      *
-     * @param value
-     *                  The input value
-     * @param precision
-     *                  The number of decimals to truncate at
+     * @param value     The input value
+     * @param precision The number of decimals to truncate at
      *
-     * @return The input value truncated to the number of decimal places
-     *         supplied
+     * @return The input value truncated to the number of decimal places supplied
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public static double setPrecision(double value, int precision) {
-        return Math.round(value * Math.pow(10, precision))
-                / Math.pow(10, precision);
+        return Math.round(value * Math.pow(10, precision)) / Math.pow(10, precision);
     }
 
     /**
      * Filters all armor according to given tech constraints
      *
      * @param etype        The entity type bit mask
-     * @param industrial   For meks; industrial meks can only use certain armor
-     *                     types
-     *                     unless allowing experimental rules
-     * @param primitive    Whether the unit is primitive/retrotech
-     * @param movementMode For vehicles; hardened armor is illegal for some movement
-     *                     modes
+     * @param industrial   For meks; industrial meks can only use certain armor types unless allowing experimental
+     *                     rules
+     * @param primitive    Whether the unit is primitive/RetroTech
+     * @param movementMode For vehicles; hardened armor is illegal for some movement modes
      * @param techManager  The constraints used to filter the armor types
+     *
      * @return A list of all armors that meet the tech constraints
      */
     public static List<ArmorType> legalArmorsFor(long etype, boolean industrial, boolean primitive,
-            EntityMovementMode movementMode, ITechManager techManager) {
+          EntityMovementMode movementMode, ITechManager techManager) {
         if ((etype & Entity.ETYPE_BATTLEARMOR) != 0) {
             return TestBattleArmor.legalArmorsFor(techManager);
         } else if ((etype & Entity.ETYPE_SMALL_CRAFT) != 0) {
@@ -352,7 +406,7 @@ public abstract class TestEntity implements TestEntityOption {
         } else if ((etype & Entity.ETYPE_JUMPSHIP) != 0) {
             return TestAdvancedAerospace.legalArmorsFor(techManager, primitive);
         } else if ((etype
-                & (Entity.ETYPE_FIXED_WING_SUPPORT | Entity.ETYPE_SUPPORT_TANK | Entity.ETYPE_SUPPORT_VTOL)) != 0) {
+              & (Entity.ETYPE_FIXED_WING_SUPPORT | Entity.ETYPE_SUPPORT_TANK | Entity.ETYPE_SUPPORT_VTOL)) != 0) {
             return TestSupportVehicle.legalArmorsFor(techManager);
         } else if ((etype & Entity.ETYPE_AERO) != 0) {
             return TestAero.legalArmorsFor(techManager);
@@ -365,28 +419,25 @@ public abstract class TestEntity implements TestEntityOption {
         }
     }
 
-    public static List<EquipmentType> validJumpJets(long entitytype, boolean industrial) {
-        if ((entitytype & Entity.ETYPE_MEK) != 0) {
-            return TestMek.MekJumpJets.allJJs(industrial);
-        } else if ((entitytype & Entity.ETYPE_TANK) != 0) {
+    public static List<EquipmentType> validJumpJets(long entityType, boolean industrial) {
+        if ((entityType & Entity.ETYPE_MEK) != 0) {
+            return MekJumpJets.allJJs(industrial);
+        } else if ((entityType & Entity.ETYPE_TANK) != 0) {
             return Collections.singletonList(EquipmentType.get(EquipmentTypeLookup.VEHICLE_JUMP_JET));
-        } else if ((entitytype & Entity.ETYPE_BATTLEARMOR) != 0) {
+        } else if ((entityType & Entity.ETYPE_BATTLEARMOR) != 0) {
             return TestBattleArmor.BAMotiveSystems.allSystems();
-        } else if ((entitytype & Entity.ETYPE_PROTOMEK) != 0) {
-            // Until we have a TestProtomek
-            return Arrays.asList(new EquipmentType[] {
-                    EquipmentType.get(EquipmentTypeLookup.PROTOMEK_JUMP_JET),
-                    EquipmentType.get(EquipmentTypeLookup.EXTENDED_JUMP_JET_SYSTEM),
-                    EquipmentType.get(EquipmentTypeLookup.PROTOMEK_UMU) });
+        } else if ((entityType & Entity.ETYPE_PROTOMEK) != 0) {
+            // Until we have a TestProtoMek
+            return Arrays.asList(EquipmentType.get(EquipmentTypeLookup.PROTOMEK_JUMP_JET),
+                  EquipmentType.get(EquipmentTypeLookup.EXTENDED_JUMP_JET_SYSTEM),
+                  EquipmentType.get(EquipmentTypeLookup.PROTOMEK_UMU));
         } else {
             return Collections.emptyList();
         }
     }
 
     /**
-     * Additional crew requirements for vehicles and aerospace vessels for certain
-     * types of
-     * equipment.
+     * Additional crew requirements for vehicles and aerospace vessels for certain types of equipment.
      */
     public static int equipmentCrewRequirements(Mounted<?> mounted) {
         if (mounted.getType() instanceof MiscType) {
@@ -417,15 +468,14 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Determines whether a type of equipment requires a particular location on an
-     * {@link Entity}.
-     * What this means depends on the type of unit, but typically it does not take
-     * up a slot or
-     * is not assigned a firing arc.
+     * Determines whether a type of equipment requires a particular location on an {@link Entity}. What this means
+     * depends on the type of unit, but typically it does not take up a slot or is not assigned a firing arc.
      *
      * @param entity The Entity the equipment is to be placed on
      * @param eq     The equipment to place on the Entity
+     *
      * @return Whether the equipment requires a location
+     *
      * @see #getSystemWideLocation(Entity)
      */
     public static boolean eqRequiresLocation(Entity entity, EquipmentType eq) {
@@ -440,15 +490,13 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Determines where to place equipment that does not require a specific
-     * location. What
-     * this means varies by {@link Entity} type.
+     * Determines where to place equipment that does not require a specific location. What this means varies by
+     * {@link Entity} type.
      *
      * @param entity The Entity to place the equipment in
-     * @return The location to place equipment that is not required to be assigned a
-     *         location,
-     *         defaulting to Entity.LOC_NONE for unit types that do not have such a
-     *         location.
+     *
+     * @return The location to place equipment that is not required to be assigned a location, defaulting to
+     *       Entity.LOC_NONE for unit types that do not have such a location.
      */
     public static int getSystemWideLocation(Entity entity) {
         if (entity.hasETypeFlag(Entity.ETYPE_JUMPSHIP)) {
@@ -472,24 +520,24 @@ public abstract class TestEntity implements TestEntityOption {
     public String printShortMovement() {
         MPBoosters mpBoosters = getMPBoosters();
         return "Movement: " + getEntity().getOriginalWalkMP() + "/"
-                + (int) Math.ceil(getEntity().getOriginalWalkMP() * 1.5)
-                + (mpBoosters.isNone() ? "" : "(" + getEntity().getOriginalWalkMP() * 2 + ")")
-                + (mpBoosters.isMASCAndSupercharger() ? "(" + getEntity().getOriginalWalkMP() * 2.5 + ")" : "")
-                + (getEntity().getOriginalJumpMP() != 0 ? "/" + getEntity().getOriginalJumpMP() : "")
-                + "\n";
+              + (int) Math.ceil(getEntity().getOriginalWalkMP() * 1.5)
+              + (mpBoosters.isNone() ? "" : "(" + getEntity().getOriginalWalkMP() * 2 + ")")
+              + (mpBoosters.isMASCAndSupercharger() ? "(" + getEntity().getOriginalWalkMP() * 2.5 + ")" : "")
+              + (getEntity().getOriginalJumpMP() != 0 ? "/" + getEntity().getOriginalJumpMP() : "")
+              + "\n";
     }
 
     public String printWeightHeatSinks() {
         return StringUtil.makeLength("Heat Sinks: " + getCountHeatSinks()
-                + (hasDoubleHeatSinks() ? " [" + 2 * getCountHeatSinks() + "]" : ""),
-                getPrintSize() - 5)
-                + TestEntity.makeWeightString(getWeightHeatSinks(), usesKgStandard()) + "\n";
+                    + (hasDoubleHeatSinks() ? " [" + 2 * getCountHeatSinks() + "]" : ""),
+              getPrintSize() - 5)
+              + TestEntity.makeWeightString(getWeightHeatSinks(), usesKgStandard()) + "\n";
     }
 
     public String printWeightEngine() {
         return StringUtil.makeLength("Engine: " + ((null != engine) ? engine.getEngineName() : "---"),
-                getPrintSize() - 5)
-                + TestEntity.makeWeightString(getWeightEngine(), usesKgStandard()) + "\n";
+              getPrintSize() - 5)
+              + TestEntity.makeWeightString(getWeightEngine(), usesKgStandard()) + "\n";
     }
 
     public double getWeightEngine() {
@@ -498,24 +546,23 @@ public abstract class TestEntity implements TestEntityOption {
 
     public String printWeightStructure() {
         return StringUtil.makeLength("Structure: " + getEntity().getTotalOInternal() + " " + structure.getShortName(),
-                getPrintSize() - 5)
-                + TestEntity.makeWeightString(getWeightStructure(), usesKgStandard()) + "\n";
+              getPrintSize() - 5)
+              + TestEntity.makeWeightString(getWeightStructure(), usesKgStandard()) + "\n";
     }
 
     public double getWeightStructure() {
-        return structure.getWeightStructure(getWeight(),
-                getWeightCeilingStructure());
+        return structure.getWeightStructure(getWeight(), getWeightCeilingStructure());
     }
 
     public String printWeightArmor() {
         if (!getEntity().hasPatchworkArmor()) {
             return StringUtil.makeLength("Armor: " + getTotalOArmor() + " "
-                    + ArmorType.forEntity(getEntity()).getShortName(), getPrintSize() - 5)
-                    + TestEntity.makeWeightString(getWeightArmor(), usesKgStandard()) + "\n";
+                  + ArmorType.forEntity(getEntity()).getShortName(), getPrintSize() - 5)
+                  + TestEntity.makeWeightString(getWeightArmor(), usesKgStandard()) + "\n";
         } else {
             return StringUtil.makeLength("Armor: " + getTotalOArmor() + " " + "Patchwork",
-                    getPrintSize() - 5)
-                    + TestEntity.makeWeightString(getWeightArmor(), usesKgStandard()) + "\n";
+                  getPrintSize() - 5)
+                  + TestEntity.makeWeightString(getWeightArmor(), usesKgStandard()) + "\n";
         }
 
     }
@@ -532,20 +579,20 @@ public abstract class TestEntity implements TestEntityOption {
         return points / pointsPerTon;
     }
 
-    public static double getWeightArmor(ArmorType armor, int totalOArmor, TestEntity.Ceil roundWeight) {
+    public static double getWeightArmor(ArmorType armor, int totalOArmor, Ceil roundWeight) {
         return TestEntity.ceilMaxHalf(getRawWeightArmor(armor, totalOArmor), roundWeight);
     }
 
     public double getWeightAllocatedArmor() {
         if (!getEntity().hasPatchworkArmor()) {
             return getWeightArmor(ArmorType.forEntity(getEntity()), getEntity().getTotalOArmor(),
-                    getWeightCeilingArmor());
+                  getWeightCeilingArmor());
         } else {
             double armorWeight = 0;
             for (int loc = getEntity().firstArmorIndex(); loc < getEntity().locations(); loc++) {
                 int points = getEntity().getOArmor(loc);
                 if (getEntity().hasRearArmor(loc) &&
-                        (getEntity().getOArmor(loc, true) > 0)) {
+                      (getEntity().getOArmor(loc, true) > 0)) {
                     points += getEntity().getOArmor(loc, true);
                 }
                 armorWeight += getRawWeightArmor(ArmorType.forEntity(getEntity(), loc), points);
@@ -555,12 +602,12 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Gives subclasses a chance to exclude certain misc equipment if it is
-     * accounted for in a different
-     * category.
+     * Gives subclasses a chance to exclude certain misc equipment if it is accounted for in a different category.
      *
      * @param misc The misc equipment type
+     *
      * @return Whether to include the equipment in the misc equipment category
+     *
      * @see #getWeightMiscEquip()
      */
     protected boolean includeMiscEquip(MiscType misc) {
@@ -572,33 +619,33 @@ public abstract class TestEntity implements TestEntityOption {
         for (Mounted<?> m : getEntity().getMisc()) {
             MiscType mt = (MiscType) m.getType();
             if (!includeMiscEquip(mt)
-                    || mt.hasFlag(MiscType.F_ENDO_STEEL)
-                    || mt.hasFlag(MiscType.F_ENDO_COMPOSITE)
-                    || mt.hasFlag(MiscType.F_ENDO_STEEL_PROTO)
-                    || mt.hasFlag(MiscType.F_ENDO_COMPOSITE)
-                    || mt.hasFlag(MiscType.F_COMPOSITE)
-                    || mt.hasFlag(MiscType.F_INDUSTRIAL_STRUCTURE)
-                    || mt.hasFlag(MiscType.F_REINFORCED)
-                    || mt.hasFlag(MiscType.F_FERRO_FIBROUS)
-                    || mt.hasFlag(MiscType.F_FERRO_FIBROUS_PROTO)
-                    || mt.hasFlag(MiscType.F_FERRO_LAMELLOR)
-                    || mt.hasFlag(MiscType.F_LIGHT_FERRO)
-                    || mt.hasFlag(MiscType.F_HEAVY_FERRO)
-                    || mt.hasFlag(MiscType.F_REACTIVE)
-                    || mt.hasFlag(MiscType.F_REFLECTIVE)
-                    || mt.hasFlag(MiscType.F_HARDENED_ARMOR)
-                    || mt.hasFlag(MiscType.F_PRIMITIVE_ARMOR)
-                    || mt.hasFlag(MiscType.F_COMMERCIAL_ARMOR)
-                    || mt.hasFlag(MiscType.F_INDUSTRIAL_ARMOR)
-                    || mt.hasFlag(MiscType.F_HEAVY_INDUSTRIAL_ARMOR)
-                    || mt.hasFlag(MiscType.F_ANTI_PENETRATIVE_ABLATIVE)
-                    || mt.hasFlag(MiscType.F_HEAT_DISSIPATING)
-                    || mt.hasFlag(MiscType.F_IMPACT_RESISTANT)
-                    || mt.hasFlag(MiscType.F_BALLISTIC_REINFORCED)
-                    || mt.hasFlag(MiscType.F_ELECTRIC_DISCHARGE_ARMOR)
-                    || mt.hasFlag(MiscType.F_HEAT_SINK)
-                    || mt.hasFlag(MiscType.F_DOUBLE_HEAT_SINK)
-                    || mt.hasFlag(MiscType.F_IS_DOUBLE_HEAT_SINK_PROTOTYPE)) {
+                  || mt.hasFlag(MiscType.F_ENDO_STEEL)
+                  || mt.hasFlag(MiscType.F_ENDO_COMPOSITE)
+                  || mt.hasFlag(MiscType.F_ENDO_STEEL_PROTO)
+                  || mt.hasFlag(MiscType.F_ENDO_COMPOSITE)
+                  || mt.hasFlag(MiscType.F_COMPOSITE)
+                  || mt.hasFlag(MiscType.F_INDUSTRIAL_STRUCTURE)
+                  || mt.hasFlag(MiscType.F_REINFORCED)
+                  || mt.hasFlag(MiscType.F_FERRO_FIBROUS)
+                  || mt.hasFlag(MiscType.F_FERRO_FIBROUS_PROTO)
+                  || mt.hasFlag(MiscType.F_FERRO_LAMELLOR)
+                  || mt.hasFlag(MiscType.F_LIGHT_FERRO)
+                  || mt.hasFlag(MiscType.F_HEAVY_FERRO)
+                  || mt.hasFlag(MiscType.F_REACTIVE)
+                  || mt.hasFlag(MiscType.F_REFLECTIVE)
+                  || mt.hasFlag(MiscType.F_HARDENED_ARMOR)
+                  || mt.hasFlag(MiscType.F_PRIMITIVE_ARMOR)
+                  || mt.hasFlag(MiscType.F_COMMERCIAL_ARMOR)
+                  || mt.hasFlag(MiscType.F_INDUSTRIAL_ARMOR)
+                  || mt.hasFlag(MiscType.F_HEAVY_INDUSTRIAL_ARMOR)
+                  || mt.hasFlag(MiscType.F_ANTI_PENETRATIVE_ABLATIVE)
+                  || mt.hasFlag(MiscType.F_HEAT_DISSIPATING)
+                  || mt.hasFlag(MiscType.F_IMPACT_RESISTANT)
+                  || mt.hasFlag(MiscType.F_BALLISTIC_REINFORCED)
+                  || mt.hasFlag(MiscType.F_ELECTRIC_DISCHARGE_ARMOR)
+                  || mt.hasFlag(MiscType.F_HEAT_SINK)
+                  || mt.hasFlag(MiscType.F_DOUBLE_HEAT_SINK)
+                  || mt.hasFlag(MiscType.F_IS_DOUBLE_HEAT_SINK_PROTOTYPE)) {
                 continue;
             }
             weightSum += m.getTonnage();
@@ -615,7 +662,7 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     public StringBuffer printMiscEquip(StringBuffer buff, int posLoc,
-            int posWeight) {
+          int posWeight) {
         for (Mounted<?> m : getEntity().getMisc()) {
             MiscType mt = (MiscType) m.getType();
 
@@ -623,17 +670,17 @@ public abstract class TestEntity implements TestEntityOption {
                 continue;
             }
             if (mt.hasFlag(MiscType.F_ENDO_COMPOSITE)
-                    || mt.hasFlag(MiscType.F_ENDO_STEEL)
-                    || mt.hasFlag(MiscType.F_ENDO_STEEL_PROTO)
-                    || mt.hasFlag(MiscType.F_REINFORCED)
-                    || mt.hasFlag(MiscType.F_FERRO_FIBROUS)
-                    || mt.hasFlag(MiscType.F_FERRO_FIBROUS_PROTO)
-                    || mt.hasFlag(MiscType.F_LIGHT_FERRO)
-                    || mt.hasFlag(MiscType.F_HEAVY_FERRO)
-                    || mt.hasFlag(MiscType.F_REACTIVE)
-                    || mt.hasFlag(MiscType.F_REFLECTIVE)
-                    || mt.hasFlag(MiscType.F_FERRO_LAMELLOR)
-                    || mt.hasFlag(MiscType.F_INDUSTRIAL_STRUCTURE)) {
+                  || mt.hasFlag(MiscType.F_ENDO_STEEL)
+                  || mt.hasFlag(MiscType.F_ENDO_STEEL_PROTO)
+                  || mt.hasFlag(MiscType.F_REINFORCED)
+                  || mt.hasFlag(MiscType.F_FERRO_FIBROUS)
+                  || mt.hasFlag(MiscType.F_FERRO_FIBROUS_PROTO)
+                  || mt.hasFlag(MiscType.F_LIGHT_FERRO)
+                  || mt.hasFlag(MiscType.F_HEAVY_FERRO)
+                  || mt.hasFlag(MiscType.F_REACTIVE)
+                  || mt.hasFlag(MiscType.F_REFLECTIVE)
+                  || mt.hasFlag(MiscType.F_FERRO_LAMELLOR)
+                  || mt.hasFlag(MiscType.F_INDUSTRIAL_STRUCTURE)) {
                 continue;
             }
 
@@ -643,10 +690,10 @@ public abstract class TestEntity implements TestEntityOption {
 
             buff.append(StringUtil.makeLength(m.getName(), 20));
             buff.append(
-                    StringUtil.makeLength(getLocationAbbr(m.getLocation()),
-                            getPrintSize() - 5 - 20))
-                    .append(
-                            TestEntity.makeWeightString(m.getTonnage(), usesKgStandard()));
+                        StringUtil.makeLength(getLocationAbbr(m.getLocation()),
+                              getPrintSize() - 5 - 20))
+                  .append(
+                        TestEntity.makeWeightString(m.getTonnage(), usesKgStandard()));
             buff.append("\n");
         }
         return buff;
@@ -682,9 +729,9 @@ public abstract class TestEntity implements TestEntityOption {
 
             buff.append(StringUtil.makeLength(mt.getName(), 20));
             buff.append(
-                    StringUtil.makeLength(getLocationAbbr(m.getLocation()),
-                            getPrintSize() - 5 - 20))
-                    .append(TestEntity.makeWeightString(m.getTonnage(), usesKgStandard())).append("\n");
+                        StringUtil.makeLength(getLocationAbbr(m.getLocation()),
+                              getPrintSize() - 5 - 20))
+                  .append(TestEntity.makeWeightString(m.getTonnage(), usesKgStandard())).append("\n");
         }
         return buff;
     }
@@ -729,9 +776,9 @@ public abstract class TestEntity implements TestEntityOption {
 
             buff.append(StringUtil.makeLength(mt.getName(), 20));
             buff.append(" ").append(
-                    StringUtil.makeLength(getLocationAbbr(m.getLocation()),
-                            getPrintSize() - 5 - 20))
-                    .append(TestEntity.makeWeightString(m.getTonnage(), usesKgStandard())).append("\n");
+                        StringUtil.makeLength(getLocationAbbr(m.getLocation()),
+                              getPrintSize() - 5 - 20))
+                  .append(TestEntity.makeWeightString(m.getTonnage(), usesKgStandard())).append("\n");
         }
         return buff;
     }
@@ -742,7 +789,7 @@ public abstract class TestEntity implements TestEntityOption {
             String locationName = getEntity().getLocationName(i);
             sb.append(locationName).append(":");
             sb.append("\n");
-            for (int j = 0; j < getEntity().getNumberOfCriticals(i); j++) {
+            for (int j = 0; j < getEntity().getNumberOfCriticalSlots(i); j++) {
                 CriticalSlot slot = getEntity().getCritical(i, j);
                 if (slot == null) {
                     sb.append(j).append(". -Empty-");
@@ -750,8 +797,8 @@ public abstract class TestEntity implements TestEntityOption {
                 } else if (slot.getType() == CriticalSlot.TYPE_SYSTEM) {
                     if (isMek()) {
                         sb.append(j).append(". ")
-                                .append(((Mek) getEntity()).getSystemName(slot.getIndex()))
-                                .append("\n");
+                              .append(((Mek) getEntity()).getSystemName(slot.getIndex()))
+                              .append("\n");
                     } else {
                         sb.append(j).append(". UNKNOWN SYSTEM NAME").append("\n");
                     }
@@ -765,30 +812,28 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     public int calcMiscCrits(MiscType mt, double size) {
-        if (mt.hasFlag(MiscType.F_CLUB)
-                && (mt.hasSubType(MiscType.S_HATCHET)
-                        || mt.hasSubType(MiscType.S_SWORD)
-                        || mt.hasSubType(MiscType.S_CHAIN_WHIP))) {
+        if (mt.hasFlag(MiscTypeFlag.F_CLUB)
+              && (mt.hasAnyFlag(MiscTypeFlag.S_HATCHET, MiscTypeFlag.S_SWORD, MiscTypeFlag.S_CHAIN_WHIP))) {
             return (int) Math.ceil(getWeight() / 15.0);
-        } else if (mt.hasFlag(MiscType.F_CLUB) && mt.hasSubType(MiscType.S_MACE)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_CLUB) && mt.hasFlag(MiscTypeFlag.S_MACE)) {
             return (int) Math.ceil(getWeight() / 10.0);
-        } else if (mt.hasFlag(MiscType.F_CLUB) && mt.hasSubType(MiscType.S_RETRACTABLE_BLADE)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_CLUB) && mt.hasFlag(MiscTypeFlag.S_RETRACTABLE_BLADE)) {
             return 1 + (int) Math.ceil(getWeight() / 20.0);
-        } else if (mt.hasFlag(MiscType.F_CLUB) && mt.hasSubType(MiscType.S_PILE_DRIVER)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_CLUB) && mt.hasFlag(MiscTypeFlag.S_PILE_DRIVER)) {
             return 8;
-        } else if (mt.hasFlag(MiscType.F_CLUB) && mt.hasSubType(MiscType.S_CHAINSAW)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_CLUB) && mt.hasFlag(MiscTypeFlag.S_CHAINSAW)) {
             return 5;
-        } else if (mt.hasFlag(MiscType.F_CLUB) && mt.hasSubType(MiscType.S_DUAL_SAW)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_CLUB) && mt.hasFlag(MiscTypeFlag.S_DUAL_SAW)) {
             return 7;
-        } else if (mt.hasFlag(MiscType.F_CLUB) && mt.hasSubType(MiscType.S_BACKHOE)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_CLUB) && mt.hasFlag(MiscTypeFlag.S_BACKHOE)) {
             return 6;
-        } else if (mt.hasFlag(MiscType.F_MASC)) {
+        } else if (mt.hasFlag(MiscTypeFlag.F_MASC)) {
             if (mt.getInternalName().equals("ISMASC")) {
                 return (int) Math.round(getWeight() / 20.0);
             } else if (mt.getInternalName().equals("CLMASC")) {
                 return (int) Math.round(getWeight() / 25.0);
             }
-        } else if (mt.hasFlag(MiscType.F_TARGCOMP)) {
+        } else if (mt.hasFlag(MiscType.F_TARGETING_COMPUTER)) {
             double fTons = 0.0f;
             for (WeaponMounted mounted : getEntity().getWeaponList()) {
                 if (mounted.getType().hasFlag(WeaponType.F_DIRECT_FIRE)) {
@@ -796,49 +841,49 @@ public abstract class TestEntity implements TestEntityOption {
                 }
             }
             for (MiscMounted mounted : getEntity().getMisc()) {
-               if (mounted.getType().hasFlag(MiscType.F_RISC_LASER_PULSE_MODULE)) {
+                if (mounted.getType().hasFlag(MiscType.F_RISC_LASER_PULSE_MODULE)) {
                     fTons += mounted.getTonnage();
                 }
             }
             double weight = 0.0f;
             if (mt.getInternalName().equals("ISTargeting Computer")) {
                 weight = TestEntity.ceil(fTons / 4.0f,
-                        getWeightCeilingTargComp());
+                      getWeightCeilingTargComp());
             } else if (mt.getInternalName().equals("CLTargeting Computer")) {
                 weight = TestEntity.ceil(fTons / 5.0f,
-                        getWeightCeilingTargComp());
+                      getWeightCeilingTargComp());
             }
-            switch (getTargCompCrits()) {
-                case CEIL_TARGCOMP_CRITS:
+            switch (getTargetingComputerCrits()) {
+                case CEIL_TARGETING_COMPUTER_CRITS:
                     return (int) Math.ceil(weight);
-                case ROUND_TARGCOMP_CRITS:
+                case ROUND_TARGETING_COMPUTER_CRITS:
                     return (int) Math.round(weight);
-                case FLOOR_TARGCOMP_CRITS:
+                case FLOOR_TARGETING_COMPUTER_CRITS:
                     return (int) Math.floor(weight);
             }
         } else if (EquipmentType.getArmorTypeName(
-                EquipmentType.T_ARMOR_FERRO_FIBROUS).equals(
-                        mt.getInternalName())) {
+              EquipmentType.T_ARMOR_FERRO_FIBROUS).equals(
+              mt.getInternalName())) {
             if (isClanArmor()) {
                 return 7;
             }
             return 14;
         } else if (EquipmentType.getArmorTypeName(
-                EquipmentType.T_ARMOR_FERRO_FIBROUS_PROTO).equals(
-                        mt.getInternalName())) {
+              EquipmentType.T_ARMOR_FERRO_FIBROUS_PROTO).equals(
+              mt.getInternalName())) {
             return 16;
         } else if (EquipmentType.getArmorTypeName(
-                EquipmentType.T_ARMOR_LIGHT_FERRO).equals(mt.getInternalName())) {
+              EquipmentType.T_ARMOR_LIGHT_FERRO).equals(mt.getInternalName())) {
             return 7;
         } else if (EquipmentType.getArmorTypeName(
-                EquipmentType.T_ARMOR_HEAVY_FERRO).equals(mt.getInternalName())) {
+              EquipmentType.T_ARMOR_HEAVY_FERRO).equals(mt.getInternalName())) {
             return 21;
         } else if (mt.hasFlag(MiscType.F_ENDO_STEEL)) {
             if (isClan()
-                    || mt.getInternalName()
-                            .equals("Clan "
-                                    + EquipmentType
-                                            .getStructureTypeName(EquipmentType.T_STRUCTURE_ENDO_STEEL))) {
+                  || mt.getInternalName()
+                  .equals("Clan "
+                        + EquipmentType
+                        .getStructureTypeName(EquipmentType.T_STRUCTURE_ENDO_STEEL))) {
                 return 7;
             }
             return 14;
@@ -846,10 +891,10 @@ public abstract class TestEntity implements TestEntityOption {
             return 16;
         } else if (mt.hasFlag(MiscType.F_ENDO_COMPOSITE)) {
             if (isClan()
-                    || mt.getInternalName()
-                            .equals("Clan "
-                                    + EquipmentType
-                                            .getStructureTypeName(EquipmentType.T_STRUCTURE_ENDO_COMPOSITE))) {
+                  || mt.getInternalName()
+                  .equals("Clan "
+                        + EquipmentType
+                        .getStructureTypeName(EquipmentType.T_STRUCTURE_ENDO_COMPOSITE))) {
                 return 4;
             }
             return 7;
@@ -864,15 +909,12 @@ public abstract class TestEntity implements TestEntityOption {
             }
             return 10;
         }
-        return mt.getCriticals(getEntity(), size);
+        return mt.getNumCriticalSlots(getEntity(), size);
     }
 
     /**
-     * Computes heat sink requirement for heat-neutral units (vehicles, conventional
-     * fighters,
-     * protomeks). This is a total of energy weapons that don't use ammo and some
-     * other miscellaneous
-     * equipment.
+     * Computes heat sink requirement for heat-neutral units (vehicles, conventional fighters, protomeks). This is a
+     * total of energy weapons that don't use ammo and some other miscellaneous equipment.
      *
      * @return The number of heat sinks required in construction
      */
@@ -881,11 +923,8 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Computes heat sink requirement for heat-neutral units (vehicles, conventional
-     * fighters,
-     * protomeks). This is a total of energy weapons that don't use ammo and some
-     * other miscellaneous
-     * equipment.
+     * Computes heat sink requirement for heat-neutral units (vehicles, conventional fighters, protomeks). This is a
+     * total of energy weapons that don't use ammo and some other miscellaneous equipment.
      *
      * @return The number of heat sinks required in construction
      */
@@ -894,16 +933,16 @@ public abstract class TestEntity implements TestEntityOption {
         for (Mounted<?> m : entity.getWeaponList()) {
             WeaponType wt = (WeaponType) m.getType();
             if ((wt.hasFlag(WeaponType.F_LASER) && (wt.getAmmoType() == AmmoType.AmmoTypeEnum.NA))
-                    || wt.hasFlag(WeaponType.F_PPC)
-                    || wt.hasFlag(WeaponType.F_PLASMA)
-                    || wt.hasFlag(WeaponType.F_PLASMA_MFUK)
-                    || (wt.hasFlag(WeaponType.F_FLAMER) && (wt.getAmmoType() == AmmoType.AmmoTypeEnum.NA))) {
+                  || wt.hasFlag(WeaponType.F_PPC)
+                  || wt.hasFlag(WeaponType.F_PLASMA)
+                  || wt.hasFlag(WeaponType.F_PLASMA_MFUK)
+                  || (wt.hasFlag(WeaponType.F_FLAMER) && (wt.getAmmoType() == AmmoType.AmmoTypeEnum.NA))) {
                 heat += wt.getHeat();
             }
             // laser insulator reduce heat by 1, to a minimum of 1
             if (wt.hasFlag(WeaponType.F_LASER) && (m.getLinkedBy() != null)
-                    && !m.getLinkedBy().isInoperable()
-                    && m.getLinkedBy().getType().hasFlag(MiscType.F_LASER_INSULATOR)) {
+                  && !m.getLinkedBy().isInoperable()
+                  && m.getLinkedBy().getType().hasFlag(MiscType.F_LASER_INSULATOR)) {
                 heat -= 1;
                 if (heat == 0) {
                     heat++;
@@ -911,16 +950,16 @@ public abstract class TestEntity implements TestEntityOption {
             }
 
             if ((m.getLinkedBy() != null) && (m.getLinkedBy().getType() instanceof MiscType)
-                    && m.getLinkedBy().getType().hasFlag(MiscType.F_PPC_CAPACITOR)) {
+                  && m.getLinkedBy().getType().hasFlag(MiscTypeFlag.F_PPC_CAPACITOR)) {
                 heat += 5;
             }
         }
         for (Mounted<?> m : entity.getMisc()) {
             // Spot welders are treated as energy weapons on units that don't have a fusion
             // or fission engine
-            if (m.getType().hasFlag(MiscType.F_CLUB) && m.getType().hasSubType(MiscType.S_SPOT_WELDER)
-                    && entity.hasEngine() && (entity.getEngine().isFusion()
-                            || (entity.getEngine().getEngineType() == Engine.FISSION))) {
+            if (m.getType().hasFlag(MiscTypeFlag.F_CLUB) && m.getType().hasFlag(MiscTypeFlag.S_SPOT_WELDER)
+                  && entity.hasEngine() && (entity.getEngine().isFusion()
+                  || (entity.getEngine().getEngineType() == Engine.FISSION))) {
                 continue;
             }
             heat += m.getType().getHeat();
@@ -932,30 +971,26 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * According to TM, unit weights are to be rounded up to the nearest half ton or
-     * kilo. This method
-     * returns the rounded weight.
+     * According to TM, unit weights are to be rounded up to the nearest half ton or kilo. This method returns the
+     * rounded weight.
      *
      * @return The weight of the unit, rounded up according to TM, p.22.
      */
     public double calculateWeight() {
         double weight = calculateWeightExact();
-        // If the unit used kg standard, we just need to get rid of floating-point math
-        // anomalies.
-        // Otherwise accumulated kg-scale equipment needs to be rounded up to the
-        // nearest half-ton.
+        // If the unit used kg standard, we just need to get rid of floating-point math anomalies. Otherwise,
+        // accumulated kg-scale equipment needs to be rounded up to the nearest half-ton.
         weight = round(weight, Ceil.KILO);
         if (usesKgStandard()) {
             return weight;
         } else {
-            return ceil(weight, Ceil.HALFTON);
+            return ceil(weight, Ceil.HALF_TON);
         }
     }
 
     /**
-     * According to TM p.22, unit weights are to be rounded up to the nearest half ton or kilo, but in MML
-     * for construction at least we should be able to show the exact weight. This method returns the unrounded
-     * weight.
+     * According to TM p.22, unit weights are to be rounded up to the nearest half ton or kilo, but in MML for
+     * construction at least we should be able to show the exact weight. This method returns the unrounded weight.
      *
      * @return The unrounded weight of the unit.
      */
@@ -985,44 +1020,73 @@ public abstract class TestEntity implements TestEntityOption {
 
     public String printWeightCalculation() {
         return printWeightEngine() + printWeightStructure()
-                + printWeightControls() + printWeightHeatSinks()
-                + printWeightArmor() + printWeightMisc()
-                + printWeightCarryingSpace() + "Equipment:\n"
-                + printMiscEquip() + printWeapon() + printAmmo();
+              + printWeightControls() + printWeightHeatSinks()
+              + printWeightArmor() + printWeightMisc()
+              + printWeightCarryingSpace() + "Equipment:\n"
+              + printMiscEquip() + printWeapon() + printAmmo();
     }
 
-    public boolean correctWeight(StringBuffer buff) {
-        return correctWeight(buff, showOverweightedEntity(),
-                showUnderweightedEntity());
+    /**
+     * Tests the calculated weight of the unit (the sum of the weights of all its components) and the assumed weight
+     * (the fixed tonnage it is constructed with). Returns false if there are errors with the values (e.g. overweight,
+     * underweight if the unit type does not allow it, mek weight must be a multiple of 5t).
+     *
+     * @return true if there are no problems with the unit's assumed and calculated weight values
+     */
+    @Deprecated(since = "0.51.0", forRemoval = true)
+    public final boolean isWeightCorrect() {
+        return correctWeight(new StringBuffer());
     }
 
-    public boolean correctWeight(StringBuffer buff, boolean showO, boolean showU) {
+    /**
+     * Tests the calculated weight of the unit (the sum of the weights of all its components) and the assumed weight
+     * (the fixed tonnage it is constructed with). Returns false if there are errors with the values (e.g. overweight,
+     * underweight if the unit type does not allow it, mek weight must be a multiple of 5t). Any error reports are
+     * appended to the given StringBuffer.
+     *
+     * @return true if there are no problems with the unit's assumed and calculated weight values
+     */
+    public final boolean correctWeight(StringBuffer buff) {
+        return correctWeight(buff, !showOverweightedEntity(), !showUnderweightEntity());
+    }
+
+    /**
+     * Tests the calculated weight of the unit (the sum of the weights of all its components) and the assumed weight
+     * (the fixed tonnage it is constructed with). Returns false if there are errors with the values (e.g. overweight,
+     * underweight if the unit type does not allow it, mek weight must be a multiple of 5t).
+     *
+     * @param buff              The StringBuffer to append error messages to
+     * @param ignoreOverweight  When true, ignore overweight
+     * @param ignoreUnderweight When true, ignore underweight
+     *
+     * @return true if there are no problems with the unit's assumed and calculated weight values
+     */
+    public boolean correctWeight(StringBuffer buff, boolean ignoreOverweight, boolean ignoreUnderweight) {
         double weightSum = calculateWeight();
         double weight = getWeight();
+        boolean useKg = usesKgStandard();
 
-        if (showO && ((weight + getMaxOverweight()) < weightSum)) {
-            buff.append("Weight: ").append(calculateWeight())
-                    .append(" is greater than ").append(getWeight())
-                    .append("\n");
-            // buff.append(printWeightCalculation()).append("\n");
+        if (!ignoreOverweight && ((weight + getMaxOverweight()) < weightSum)) {
+            buff.append("Weight: %s is greater than %s\n"
+                  .formatted(makeWeightString(weightSum, useKg), makeWeightString(weight, useKg)));
             return false;
         }
-        if (showU && ((weight - getMinUnderweight()) > weightSum)) {
-            buff.append("Weight: ").append(calculateWeight())
-                    .append(" is less than ").append(getWeight()).append("\n");
-            // buff.append(printWeightCalculation()).append("\n");
+        if (!ignoreUnderweight && ((weight - getMinUnderweight()) > weightSum)) {
+            buff.append("Weight: %s is less than %s\n"
+                  .formatted(makeWeightString(weightSum, useKg), makeWeightString(weight, useKg)));
             return false;
         }
         return true;
     }
 
     /**
-     * For units without patchwork armor, tests if more armor is allocated on the unit's locations than it may have according to its armor
-     * tonnage. If it is, returns false and appends an error message to the given error buffer. Otherwise or if the unit has patchwork
-     * armor, returns true.
+     * For units without patchwork armor, tests if more armor is allocated on the unit's locations than it may have
+     * according to its armor tonnage. If it is, returns false and appends an error message to the given error buffer.
+     * Otherwise or if the unit has patchwork armor, returns true.
      *
      * @param entity The unit to test
      * @param buff   A StringBuffer to write error messages to
+     *
      * @return False when there is surplus armor allocated and the unit is invalid, true otherwise
      */
     protected boolean correctArmorOverAllocation(Entity entity, @Nullable StringBuffer buff) {
@@ -1037,50 +1101,52 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Returns the total number of armor points available to the unit for a given tonnage of armor. This does not round down the
-     * calculation or take into account any maximum number of armor points or tonnage allowed to the unit. It also does not include any free
-     * armor points due to SI on aerospace units.
-     *
+     * Returns the total number of armor points available to the unit for a given tonnage of armor -- NOT including the
+     * downgrade of primitive aerospace armor which cannot be factored into this number correctly (see IO:AE p.125).
+     * This does not round down the calculation or take into account any maximum number of armor points or tonnage
+     * allowed to the unit. It also does not include any free armor points due to SI on aerospace units.
+     * <p>
      * NOTE: only use for non-patchwork armor
      *
      * @return the number of armor points available for the armor tonnage
      */
     public static double getRawArmorPoints(Entity unit, double armorTons) {
-        if (unit.hasETypeFlag(Entity.ETYPE_PROTOMEK)) {
+        if (unit.isProtoMek()) {
             return Math.round(armorTons / ArmorType.forEntity(unit).getWeightPerPoint());
         } else if (unit.isSupportVehicle()) {
             return Math.floor(armorTons / TestSupportVehicle.armorWeightPerPoint(unit));
-        } else if ((unit instanceof Jumpship)
-            && unit.getArmorType(unit.firstArmorIndex()) == EquipmentType.T_ARMOR_PRIMITIVE_AERO) {
-            // Because primitive JumpShip armor has an extra step of rounding we have to give it special treatment.
-            // Standard armor value is computed first, rounded down, then the primitive armor mod is applied.
-            return Math.floor(Math.floor(armorTons * TestAdvancedAerospace.armorPointsPerTon((Jumpship) unit,
-                EquipmentType.T_ARMOR_AEROSPACE, false)) * 0.66);
+        } else {
+            return armorTons * getArmorPointsPerTon(unit);
         }
-        return armorTons * getArmorPointsPerTon(unit);
     }
 
     /**
-     * Returns the number of armor points the given unit has with the given armor tonnage. This includes bonus armor points for SI on DS/SC
-     * and capital craft.
-     *
+     * Returns the number of armor points the given unit has with the given armor tonnage. This includes bonus armor
+     * points for SI on DS/SC and capital craft.
+     * <p>
      * NOTE: only use for non-patchwork armor
      *
      * @param unit      the unit
      * @param armorTons the armor tonnage
+     *
      * @return the armor point total of the unit, including SI bonus armor
      */
     public static int getArmorPoints(Entity unit, double armorTons) {
         int raw = (int) Math.floor(getRawArmorPoints(unit, armorTons) + TestEntity.getSIBonusArmorPoints(unit));
+        if (unit.isPrimitive() && (unit instanceof Jumpship || unit instanceof SmallCraft)) {
+            raw = (int) (raw * 0.66);
+        }
         return Math.min(raw, getMaximumArmorPoints(unit));
     }
 
     /**
-     * Returns the number of armor points the given unit has. This includes bonus armor points for SI on DS/SC and capital craft.
-     *
+     * Returns the number of armor points the given unit has. This includes bonus armor points for SI on DS/SC and
+     * capital craft.
+     * <p>
      * NOTE: only use for non-patchwork armor
      *
      * @param unit the unit
+     *
      * @return the armor point total of the unit, including SI bonus armor
      */
     public static int getArmorPoints(Entity unit) {
@@ -1091,6 +1157,7 @@ public abstract class TestEntity implements TestEntityOption {
      * Calculate the number of armor points per ton of armor for the given unit.
      *
      * @param en The unit
+     *
      * @return The number of armor points per ton
      */
     public static double getArmorPointsPerTon(Entity en) {
@@ -1131,27 +1198,25 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Returns the number of free additional armor points provided for aerospace vessels based on their SI. This is usually a whole number
-     * but may be a fractional amount for primitive JumpShips. It is the total number, which is usually divided evenly among armor facings.
-     * For units other than SC/DS and capital craft, this is 0. See TM p.191, SO:AA p.140, IO:AE p.119-125
+     * Returns the number of free additional armor points provided for aerospace vessels based on their structural
+     * integrity (for primitive capital craft, *without* the 0.66 primitive adjustment factor). For units other than
+     * SC/DS and capital craft, this is 0. See TM p.191, SO:AA p.140, IO:AE p.119-125.
      *
      * @param entity The unit to compute bonus armor for
+     *
      * @return The total number of extra armor points received for SI
      */
-    public static double getSIBonusArmorPoints(Entity entity) {
-        double points = 0;
+    public static int getSIBonusArmorPoints(Entity entity) {
         if (entity instanceof SmallCraft smallCraft) {
-            points = smallCraft.getSI() * (entity.locations() - 1);
+            return TestSmallCraft.getSIBonusArmorPointsForSC(smallCraft);
         } else if (entity instanceof Jumpship jumpship) {
-            points = Math.round(jumpship.getSI() / 10.0) * 6;
-        }
-        if (entity.isPrimitive()) {
-            return points * ArmorType.of(EquipmentType.T_ARMOR_PRIMITIVE_AERO, false).getArmorPointsMultiplier();
+            return TestAdvancedAerospace.getSIBonusArmorPointsForJS(jumpship);
         } else {
-            return points;
+            return 0;
         }
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public boolean hasIllegalTechLevels(StringBuffer buff) {
         return hasIllegalTechLevels(buff, getEntity().getTechLevel());
     }
@@ -1160,7 +1225,7 @@ public abstract class TestEntity implements TestEntityOption {
         /*
          * A large number of units have official tech levels lower than their components
          * at the
-         * intro date. We test instead whether the stated tech level is ever possible
+         * intro date. We test instead whether the stated tech level is even possible
          * based on the
          * equipment. We also test for mixed IS/Clan tech in units that are not
          * designated as mixed.
@@ -1177,20 +1242,20 @@ public abstract class TestEntity implements TestEntityOption {
         for (Mounted<?> mounted : getEntity().getEquipment()) {
             EquipmentType nextE = mounted.getType();
             int eqRulesLevel = getEntity().isMixedTech()
-                    ? nextE.findMinimumRulesLevel().ordinal()
-                    : nextE.findMinimumRulesLevel(getEntity().isClan()).ordinal();
+                  ? nextE.findMinimumRulesLevel().ordinal()
+                  : nextE.findMinimumRulesLevel(getEntity().isClan()).ordinal();
             boolean illegal = eqRulesLevel > eRulesLevel;
             if (!getEntity().isMixedTech()) {
-                illegal |= getEntity().isClan() && nextE.getTechBase() == ITechnology.TechBase.IS;
-                illegal |= !getEntity().isClan() && nextE.getTechBase() == ITechnology.TechBase.CLAN;
+                illegal |= getEntity().isClan() && nextE.getTechBase() == TechBase.IS;
+                illegal |= !getEntity().isClan() && nextE.getTechBase() == TechBase.CLAN;
             }
-            int eqTechLevel = TechConstants.convertFromSimplelevel(eqRulesLevel, nextE.isClan());
+            int eqTechLevel = TechConstants.convertFromSimpleLevel(eqRulesLevel, nextE.isClan());
             if (nextE instanceof AmmoType) {
                 if (eqRulesLevel > ammoRulesLevel) {
                     if (!retVal) {
                         buff.append("Ammo illegal at unit's tech level (");
                         buff.append(TechConstants
-                                .getLevelDisplayableName(ammoTechLvl));
+                              .getLevelDisplayableName(ammoTechLvl));
                         buff.append(", ");
                         buff.append(eTLYear);
                         buff.append("):\n");
@@ -1199,14 +1264,14 @@ public abstract class TestEntity implements TestEntityOption {
                     buff.append(nextE.getName());
                     buff.append(", (");
                     buff.append(TechConstants
-                            .getLevelDisplayableName(eqTechLevel));
+                          .getLevelDisplayableName(eqTechLevel));
                     buff.append(")\n");
                 }
             } else if (illegal) {
                 if (!retVal) {
                     buff.append("Equipment illegal at unit's tech level ");
                     buff.append(TechConstants
-                            .getLevelDisplayableName(ammoTechLvl));
+                          .getLevelDisplayableName(ammoTechLvl));
                     buff.append(", ");
                     buff.append(eTLYear);
                     buff.append("):\n");
@@ -1215,7 +1280,7 @@ public abstract class TestEntity implements TestEntityOption {
                 buff.append(nextE.getName());
                 buff.append(", (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(eqTechLevel));
+                      .getLevelDisplayableName(eqTechLevel));
                 buff.append(")\n");
             }
         }
@@ -1231,24 +1296,24 @@ public abstract class TestEntity implements TestEntityOption {
         }
         if (cockpit != null) {
             int eqRulesLevel = getEntity().isMixedTech()
-                    ? cockpit.findMinimumRulesLevel().ordinal()
-                    : cockpit.findMinimumRulesLevel(getEntity().isClan()).ordinal();
+                  ? cockpit.findMinimumRulesLevel().ordinal()
+                  : cockpit.findMinimumRulesLevel(getEntity().isClan()).ordinal();
             boolean illegal = eqRulesLevel > eRulesLevel;
             if (!getEntity().isMixedTech()) {
-                illegal |= getEntity().isClan() && cockpit.getTechBase() == ITechnology.TechBase.IS;
-                illegal |= !getEntity().isClan() && cockpit.getTechBase() == ITechnology.TechBase.CLAN;
+                illegal |= getEntity().isClan() && cockpit.getTechBase() == TechBase.IS;
+                illegal |= !getEntity().isClan() && cockpit.getTechBase() == TechBase.CLAN;
             }
             if (illegal) {
                 buff.append("Cockpit is illegal at unit's tech level (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(eTechLevel));
+                      .getLevelDisplayableName(eTechLevel));
                 buff.append(", ");
                 buff.append(eTLYear);
                 buff.append("): ");
                 buff.append(cockpitName);
                 buff.append(" (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(TechConstants.convertFromSimplelevel(eqRulesLevel, cockpit.isClan())));
+                      .getLevelDisplayableName(TechConstants.convertFromSimpleLevel(eqRulesLevel, cockpit.isClan())));
                 buff.append(")\n");
                 retVal = true;
             }
@@ -1257,25 +1322,25 @@ public abstract class TestEntity implements TestEntityOption {
             ITechnology gyro = ((Mek) getEntity()).getGyroTechAdvancement();
             if (gyro != null) {
                 int eqRulesLevel = getEntity().isMixedTech()
-                        ? gyro.findMinimumRulesLevel().ordinal()
-                        : gyro.findMinimumRulesLevel(getEntity().isClan()).ordinal();
+                      ? gyro.findMinimumRulesLevel().ordinal()
+                      : gyro.findMinimumRulesLevel(getEntity().isClan()).ordinal();
                 boolean illegal = eqRulesLevel > eRulesLevel;
                 if (!getEntity().isMixedTech()) {
-                    illegal |= getEntity().isClan() && gyro.getTechBase() == ITechnology.TechBase.IS;
-                    illegal |= !getEntity().isClan() && gyro.getTechBase() == ITechnology.TechBase.CLAN;
+                    illegal |= getEntity().isClan() && gyro.getTechBase() == TechBase.IS;
+                    illegal |= !getEntity().isClan() && gyro.getTechBase() == TechBase.CLAN;
                 }
                 if (illegal) {
                     buff.append("Gyro is illegal at unit's tech level (");
                     buff.append(TechConstants
-                            .getLevelDisplayableName(eTechLevel));
+                          .getLevelDisplayableName(eTechLevel));
                     buff.append(", ");
                     buff.append(eTLYear);
                     buff.append("): ");
                     buff.append(((Mek) getEntity()).getGyroTypeString());
                     buff.append(" (");
                     buff.append(TechConstants
-                            .getLevelDisplayableName(TechConstants.convertFromSimplelevel(eqRulesLevel,
-                                    gyro.isClan())));
+                          .getLevelDisplayableName(TechConstants.convertFromSimpleLevel(eqRulesLevel,
+                                gyro.isClan())));
                     buff.append(")\n");
                     retVal = true;
                 }
@@ -1284,25 +1349,25 @@ public abstract class TestEntity implements TestEntityOption {
         if (getEntity().hasEngine()) {
             ITechnology engine = getEntity().getEngine().getTechAdvancement();
             int eqRulesLevel = getEntity().isMixedTech()
-                    ? engine.findMinimumRulesLevel().ordinal()
-                    : engine.findMinimumRulesLevel(getEntity().isClan()).ordinal();
+                  ? engine.findMinimumRulesLevel().ordinal()
+                  : engine.findMinimumRulesLevel(getEntity().isClan()).ordinal();
             boolean illegal = eqRulesLevel > eRulesLevel;
             if (!getEntity().isMixedTech()) {
-                illegal |= getEntity().isClan() && engine.getTechBase() == ITechnology.TechBase.IS;
-                illegal |= !getEntity().isClan() && engine.getTechBase() == ITechnology.TechBase.CLAN;
+                illegal |= getEntity().isClan() && engine.getTechBase() == TechBase.IS;
+                illegal |= !getEntity().isClan() && engine.getTechBase() == TechBase.CLAN;
             }
             if (illegal) {
                 buff.append("Engine is illegal at unit's tech level (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(eTechLevel));
+                      .getLevelDisplayableName(eTechLevel));
                 buff.append(", ");
                 buff.append(eTLYear);
                 buff.append("): ");
                 buff.append(getEntity().getEngine().getShortEngineName());
                 buff.append(" (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(TechConstants.convertFromSimplelevel(eqRulesLevel,
-                                engine.isClan())));
+                      .getLevelDisplayableName(TechConstants.convertFromSimpleLevel(eqRulesLevel,
+                            engine.isClan())));
                 buff.append(")\n");
                 buff.append("\n");
                 retVal = true;
@@ -1311,21 +1376,21 @@ public abstract class TestEntity implements TestEntityOption {
         Set<String> armors;
         if (!getEntity().hasPatchworkArmor()) {
             armors = Collections.singleton(EquipmentType.getArmorTypeName(getEntity().getArmorType(1),
-                    TechConstants.isClan(getEntity().getArmorTechLevel(1))));
+                  TechConstants.isClan(getEntity().getArmorTechLevel(1))));
         } else {
             int eqRulesLevel = getEntity().isMixedTech()
-                    ? Entity.getPatchworkArmorAdvancement().findMinimumRulesLevel().ordinal()
-                    : Entity.getPatchworkArmorAdvancement().findMinimumRulesLevel(getEntity().isClan()).ordinal();
+                  ? Entity.getPatchworkArmorAdvancement().findMinimumRulesLevel().ordinal()
+                  : Entity.getPatchworkArmorAdvancement().findMinimumRulesLevel(getEntity().isClan()).ordinal();
             if (eqRulesLevel > eRulesLevel) {
                 buff.append("Armor is illegal at unit's tech level (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(eTechLevel));
+                      .getLevelDisplayableName(eTechLevel));
                 buff.append(", ");
                 buff.append(eTLYear);
                 buff.append("): Patchwork (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(TechConstants.convertFromSimplelevel(eqRulesLevel,
-                                getEntity().isClan())));
+                      .getLevelDisplayableName(TechConstants.convertFromSimpleLevel(eqRulesLevel,
+                            getEntity().isClan())));
                 buff.append(")\n");
                 buff.append("\n");
                 retVal = true;
@@ -1334,7 +1399,7 @@ public abstract class TestEntity implements TestEntityOption {
             armors = new HashSet<>();
             for (int loc = 0; loc < getEntity().locations(); loc++) {
                 armors.add(EquipmentType.getArmorTypeName(getEntity().getArmorType(loc),
-                        TechConstants.isClan(getEntity().getArmorTechLevel(loc))));
+                      TechConstants.isClan(getEntity().getArmorTechLevel(loc))));
             }
         }
         for (String atName : armors) {
@@ -1344,23 +1409,23 @@ public abstract class TestEntity implements TestEntityOption {
                 continue;
             }
             int eqRulesLevel = getEntity().isMixedTech() ? at.findMinimumRulesLevel().ordinal()
-                    : at.findMinimumRulesLevel(getEntity().isClan()).ordinal();
+                  : at.findMinimumRulesLevel(getEntity().isClan()).ordinal();
             boolean illegal = eqRulesLevel > eRulesLevel;
             if (!getEntity().isMixedTech()) {
-                illegal |= getEntity().isClan() && at.getTechBase() == ITechnology.TechBase.IS;
-                illegal |= !getEntity().isClan() && at.getTechBase() == ITechnology.TechBase.CLAN;
+                illegal |= getEntity().isClan() && at.getTechBase() == TechBase.IS;
+                illegal |= !getEntity().isClan() && at.getTechBase() == TechBase.CLAN;
             }
             if (illegal) {
                 buff.append("Armor is illegal at unit's tech level (");
                 buff.append(TechConstants
-                        .getLevelDisplayableName(eTechLevel));
+                      .getLevelDisplayableName(eTechLevel));
                 buff.append(", ");
                 buff.append(eTLYear);
                 buff.append("): ");
                 buff.append(atName);
                 buff.append(" (");
-                buff.append(TechConstants.getLevelDisplayableName(TechConstants.convertFromSimplelevel(
-                        eqRulesLevel, at.isClan())));
+                buff.append(TechConstants.getLevelDisplayableName(TechConstants.convertFromSimpleLevel(
+                      eqRulesLevel, at.isClan())));
                 buff.append(")\n");
                 buff.append("\n");
                 retVal = true;
@@ -1371,21 +1436,31 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Compares intro dates of all components to the unit intro year.
+     * Compares intro dates of all components to the unit intro year (or game year if available). The year used for
+     * comparison is determined in order of priority:
+     * <ol>
+     *   <li>If {@link #setGameYear(int)} was called with a value > 0, use that year</li>
+     *   <li>Otherwise, use {@link Entity#getTechLevelYear()} which returns the game's ALLOWED_YEAR
+     *       if the entity is part of a game, or the entity's intro year if not</li>
+     * </ol>
+     * This supports both MegaMek gameplay (using game options) and MegaMekLab (using config settings).
      *
      * @param buff Descriptions of problems will be added to the buffer.
-     * @return Whether the unit has an intro year equal to or later than all the
-     *         components.
+     *
+     * @return Whether the unit has an intro year equal to or later than all the components.
      */
     public boolean hasIncorrectIntroYear(StringBuffer buff) {
         boolean retVal = false;
-        if (getEntity().getEarliestTechDate() <= getEntity().getYear() + getIntroYearMargin()) {
+        // Use explicitly set game year if available, otherwise use entity's tech level year
+        // (which checks game options first, then falls back to entity year)
+        int baseYear = (gameYear > 0) ? gameYear : getEntity().getTechLevelYear();
+        if (getEntity().getEarliestTechDate() <= baseYear + getIntroYearMargin()) {
             return false;
         }
-        int useIntroYear = getEntity().getYear() + getIntroYearMargin();
+        int useIntroYear = baseYear + getIntroYearMargin();
         if (getEntity().isOmni()) {
             int introDate = Entity.getOmniAdvancement(getEntity()).getIntroductionDate(
-                    getEntity().isClan() || getEntity().isMixedTech());
+                  getEntity().isClan() || getEntity().isMixedTech());
             if (useIntroYear < introDate) {
                 retVal = true;
                 buff.append("Omni technology has intro date of ");
@@ -1397,6 +1472,12 @@ public abstract class TestEntity implements TestEntityOption {
         for (Mounted<?> mounted : getEntity().getEquipment()) {
             final EquipmentType nextE = mounted.getType();
             if (checked.contains(nextE) || (nextE instanceof AmmoType)) {
+                continue;
+            }
+            // Skip EI Interface and DNI - they're retrofittable equipment (IO p.69)
+            // Their intro year should not be compared against unit intro year
+            if ((nextE instanceof MiscType) && (nextE.hasFlag(MiscType.F_EI_INTERFACE)
+                  || nextE.hasFlag(MiscType.F_DNI_COCKPIT_MOD))) {
                 continue;
             }
             checked.add(nextE);
@@ -1416,11 +1497,11 @@ public abstract class TestEntity implements TestEntityOption {
         Set<String> armors;
         if (!getEntity().hasPatchworkArmor()) {
             armors = Collections.singleton(EquipmentType.getArmorTypeName(getEntity().getArmorType(1),
-                    TechConstants.isClan(getEntity().getArmorTechLevel(1))));
+                  TechConstants.isClan(getEntity().getArmorTechLevel(1))));
         } else {
             int intro = getEntity().isMixedTech()
-                    ? Entity.getPatchworkArmorAdvancement().getIntroductionDate()
-                    : Entity.getPatchworkArmorAdvancement().getIntroductionDate(getEntity().isClan());
+                  ? Entity.getPatchworkArmorAdvancement().getIntroductionDate()
+                  : Entity.getPatchworkArmorAdvancement().getIntroductionDate(getEntity().isClan());
             if (useIntroYear < intro) {
                 retVal = true;
                 buff.append("Patchwork armor has intro date of ");
@@ -1430,7 +1511,7 @@ public abstract class TestEntity implements TestEntityOption {
             armors = new HashSet<>();
             for (int loc = 0; loc < getEntity().locations(); loc++) {
                 armors.add(EquipmentType.getArmorTypeName(getEntity().getArmorType(loc),
-                        TechConstants.isClan(getEntity().getArmorTechLevel(loc))));
+                      TechConstants.isClan(getEntity().getArmorTechLevel(loc))));
             }
         }
         for (String atName : armors) {
@@ -1514,7 +1595,7 @@ public abstract class TestEntity implements TestEntityOption {
 
     public boolean hasFailedEquipment(StringBuffer buff) {
         boolean hasFailedEquipment = false;
-        for (Iterator<String> e = getEntity().getFailedEquipment(); e.hasNext();) {
+        for (Iterator<String> e = getEntity().getFailedEquipment(); e.hasNext(); ) {
             String name = e.next();
             if (!ignoreFailedEquip(name)) {
                 if (!hasFailedEquipment) {
@@ -1529,11 +1610,10 @@ public abstract class TestEntity implements TestEntityOption {
     }
 
     /**
-     * Check if the unit has combinations of equipment which are not allowed in
-     * the construction rules.
+     * Check if the unit has combinations of equipment which are not allowed in the construction rules.
      *
-     * @param buff
-     *             diagnostics are appended to this
+     * @param buff diagnostics are appended to this
+     *
      * @return true if the entity is illegal
      */
     public boolean hasIllegalEquipmentCombinations(StringBuffer buff) {
@@ -1578,8 +1658,8 @@ public abstract class TestEntity implements TestEntityOption {
                     buff.append("ProtoMek can't mount light fluid suction system\n");
                 }
             }
-            if (m.getType().hasFlag(MiscType.F_VOIDSIG)
-                    && !getEntity().hasWorkingMisc(MiscType.F_ECM)) {
+            if (m.getType().hasFlag(MiscType.F_VOID_SIG)
+                  && !getEntity().hasWorkingMisc(MiscType.F_ECM)) {
                 illegal = true;
                 buff.append("void signature system needs ECM suite\n");
             }
@@ -1604,19 +1684,19 @@ public abstract class TestEntity implements TestEntityOption {
                 illegal = true;
             }
             if (m.getType().hasFlag(MiscType.F_SRCS) || m.getType().hasFlag(MiscType.F_SASRCS)
-                    || m.getType().hasFlag(MiscType.F_CASPAR) || m.getType().hasFlag(MiscType.F_CASPARII)) {
+                  || m.getType().hasFlag(MiscType.F_CASPAR) || m.getType().hasFlag(MiscType.F_CASPAR_II)) {
                 robotics++;
             }
-            if (m.getType().hasFlag(MiscType.F_LIFTHOIST)) {
+            if (m.getType().hasFlag(MiscType.F_LIFT_HOIST)) {
                 liftHoists++;
             } else if ((m.getLocation() > 0)
-                    && ((m.getType().hasFlag(MiscType.F_CLUB) && !((MiscType) m.getType()).isShield())
-                            || m.getType().hasFlag(MiscType.F_BULLDOZER)
-                            || m.getType().hasFlag(MiscType.F_HAND_WEAPON))) {
+                  && ((m.getType().hasFlag(MiscType.F_CLUB) && !((MiscType) m.getType()).isShield())
+                  || m.getType().hasFlag(MiscType.F_BULLDOZER)
+                  || m.getType().hasFlag(MiscType.F_HAND_WEAPON))) {
                 physicalWeaponsByLocation.computeIfAbsent(m.getLocation(), ArrayList::new).add(m.getType());
             } else if (m.getType().hasFlag(MiscType.F_LIGHT_BRIDGE_LAYER)
-                    || m.getType().hasFlag(MiscType.F_MEDIUM_BRIDGE_LAYER)
-                    || m.getType().hasFlag(MiscType.F_HEAVY_BRIDGE_LAYER)) {
+                  || m.getType().hasFlag(MiscType.F_MEDIUM_BRIDGE_LAYER)
+                  || m.getType().hasFlag(MiscType.F_HEAVY_BRIDGE_LAYER)) {
                 bridgeLayersByLocation.merge(m.getLocation(), 1, Integer::sum);
             }
 
@@ -1633,31 +1713,31 @@ public abstract class TestEntity implements TestEntityOption {
             if (m.getType().hasFlag(MiscType.F_PPC_CAPACITOR)) {
                 if (m.getLinked() == null) {
                     buff
-                        .append(m.getType().getName())
-                        .append(" in ")
-                        .append(getEntity().getLocationAbbr(m.getLocation()))
-                        .append(" has no linked PPC\n");
+                          .append(m.getType().getName())
+                          .append(" in ")
+                          .append(getEntity().getLocationAbbr(m.getLocation()))
+                          .append(" has no linked PPC\n");
                     illegal = true;
                 }
             }
 
             if (m.getType().hasFlag(MiscType.F_LASER_INSULATOR) &&
-                    ((m.getLinked() == null)
-                            || (m.getLinked().getLocation() != m.getLocation())
-                            || !(m.getLinked().getType() instanceof WeaponType)
-                            || !(
-                                    m.getLinked().getType().hasFlag(WeaponType.F_LASER)
-                                    || m.getLinked().getType() instanceof CLChemicalLaserWeapon
-                                ))) {
+                  ((m.getLinked() == null)
+                        || (m.getLinked().getLocation() != m.getLocation())
+                        || !(m.getLinked().getType() instanceof WeaponType)
+                        || !(
+                        m.getLinked().getType().hasFlag(WeaponType.F_LASER)
+                              || m.getLinked().getType() instanceof CLChemicalLaserWeapon
+                  ))) {
                 buff.append("Laser insulator requires a laser in the same location.\n");
                 illegal = true;
             }
             if (m.getType().hasFlag(MiscType.F_RISC_LASER_PULSE_MODULE) &&
-                    ((m.getLinked() == null)
-                            || (m.getLinked().getLocation() != m.getLocation())
-                            || !(m.getLinked().getType() instanceof WeaponType)
-                            || !m.getLinked().getType().hasFlag(WeaponType.F_LASER)
-                            || m.getLinked().getType().hasFlag(WeaponType.F_PULSE))) {
+                  ((m.getLinked() == null)
+                        || (m.getLinked().getLocation() != m.getLocation())
+                        || !(m.getLinked().getType() instanceof WeaponType)
+                        || !m.getLinked().getType().hasFlag(WeaponType.F_LASER)
+                        || m.getLinked().getType().hasFlag(WeaponType.F_PULSE))) {
                 buff.append("RISC Laser Pulse Module requires a non-pulse laser in the same location.\n");
                 illegal = true;
             }
@@ -1674,12 +1754,12 @@ public abstract class TestEntity implements TestEntityOption {
         if (!getEntity().hasEngine() || !(engine.isFusion() || engine.isFission())) {
             for (WeaponMounted m : getEntity().getWeaponList()) {
                 if ((m.getType().getAmmoType() == AmmoType.AmmoTypeEnum.GAUSS_HEAVY)
-                        || (m.getType().getAmmoType() == AmmoType.AmmoTypeEnum.IGAUSS_HEAVY)) {
+                      || (m.getType().getAmmoType() == AmmoType.AmmoTypeEnum.IGAUSS_HEAVY)) {
                     buff.append("Heavy Gauss Rifles require a fusion or fission engine\n");
                     illegal = true;
                 } else if (m.getType().hasFlag(WeaponType.F_FLAMER)
-                        && (m.getType().getAmmoType() == AmmoType.AmmoTypeEnum.NA)
-                        && !(m.getType() instanceof BAFlamerWeapon)) {
+                      && (m.getType().getAmmoType() == AmmoType.AmmoTypeEnum.NA)
+                      && !(m.getType() instanceof BAFlamerWeapon)) {
                     buff.append("Standard flamers require a fusion or fission engine\n");
                     illegal = true;
                 } else if (m.getType().hasFlag(WeaponType.F_HYPER)) {
@@ -1690,8 +1770,8 @@ public abstract class TestEntity implements TestEntityOption {
         }
 
         if (hasExternalFuelTank
-                && (!getEntity().hasEngine() || ((getEntity().getEngine().getEngineType() != Engine.COMBUSTION_ENGINE)
-                        && (getEntity().getEngine().getEngineType() != Engine.FUEL_CELL)))) {
+              && (!getEntity().hasEngine() || ((getEntity().getEngine().getEngineType() != Engine.COMBUSTION_ENGINE)
+              && (getEntity().getEngine().getEngineType() != Engine.FUEL_CELL)))) {
             illegal = true;
             buff.append("Extended fuel tanks can only be used with internal combustion or fuel cell engines.\n");
         }
@@ -1740,7 +1820,7 @@ public abstract class TestEntity implements TestEntityOption {
             if (list.size() > 1) {
                 illegal = true;
                 buff.append(list.stream().map(EquipmentType::getName).collect(Collectors.joining(", ")))
-                        .append(" cannot be mounted in the same location.\n");
+                      .append(" cannot be mounted in the same location.\n");
             }
         }
         for (int count : bridgeLayersByLocation.values()) {
@@ -1779,50 +1859,63 @@ public abstract class TestEntity implements TestEntityOption {
 
         // Find all locations with modular armor and map the number in that location to
         // the location index.
-        Map<Integer, Long> modArmorByLocation = getEntity().getMisc().stream()
-                .filter(m -> m.getType().hasFlag(MiscType.F_MODULAR_ARMOR))
-                .filter(m -> m.getLocation() != Entity.LOC_NONE)
-                .collect(Collectors.groupingBy(Mounted::getLocation, Collectors.counting()));
-        for (Integer loc : modArmorByLocation.keySet()) {
+        // Front and rear are seperate locations: https://battletech.com/forums/index.php?topic=89727.0
+        Map<Pair<Integer, Boolean>, Long> modArmorByLocation = getEntity().getMisc().stream()
+              .filter(m -> m.getType().hasFlag(MiscType.F_MODULAR_ARMOR))
+              .filter(m -> m.getLocation() != Entity.LOC_NONE)
+              .collect(Collectors.groupingBy(m -> Pair.of(m.getLocation(), m.isRearMounted()), Collectors.counting()));
+        for (var loc : modArmorByLocation.keySet()) {
             if (modArmorByLocation.get(loc) > 1) {
                 buff.append("Only one modular armor slot may be mounted in a single location (")
-                        .append(getEntity().getLocationName(loc)).append(")\n");
+                      .append(getEntity().getLocationName(loc.getLeft()))
+                      .append(loc.getRight() ? " (R))" : ")")
+                      .append('\n');
                 illegal = true;
             }
         }
 
         if (artemisIV + artemisV + artemisP > 0) {
             if (((artemisIV > 0) && (artemisV + artemisP > 0))
-                    || ((artemisV > 0) && (artemisP > 0))) {
+                  || ((artemisV > 0) && (artemisP > 0))) {
                 buff.append("All Artemis systems must be of the same type.\n");
                 illegal = true;
             }
             illegal |= checkIllegalArtemisApolloLinks(buff, artemisIV + artemisV + artemisP,
-                    "Artemis", w -> w.hasFlag(WeaponType.F_ARTEMIS_COMPATIBLE));
+                  "Artemis", w -> w.hasFlag(WeaponType.F_ARTEMIS_COMPATIBLE));
         }
         if (apollo > 0) {
             illegal |= checkIllegalArtemisApolloLinks(buff, apollo, "Apollo",
-                    w -> w.getAmmoType() == AmmoType.AmmoTypeEnum.MRM);
+                  w -> w.getAmmoType() == AmmoType.AmmoTypeEnum.MRM);
+        }
+
+        if (getEntity() instanceof IBomber bomber) {
+            if (bomber.getBombPoints(true) > bomber.getMaxExtBombPoints()) {
+                buff.append("External bomb storage capacity exceeded\n");
+                illegal = true;
+            } else if (bomber.getBombPoints() - bomber.getBombPoints(true) > bomber.getMaxIntBombPoints()) {
+                buff.append("Internal bomb storage capacity exceeded\n");
+                illegal = true;
+            }
         }
 
         return illegal;
     }
 
     private boolean checkIllegalArtemisApolloLinks(StringBuffer buffer, int expected,
-            String testingEquipment,
-            Predicate<WeaponType> compatibility) {
+          String testingEquipment,
+          Predicate<WeaponType> compatibility) {
         int linkedCount = 0;
         /*
          * Besides tracking the number required we also want to check that they are all
          * linked.
-         * This will find situations where the number matches but they're not in the
+         * This will find situations where the number matches, but they're not in the
          * same
          * locations as the launcher.
          */
         boolean hasUnlinked = false;
         for (Mounted<?> mount : getEntity().getTotalWeaponList()) {
             if (!mount.isWeaponGroup() &&
-                    compatibility.test((WeaponType) mount.getType())) {
+                  compatibility.test((WeaponType) mount.getType())) {
                 linkedCount++;
                 if (mount.getLinkedBy() == null) {
                     hasUnlinked = true;
@@ -1843,12 +1936,12 @@ public abstract class TestEntity implements TestEntityOption {
      * @param entity   The entity
      * @param eq       The equipment
      * @param location A location index on the Entity
-     * @param buffer   If non-null and the location is invalid, will be appended
-     *                 with an explanation
+     * @param buffer   If non-null and the location is invalid, will be appended with an explanation
+     *
      * @return Whether the equipment can be mounted in the location on the Entity
      */
     public static boolean isValidLocation(Entity entity, EquipmentType eq, int location,
-            @Nullable StringBuffer buffer) {
+          @Nullable StringBuffer buffer) {
         if (entity instanceof Mek) {
             return TestMek.isValidMekLocation((Mek) entity, eq, location, buffer);
         } else if (entity instanceof Tank) {
@@ -1865,7 +1958,7 @@ public abstract class TestEntity implements TestEntityOption {
         if (getEntity().getFailedEquipment().hasNext()) {
             buff.append("Equipment that Failed to Load:\n");
         }
-        for (Iterator<String> e = getEntity().getFailedEquipment(); e.hasNext();) {
+        for (Iterator<String> e = getEntity().getFailedEquipment(); e.hasNext(); ) {
             buff.append(e.next()).append("\n");
         }
         return buff;
@@ -1885,10 +1978,10 @@ public abstract class TestEntity implements TestEntityOption {
         String carryingSpace = "";
         if (getEntity().getTroopCarryingSpace() != 0) {
             carryingSpace = StringUtil.makeLength("Carrying Capacity:",
-                    getPrintSize() - 5)
-                    + TestEntity.makeWeightString(getEntity()
-                            .getTroopCarryingSpace(), usesKgStandard())
-                    + "\n";
+                  getPrintSize() - 5)
+                  + TestEntity.makeWeightString(getEntity()
+                  .getTroopCarryingSpace(), usesKgStandard())
+                  + "\n";
         }
         String cargoWeightString = "";
         double cargoWeight = 0;
@@ -1897,8 +1990,8 @@ public abstract class TestEntity implements TestEntityOption {
         }
         if (cargoWeight > 0) {
             cargoWeightString = StringUtil.makeLength("Cargo Weight:",
-                    getPrintSize() - 5)
-                    + TestEntity.makeWeightString(cargoWeight, usesKgStandard()) + "\n";
+                  getPrintSize() - 5)
+                  + TestEntity.makeWeightString(cargoWeight, usesKgStandard()) + "\n";
         }
         return carryingSpace + cargoWeightString;
     }
@@ -1906,20 +1999,20 @@ public abstract class TestEntity implements TestEntityOption {
     public String printArmorLocation(int loc) {
         if (getEntity().hasRearArmor(loc)) {
             return StringUtil.makeLength(
-                    getEntity().getLocationAbbr(loc) + ":", 5)
-                    + StringUtil.makeLength(getEntity().getOInternal(loc), 4)
-                    + StringUtil.makeLength(getEntity().getOArmor(loc), 3)
-                    + " / "
-                    + StringUtil
-                            .makeLength(getEntity().getOArmor(loc, true), 2);
+                  getEntity().getLocationAbbr(loc) + ":", 5)
+                  + StringUtil.makeLength(getEntity().getOInternal(loc), 4)
+                  + StringUtil.makeLength(getEntity().getOArmor(loc), 3)
+                  + " / "
+                  + StringUtil
+                  .makeLength(getEntity().getOArmor(loc, true), 2);
         }
         return StringUtil.makeLength(getEntity().getLocationAbbr(loc) + ":", 5)
-                + StringUtil.makeLength(getEntity().getOInternal(loc), 4)
-                + StringUtil.makeLength(getEntity().getOArmor(loc), 6) + "  ";
+              + StringUtil.makeLength(getEntity().getOInternal(loc), 4)
+              + StringUtil.makeLength(getEntity().getOArmor(loc), 6) + "  ";
     }
 
     public String printArmorPlacement() {
-        StringBuffer buff = new StringBuffer();
+        StringBuilder buff = new StringBuilder();
         buff.append("Armor Placement:\n");
         for (int loc = 0; loc < getEntity().locations(); loc++) {
             buff.append(printArmorLocation(loc)).append("\n");
@@ -1933,13 +2026,13 @@ public abstract class TestEntity implements TestEntityOption {
 
     public String printTechLevel() {
         return "Chassis: " + getEntity().getDisplayName() + " - "
-                + TechConstants.getLevelName(getEntity().getTechLevel()) + " ("
-                + getEntity().getYear() + ")\n";
+              + TechConstants.getLevelName(getEntity().getTechLevel()) + " ("
+              + getEntity().getYear() + ")\n";
     }
 
     /**
      * @return The total additional weight due to critical slot armoring. Does not include the weight of the equipment
-     * itself.
+     *       itself.
      */
     public double getArmoredComponentWeight() {
         return 0;
@@ -1947,9 +2040,9 @@ public abstract class TestEntity implements TestEntityOption {
 
     public static boolean usesKgStandard(Entity entity) {
         return entity.hasETypeFlag(Entity.ETYPE_BATTLEARMOR)
-                || entity.hasETypeFlag(Entity.ETYPE_PROTOMEK)
-                || (EntityWeightClass.getWeightClass(entity.getWeight(),
-                        entity) == EntityWeightClass.WEIGHT_SMALL_SUPPORT);
+              || entity.hasETypeFlag(Entity.ETYPE_PROTOMEK)
+              || (EntityWeightClass.getWeightClass(entity.getWeight(),
+              entity) == EntityWeightClass.WEIGHT_SMALL_SUPPORT);
     }
 
     boolean usesKgStandard() {
@@ -1959,7 +2052,7 @@ public abstract class TestEntity implements TestEntityOption {
     public int totalCritSlotCount() {
         int slotCount = 0;
         for (int i = 0; i < getEntity().locations(); i++) {
-            slotCount += getEntity().getNumberOfCriticals(i);
+            slotCount += getEntity().getNumberOfCriticalSlots(i);
         }
         return slotCount;
     }
@@ -1971,7 +2064,8 @@ public abstract class TestEntity implements TestEntityOption {
 
     boolean ignoreEquipmentIntroYear() {
         var entity = getEntity();
-        return entity.getInvalidSourceBuildReasons().contains(Entity.InvalidSourceBuildReason.UNIT_OLDER_THAN_EQUIPMENT_INTRO_YEAR);
+        return entity.getInvalidSourceBuildReasons()
+              .contains(Entity.InvalidSourceBuildReason.UNIT_OLDER_THAN_EQUIPMENT_INTRO_YEAR);
     }
 
     boolean allowOverweightConstruction() {
@@ -1981,7 +2075,8 @@ public abstract class TestEntity implements TestEntityOption {
 
     boolean skipBuildValidation() {
         var entity = getEntity();
-        return entity.getInvalidSourceBuildReasons().contains(Entity.InvalidSourceBuildReason.INVALID_OR_OUTDATED_BUILD);
+        return entity.getInvalidSourceBuildReasons()
+              .contains(Entity.InvalidSourceBuildReason.INVALID_OR_OUTDATED_BUILD);
     }
 
 } // End class TestEntity

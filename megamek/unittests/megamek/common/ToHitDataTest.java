@@ -1,38 +1,65 @@
 /*
- * Copyright (c) 2025 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
 package megamek.common;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
+
 import jakarta.xml.bind.ValidationException;
 import megamek.client.Client;
 import megamek.client.ui.clientGUI.ClientGUI;
+import megamek.common.board.Coords;
+import megamek.common.compute.Compute;
+import megamek.common.equipment.EquipmentType;
+import megamek.common.game.Game;
 import megamek.common.options.GameOptions;
 import megamek.common.options.Option;
 import megamek.common.options.OptionsConstants;
 import megamek.common.options.PilotOptions;
+import megamek.common.units.BipedMek;
+import megamek.common.units.Crew;
+import megamek.common.units.Mek;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class ToHitDataTest {
     static GameOptions mockGameOptions = mock(GameOptions.class);
@@ -44,9 +71,6 @@ class ToHitDataTest {
     static Team team2 = new Team(1);
     static Player player1 = new Player(0, "Test1");
     static Player player2 = new Player(1, "Test2");
-    static WeaponType mockLRM20 = (WeaponType) EquipmentType.get("ISLRM20");
-    static AmmoType mockLRM20mmoType = (AmmoType) EquipmentType.get("ISLRM20 Ammo");
-    static AmmoType mockLRM20SwarmType = (AmmoType) EquipmentType.get("ISLRM20 Swarm Ammo");
 
 
     @BeforeAll
@@ -63,7 +87,7 @@ class ToHitDataTest {
         game.setOptions(mockGameOptions);
 
         when(mockGameOptions.booleanOption(eq(OptionsConstants.ALLOWED_NO_CLAN_PHYSICAL))).thenReturn(false);
-        when(mockGameOptions.stringOption(OptionsConstants.ALLOWED_TECHLEVEL)).thenReturn("Experimental");
+        when(mockGameOptions.stringOption(OptionsConstants.ALLOWED_TECH_LEVEL)).thenReturn("Experimental");
         when(mockGameOptions.booleanOption(OptionsConstants.ALLOWED_ERA_BASED)).thenReturn(true);
         when(mockGameOptions.booleanOption(OptionsConstants.ALLOWED_SHOW_EXTINCT)).thenReturn(false);
         Option mockTrueBoolOpt = mock(Option.class);
@@ -103,13 +127,14 @@ class ToHitDataTest {
     List<Mek> basicConfig(List<Coords> coords) throws ValidationException {
         if (coords.size() != 3) {
             throw new ValidationException("Invalid number of coordinates");
-        };
+        }
+
         Mek attacker = createMek("Attacker", "ATK-1", "Alice");
         Mek target1 = createMek("Target", "TGT-2", "Bob");
         Mek target2 = createMek("Target", "TGT-2", "Charlie");
 
         attacker.setOwnerId(player1.getId());
-        Coords attackerCoords = coords.get(0);
+        Coords attackerCoords = coords.getFirst();
         attacker.setPosition(attackerCoords);
         attacker.setId(1);
         attacker.setDeployed(true);
@@ -134,14 +159,13 @@ class ToHitDataTest {
     @Test
     void adjustSwarmToHitRemoveTargetMovementMod() throws ValidationException {
         // Verify that removal of just movement mod works
-        List<Mek> meks = basicConfig(List.of(new Coords(0,0), new Coords(5, 5), new Coords(5, 6)));
+        List<Mek> meks = basicConfig(List.of(new Coords(0, 0), new Coords(5, 5), new Coords(5, 6)));
         Mek target1 = meks.get(1);
         ToHitData toHitData = new ToHitData();
         int gunnery = 4;
         int amm = 2;
         int rangeMod = 2;
-        int targetMove = 3;
-        target1.delta_distance = targetMove;
+        target1.delta_distance = 3;
 
         toHitData.addModifier(gunnery, "Gunnery Skill");
         toHitData.addModifier(amm, "Attacker ran");
@@ -161,7 +185,7 @@ class ToHitDataTest {
     @Test
     void adjustSwarmToHitRemoveTargetMovedJumpedMod() throws ValidationException {
         // Verify removal of movement and jumped mods
-        List<Mek> meks = basicConfig(List.of(new Coords(0,0), new Coords(5, 5), new Coords(5, 6)));
+        List<Mek> meks = basicConfig(List.of(new Coords(0, 0), new Coords(5, 5), new Coords(5, 6)));
         Mek target1 = meks.get(1);
         ToHitData toHitData = new ToHitData();
         int gunnery = 4;
@@ -190,7 +214,7 @@ class ToHitDataTest {
     @Test
     void adjustSwarmToHitRemoveTargetSkiddedProneRangeCalledShotMods() throws ValidationException {
         // Verify removal of movement and jumped mods
-        List<Mek> meks = basicConfig(List.of(new Coords(0,0), new Coords(5, 5), new Coords(5, 6)));
+        List<Mek> meks = basicConfig(List.of(new Coords(0, 0), new Coords(5, 5), new Coords(5, 6)));
         Mek target1 = meks.get(1);
         ToHitData toHitData = new ToHitData();
         int gunnery = 4;
@@ -211,7 +235,7 @@ class ToHitDataTest {
         toHitData.addModifier(rangeMod, "Range Mod");
 
         assertEquals(7, toHitData.getModifiers().size());
-        assertEquals(gunnery + amm + rangeMod + skiddedMod +proneRangeMod + calledHighMod + 1, toHitData.getValue());
+        assertEquals(gunnery + amm + rangeMod + skiddedMod + proneRangeMod + calledHighMod + 1, toHitData.getValue());
 
         // Run adjustment
         toHitData.adjustSwarmToHit();

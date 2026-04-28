@@ -1,22 +1,38 @@
 /*
- * Copyright (c) 2021 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2020-2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay.lobby;
+
+import static megamek.common.bays.Bay.UNSET_BAY;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -29,7 +45,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.stream.Collectors;
 import javax.swing.JFrame;
@@ -38,18 +54,30 @@ import javax.swing.table.AbstractTableModel;
 
 import megamek.MMConstants;
 import megamek.client.ui.Messages;
+import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.dialogs.abstractDialogs.BVDisplayDialog;
 import megamek.client.ui.dialogs.abstractDialogs.CostDisplayDialog;
-import megamek.client.ui.dialogs.unitSelectorDialogs.EntityReadoutDialog;
 import megamek.client.ui.dialogs.randomArmy.ForceGeneratorViewUi;
-import megamek.client.ui.clientGUI.GUIPreferences;
-import megamek.client.ui.dialogs.randomArmy.RandomArmyDialog;
+import megamek.client.ui.dialogs.randomArmy.RatTableModel;
+import megamek.client.ui.dialogs.unitSelectorDialogs.EntityReadoutDialog;
+import megamek.client.ui.entityreadout.LiveReadoutDialog;
 import megamek.client.ui.models.UnitTableModel;
 import megamek.client.ui.util.UIUtil;
-import megamek.common.*;
+import megamek.codeUtilities.MathUtility;
+import megamek.common.Player;
+import megamek.common.battleArmor.BattleArmorHandlesTank;
+import megamek.common.bays.Bay;
+import megamek.common.equipment.TankTrailerHitch;
+import megamek.common.equipment.Transporter;
 import megamek.common.force.Force;
+import megamek.common.game.Game;
 import megamek.common.loaders.EntityLoadingException;
+import megamek.common.loaders.MapSettings;
+import megamek.common.loaders.MekFileParser;
+import megamek.common.loaders.MekSummary;
 import megamek.common.options.OptionsConstants;
+import megamek.common.units.Entity;
+import megamek.common.units.FighterSquadron;
 import megamek.common.util.C3Util;
 import megamek.logging.MMLogger;
 
@@ -88,23 +116,23 @@ public class LobbyUtility {
             List<Player> players = game.getPlayersList();
 
             if (gOpts.booleanOption(OptionsConstants.BASE_SET_PLAYER_DEPLOYMENT_TO_PLAYER_0) &&
-                      !player.isBot() &&
-                      player.getId() != 0) {
+                  !player.isBot() &&
+                  player.getId() != 0) {
                 return true;
             }
 
             if (gOpts.booleanOption(OptionsConstants.BASE_SET_PLAYER_DEPLOYMENT_TO_PLAYER_0)) {
-                players = players.stream().filter(p -> p.isBot() || p.getId() == 0).collect(Collectors.toList());
+                players = players.stream().filter(p -> p.isBot() || p.getId() == 0).toList();
             }
 
             if (isTeamsShareVision(game)) {
                 return players.stream()
-                             .filter(p -> p.isEnemyOf(player))
-                             .noneMatch(p -> startPosOverlap(pos, p.getStartingPos()));
+                      .filter(p -> p.isEnemyOf(player))
+                      .noneMatch(p -> startPosOverlap(pos, p.getStartingPos()));
             } else {
                 return players.stream()
-                             .filter(p -> !p.equals(player))
-                             .noneMatch(p -> startPosOverlap(pos, p.getStartingPos()));
+                      .filter(p -> !p.equals(player))
+                      .noneMatch(p -> startPosOverlap(pos, p.getStartingPos()));
             }
         }
     }
@@ -116,7 +144,7 @@ public class LobbyUtility {
     static boolean isExclusiveDeployment(Game game) {
         final var gOpts = game.getOptions();
         return gOpts.booleanOption(OptionsConstants.ADVANCED_DOUBLE_BLIND) &&
-                     gOpts.booleanOption(OptionsConstants.BASE_EXCLUSIVE_DB_DEPLOYMENT);
+              gOpts.booleanOption(OptionsConstants.BASE_EXCLUSIVE_DB_DEPLOYMENT);
     }
 
     /**
@@ -159,11 +187,10 @@ public class LobbyUtility {
      * Returns true when the given board name does not start with one of the control strings of MapSettings signalling a
      * random, generated or surprise board.
      */
-    @SuppressWarnings("deprecation")
     static boolean isBoardFile(String board) {
         return !board.startsWith(MapSettings.BOARD_GENERATED) &&
-                     !board.startsWith(MapSettings.BOARD_RANDOM) &&
-                     !board.startsWith(MapSettings.BOARD_SURPRISE);
+              !board.startsWith(MapSettings.BOARD_RANDOM) &&
+              !board.startsWith(MapSettings.BOARD_SURPRISE);
     }
 
     /**
@@ -171,8 +198,8 @@ public class LobbyUtility {
      */
     static String invalidBoardTip() {
         return UIUtil.fontHTML(GUIPreferences.getInstance().getWarningColor()) +
-                     Messages.getString("ChatLounge.map.invalidTip") +
-                     "</FONT>";
+              Messages.getString("ChatLounge.map.invalidTip") +
+              "</FONT>";
     }
 
     /**
@@ -185,7 +212,7 @@ public class LobbyUtility {
         }
         UIUtil.setHighQualityRendering(g);
         // The text size may grow with the width of the image, but no bigger than
-        // 16*guiscale
+        // 16*gui scale
         // to avoid huge text
         int fontSize = Math.min(w / 10, UIUtil.scaleForGUI(16));
         Font font = new Font(MMConstants.FONT_DIALOG, Font.PLAIN, fontSize);
@@ -247,9 +274,7 @@ public class LobbyUtility {
             boardsString = boardsString.substring(MapSettings.BOARD_SURPRISE.length());
         }
         String[] boards = boardsString.split("\n");
-        ArrayList<String> result = new ArrayList<>();
-        result.addAll(Arrays.asList(boards));
-        return result;
+        return new ArrayList<>(Arrays.asList(boards));
     }
 
     /**
@@ -289,7 +314,9 @@ public class LobbyUtility {
     /**
      * Returns true if a and b share at least one non-hierarchic C3 system (C3i, Naval C3, Nova CEWS). Symmetrical (the
      * order of a and b does not matter).
-     * @deprecated Use {@link megamek.common.util.C3Util#sameNhC3System(Entity, Entity)} instead as it provides the same functionality.
+     *
+     * @deprecated Use {@link megamek.common.util.C3Util#sameNhC3System(Entity, Entity)} instead as it provides the same
+     *       functionality.
      */
     @Deprecated(since = "0.50.06", forRemoval = true)
     public static boolean sameNhC3System(Entity a, Entity b) {
@@ -299,20 +326,20 @@ public class LobbyUtility {
     /** Returns the string with some content shortened like Battle Armor -> BA */
     static String abbreviateUnitName(String unitName) {
         return unitName.replace("(Standard)", "")
-                     .replace("Battle Armor", "BA")
-                     .replace("Standard", "Std.")
-                     .replace("Vehicle", "Veh.")
-                     .replace("Medium", "Med.")
-                     .replace("Support", "Spt.")
-                     .replace("Heavy", "Hvy.")
-                     .replace("Light", "Lgt.");
+              .replace("Battle Armor", "BA")
+              .replace("Standard", "Std.")
+              .replace("Vehicle", "Veh.")
+              .replace("Medium", "Med.")
+              .replace("Support", "Spt.")
+              .replace("Heavy", "Hvy.")
+              .replace("Light", "Lgt.");
     }
 
     static boolean hasYellowWarning(Entity entity) {
         return (entity instanceof FighterSquadron && entity.getLoadedUnits().isEmpty()) ||
-                     ((entity.hasC3i() || entity.hasNavalC3()) && (entity.calculateFreeC3Nodes() == 5)) ||
-                     (entity.hasNovaCEWS() && (entity.calculateFreeC3Nodes() == 2)) ||
-                     ((entity.getC3Master() == null) && entity.hasC3S());
+              ((entity.hasC3i() || entity.hasNavalC3()) && (entity.calculateFreeC3Nodes() == 5)) ||
+              (entity.hasNovaCEWS() && (entity.calculateFreeC3Nodes() == 2)) ||
+              ((entity.getC3Master() == null) && entity.hasC3S());
     }
 
     /**
@@ -321,145 +348,151 @@ public class LobbyUtility {
      */
     static boolean validateLobbyLoad(Collection<Entity> entities, Entity loader, int bayNumber, boolean loadRear,
           StringBuilder errorMsg) {
-        // ProtoMek loading uses only 1 entity, get that (doesn't matter if it's
-        // something else)
-        Entity soleProtoMek = entities.stream().findAny().get();
+        // ProtoMek loading uses only 1 entity, get that (doesn't matter if it's something else)
+        Optional<Entity> optionalProtoMek = entities.stream().findFirst();
         double capacity;
-        boolean hasEnoughCargoCapacity;
+        boolean hasEnoughCargoCapacity = false;
         String errorMessage = "";
 
-        if (bayNumber != -1) {
-            Bay bay = loader.getBayById(bayNumber);
-            if (null != bay) {
-                double loadSize = entities.stream().mapToDouble(bay::spaceForUnit).sum();
-                capacity = bay.getUnused();
-                hasEnoughCargoCapacity = loadSize <= capacity;
-                errorMessage = Messages.getString("LoadingBay.baytoomany",
-                      (int) bay.getUnusedSlots(),
-                      bay.getDefaultSlotDescription());
-            } else if (loader.hasETypeFlag(Entity.ETYPE_MEK) && soleProtoMek.hasETypeFlag(Entity.ETYPE_PROTOMEK)) {
-                // We're also using bay number to distinguish between front and rear locations
-                // for ProtoMek mag clamp systems
-                hasEnoughCargoCapacity = entities.size() == 1;
-                errorMessage = Messages.getString("LoadingBay.protostoomany");
+        if (optionalProtoMek.isPresent()) {
+            Entity soleProtoMek = entities.stream().findAny().get();
+
+            if (bayNumber != UNSET_BAY) {
+                Bay bay = loader.getBayById(bayNumber);
+                if (null != bay) {
+                    double loadSize = entities.stream().mapToDouble(bay::spaceForUnit).sum();
+                    capacity = bay.getUnused();
+                    hasEnoughCargoCapacity = loadSize <= capacity;
+                    errorMessage = Messages.getString("LoadingBay.baytoomany",
+                          (int) bay.getUnusedSlots(),
+                          bay.getDefaultSlotDescription());
+                } else if (loader.hasETypeFlag(Entity.ETYPE_MEK) && soleProtoMek.hasETypeFlag(Entity.ETYPE_PROTOMEK)) {
+                    // We're also using bay number to distinguish between front and rear locations
+                    // for ProtoMek mag clamp systems
+                    hasEnoughCargoCapacity = entities.size() == 1;
+                    errorMessage = Messages.getString("LoadingBay.protostoomany");
+                } else if (loader.getTransports().get(Integer.MAX_VALUE - bayNumber).canLoad(soleProtoMek)) {
+                    // FIXME #7640: Update once we can properly specify any transporter an entity has, and properly load
+                    //  into that transporter.
+                    hasEnoughCargoCapacity = entities.size() == 1;
+                } else {
+                    errorMessage = Messages.getString("LoadingBay.bayNumberNotFound", bayNumber);
+                }
             } else {
-                hasEnoughCargoCapacity = false;
-                errorMessage = Messages.getString("LoadingBay.bayNumberNotFound", bayNumber);
-            }
-        } else {
-            HashMap<Long, Double> capacities = new HashMap<>();
-            HashMap<Long, Double> counts = new HashMap<>();
-            HashMap<Transporter, Double> potentialLoad = new HashMap<>();
-            // Get the counts and capacities for all present types
-            for (Entity e : entities) {
-                long entityType = e.getEntityType();
-                long loaderType = loader.getEntityType();
-                double unitSize;
-                if ((entityType & Entity.ETYPE_MEK) != 0) {
-                    entityType = Entity.ETYPE_MEK;
-                    unitSize = 1;
-                } else if ((entityType & Entity.ETYPE_INFANTRY) != 0) {
-                    entityType = Entity.ETYPE_INFANTRY;
-                    boolean useCount = true;
-                    if ((loaderType & Entity.ETYPE_TANK) != 0) {
-                        // This is a super hack... When getting
-                        // capacities, troopspace gives unused space in
-                        // terms of tons, and BattleArmorHandles gives
-                        // it in terms of unit count. If I call
-                        // getUnused, it sums these together, and is
-                        // meaningless, so we'll go through all
-                        // transporters....
-                        boolean hasTroopSpace = false;
-                        for (Transporter t : loader.getTransports()) {
-                            if (t instanceof TankTrailerHitch) {
-                                continue;
-                            }
-                            double loadWeight = e.getWeight();
-                            if (potentialLoad.containsKey(t)) {
-                                loadWeight += potentialLoad.get(t);
-                            }
-                            if (!(t instanceof BattleArmorHandlesTank) &&
+                HashMap<Long, Double> capacities = new HashMap<>();
+                HashMap<Long, Double> counts = new HashMap<>();
+                HashMap<Transporter, Double> potentialLoad = new HashMap<>();
+                // Get the counts and capacities for all present types
+                for (Entity e : entities) {
+                    long entityType = e.getEntityType();
+                    long loaderType = loader.getEntityType();
+                    double unitSize;
+                    if ((entityType & Entity.ETYPE_MEK) != 0) {
+                        entityType = Entity.ETYPE_MEK;
+                        unitSize = 1;
+                    } else if ((entityType & Entity.ETYPE_INFANTRY) != 0) {
+                        entityType = Entity.ETYPE_INFANTRY;
+                        boolean useCount = true;
+                        if ((loaderType & Entity.ETYPE_TANK) != 0) {
+                            // This is a super hack... When getting
+                            // capacities, troopspace gives unused space in
+                            // terms of tons, and BattleArmorHandles gives
+                            // it in terms of unit count. If I call
+                            // getUnused, it sums these together, and is
+                            // meaningless, so we'll go through all
+                            // transporters....
+                            boolean hasTroopSpace = false;
+                            for (Transporter t : loader.getTransports()) {
+                                if (t instanceof TankTrailerHitch) {
+                                    continue;
+                                }
+                                double loadWeight = e.getWeight();
+                                if (potentialLoad.containsKey(t)) {
+                                    loadWeight += potentialLoad.get(t);
+                                }
+                                if (!(t instanceof BattleArmorHandlesTank) &&
                                       t.canLoad(e) &&
                                       (loadWeight <= t.getUnused())) {
-                                hasTroopSpace = true;
-                                potentialLoad.put(t, loadWeight);
-                                break;
+                                    hasTroopSpace = true;
+                                    potentialLoad.put(t, loadWeight);
+                                    break;
+                                }
+                            }
+                            if (hasTroopSpace) {
+                                useCount = false;
                             }
                         }
-                        if (hasTroopSpace) {
-                            useCount = false;
+                        // TroopSpace uses tonnage
+                        // bays and BA handlebars use a count
+                        if (useCount) {
+                            unitSize = 1;
+                        } else {
+                            unitSize = e.getWeight();
                         }
-                    }
-                    // TroopSpace uses tonnage
-                    // bays and BA handlebars use a count
-                    if (useCount) {
+                    } else if ((entityType & Entity.ETYPE_PROTOMEK) != 0) {
+                        entityType = Entity.ETYPE_PROTOMEK;
+                        unitSize = 1;
+                        // Loading using mag clamps; user can specify front or rear.
+                        // Make use of bayNumber field
+                        if ((loaderType & Entity.ETYPE_MEK) != 0) {
+                            bayNumber = loadRear ? 1 : 0;
+                        }
+                    } else if ((entityType & Entity.ETYPE_DROPSHIP) != 0) {
+                        entityType = Entity.ETYPE_DROPSHIP;
+                        unitSize = 1;
+                    } else if ((entityType & Entity.ETYPE_JUMPSHIP) != 0) {
+                        entityType = Entity.ETYPE_JUMPSHIP;
+                        unitSize = 1;
+                    } else if ((entityType & Entity.ETYPE_AERO) != 0) {
+                        entityType = Entity.ETYPE_AERO;
+                        unitSize = 1;
+                    } else if ((entityType & Entity.ETYPE_TANK) != 0) {
+                        entityType = Entity.ETYPE_TANK;
                         unitSize = 1;
                     } else {
-                        unitSize = e.getWeight();
+                        unitSize = 1;
                     }
-                } else if ((entityType & Entity.ETYPE_PROTOMEK) != 0) {
-                    entityType = Entity.ETYPE_PROTOMEK;
-                    unitSize = 1;
-                    // Loading using mag clamps; user can specify front or rear.
-                    // Make use of bayNumber field
-                    if ((loaderType & Entity.ETYPE_MEK) != 0) {
-                        bayNumber = loadRear ? 1 : 0;
+
+                    Double count = counts.get(entityType);
+                    if (count == null) {
+                        count = 0.0;
                     }
-                } else if ((entityType & Entity.ETYPE_DROPSHIP) != 0) {
-                    entityType = Entity.ETYPE_DROPSHIP;
-                    unitSize = 1;
-                } else if ((entityType & Entity.ETYPE_JUMPSHIP) != 0) {
-                    entityType = Entity.ETYPE_JUMPSHIP;
-                    unitSize = 1;
-                } else if ((entityType & Entity.ETYPE_AERO) != 0) {
-                    entityType = Entity.ETYPE_AERO;
-                    unitSize = 1;
-                } else if ((entityType & Entity.ETYPE_TANK) != 0) {
-                    entityType = Entity.ETYPE_TANK;
-                    unitSize = 1;
-                } else {
-                    unitSize = 1;
-                }
+                    count = count + unitSize;
+                    counts.put(entityType, count);
 
-                Double count = counts.get(entityType);
-                if (count == null) {
-                    count = 0.0;
+                    Double cap = capacities.get(entityType);
+                    if (cap == null) {
+                        cap = loader.getUnused(e);
+                        capacities.put(entityType, cap);
+                    }
                 }
-                count = count + unitSize;
-                counts.put(entityType, count);
-
-                Double cap = capacities.get(entityType);
-                if (cap == null) {
-                    cap = loader.getUnused(e);
-                    capacities.put(entityType, cap);
+                hasEnoughCargoCapacity = true;
+                for (Long typeId : counts.keySet()) {
+                    double currCount = counts.get(typeId);
+                    double currCapacity = capacities.get(typeId);
+                    if (currCount > currCapacity) {
+                        hasEnoughCargoCapacity = false;
+                        capacity = currCapacity;
+                        String messageName;
+                        if (typeId == Entity.ETYPE_INFANTRY) {
+                            messageName = "LoadingBay.nonbaytoomanyInf";
+                        } else {
+                            messageName = "LoadingBay.nonbaytoomany";
+                        }
+                        errorMessage = Messages.getString(messageName,
+                              currCount,
+                              Entity.getEntityTypeName(typeId),
+                              currCapacity);
+                    }
                 }
             }
-            hasEnoughCargoCapacity = true;
-            capacity = 0;
-            for (Long typeId : counts.keySet()) {
-                double currCount = counts.get(typeId);
-                double currCapacity = capacities.get(typeId);
-                if (currCount > currCapacity) {
-                    hasEnoughCargoCapacity = false;
-                    capacity = currCapacity;
-                    String messageName;
-                    if (typeId == Entity.ETYPE_INFANTRY) {
-                        messageName = "LoadingBay.nonbaytoomanyInf";
-                    } else {
-                        messageName = "LoadingBay.nonbaytoomany";
-                    }
-                    errorMessage = Messages.getString(messageName,
-                          currCount,
-                          Entity.getEntityTypeName(typeId),
-                          currCapacity);
-                }
-            }
-        }
-        if (loader instanceof FighterSquadron &&
+            if (loader instanceof FighterSquadron &&
                   entities.stream().anyMatch(e -> !e.isFighter() || e instanceof FighterSquadron)) {
-            errorMessage = "Only aerospace and conventional fighters can join squadrons.";
-            hasEnoughCargoCapacity = false;
+                errorMessage = "Only aerospace and conventional fighters can join squadrons.";
+                hasEnoughCargoCapacity = false;
+            }
         }
+
         errorMsg.append(errorMessage);
         return hasEnoughCargoCapacity;
     }
@@ -506,31 +539,28 @@ public class LobbyUtility {
         HashSet<Entity> result = new HashSet<>();
 
         while (st.hasMoreTokens()) {
-            int id = -1;
+            int id = MathUtility.parseInt(st.nextToken(), -1);
 
-            try {
-                id = Integer.parseInt(st.nextToken());
-            } catch (NumberFormatException e) {
-            }
-
-            MekSummary ms = null;
+            MekSummary mekSummary = null;
 
             if (utm instanceof UnitTableModel) {
-                ms = ((UnitTableModel) utm).getUnitAt(id);
-            } else if (utm instanceof RandomArmyDialog.RATTableModel) {
-                ms = ((RandomArmyDialog.RATTableModel) utm).getUnitAt(id);
+                mekSummary = ((UnitTableModel) utm).getUnitAt(id);
+            } else if (utm instanceof RatTableModel) {
+                mekSummary = ((RatTableModel) utm).getUnitAt(id);
             } else if (utm instanceof ForceGeneratorViewUi.ChosenEntityModel) {
-                ms = ((ForceGeneratorViewUi.ChosenEntityModel) utm).getUnitAt(id);
+                mekSummary = ((ForceGeneratorViewUi.ChosenEntityModel) utm).getUnitAt(id);
             }
 
-            if (ms != null) {
+            if (mekSummary != null) {
                 try {
-                    Entity e = new MekFileParser(ms.getSourceFile(), ms.getEntryName()).getEntity();
+                    Entity e = new MekFileParser(mekSummary.getSourceFile(), mekSummary.getEntryName()).getEntity();
                     e.setId(id);
                     result.add(e);
                 } catch (EntityLoadingException ex) {
                     logger.error(ex,
-                          String.format("Unable to load Mek: %s: %s", ms.getSourceFile(), ms.getEntryName()));
+                          "Unable to load Mek: {}: {}",
+                          mekSummary.getSourceFile(),
+                          mekSummary.getEntryName());
                 }
             }
         }
@@ -539,17 +569,33 @@ public class LobbyUtility {
     }
 
     /**
-     * Returns a list of the selected entities in the Mek table. The list may be empty but not null.
+     * Returns a list of the selected model row indices in the given table, taking care of row sorting, if a row sorter
+     * is applied. The list may be empty but not null.
      */
-    public static List<Integer> getSelectedEntities(JTable sTable) {
-        ArrayList<Integer> result = new ArrayList<>();
-        int[] rows = sTable.getSelectedRows();
+    public static List<Integer> getSelectedEntities(JTable table) {
+        return Arrays.stream(table.getSelectedRows()).map(table::convertRowIndexToModel).boxed().toList();
+    }
 
-        for (int i = 0; i < rows.length; i++) {
-            result.add(sTable.convertRowIndexToModel(rows[i]));
+    /**
+     * Shows the unit summaries for the given units, but not for hidden units (blind drop) and not for more than 10
+     * units at a time (because that's likely a misclick). The Entity Readout(s) will use a game listener to stay
+     * updated. Use this only for units that have been added to an actual game.
+     */
+    public static void liveEntityReadoutAction(Collection<Integer> entities, boolean canSeeAll, JFrame frame,
+          Game game) {
+        if (entities.size() > 10) {
+            LobbyErrors.showTenUnits(frame);
+        } else if (!canSeeAll) {
+            LobbyErrors.showCannotViewHidden(frame);
+        } else {
+            int index = 0;
+            for (int id : entities) {
+                LiveReadoutDialog dialog = new LiveReadoutDialog(frame, game, id);
+                dialog.setVisible(true);
+                dialog.setLocation(dialog.getLocation().x + index * 10, dialog.getLocation().y + index * 10);
+                index++;
+            }
         }
-
-        return result;
     }
 
     /**
@@ -572,7 +618,7 @@ public class LobbyUtility {
 
     /**
      * Shows the unit summary for the given unit. Moves the dialog a bit depending on index so that multiple dialogs
-     * dont appear exactly on top of each other.
+     * don't appear exactly on top of each other.
      */
     public static void mekReadout(Entity entity, int index, boolean modal, JFrame frame) {
         final EntityReadoutDialog dialog = new EntityReadoutDialog(frame, entity);
@@ -587,7 +633,7 @@ public class LobbyUtility {
      *
      * @param entities The units to the bv report for
      */
-    public static void mekBVAction(final Set<Entity> entities, boolean canSeeAll, boolean modal, JFrame frame) {
+    public static void mekBVAction(final Collection<Entity> entities, boolean canSeeAll, boolean modal, JFrame frame) {
         if (entities.size() > 10) {
             LobbyErrors.showTenUnits(frame);
         } else if (!canSeeAll) {
@@ -605,7 +651,7 @@ public class LobbyUtility {
      *
      * @param entities The units to the cost report for
      */
-    public static void mekCostAction(final Set<Entity> entities, boolean canSeeAll, boolean modal, JFrame frame) {
+    public static void mekCostAction(final Collection<Entity> entities, boolean canSeeAll, boolean modal, JFrame frame) {
         if (entities.size() > 10) {
             LobbyErrors.showTenUnits(frame);
         } else if (!canSeeAll) {

@@ -1,39 +1,53 @@
 /*
- * Copyright (c) 2025 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.phaseDisplay;
+
+import java.awt.BorderLayout;
+import java.util.Objects;
+import javax.swing.JCheckBox;
+import javax.swing.JEditorPane;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.border.EmptyBorder;
 
 import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.ClientGUI;
 import megamek.common.preference.ClientPreferences;
 import megamek.common.preference.PreferenceManager;
 
-import javax.swing.JCheckBox;
-import javax.swing.JEditorPane;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.border.EmptyBorder;
-import java.awt.BorderLayout;
-import java.util.Objects;
-
 /**
  * This is a class to display a simple modal info dialog using JOptionPane. When a preference key is given by an
- * implementing class, the dialog will show a "Dont show again" checkbox and the dialog will autmatically store the
+ * implementing class, the dialog will show a "Don't show again" checkbox and the dialog will automatically store the
  * result of the checkbox and act accordingly.
  */
 public abstract class SimpleNagNotice {
@@ -53,7 +67,7 @@ public abstract class SimpleNagNotice {
 
     /**
      * Override this method to provide the (localized) message to show in the notice. The message will be shown as HTML
-     * and HTML and BODY tags will be added. Therefore, HTML tags can be used in the message but it should not include
+     * and HTML and BODY tags will be added. Therefore, HTML tags can be used in the message, but it should not include
      * HTML, HEAD or BODY tags.
      *
      * @return A message to show in the dialog.
@@ -69,11 +83,11 @@ public abstract class SimpleNagNotice {
 
     /**
      * This method may be overridden to provide a non-empty and unique key String for the Client Preferences. When this
-     * is done, a "Dont show again" checkbox will be shown and the result will be stored in the Client Preferences using
-     * the given key. When this is done and the checkbox is activated, this notice will no longer be shown when show()
-     * is called.
+     * is done, a "Don't show again" checkbox will be shown and the result will be stored in the Client Preferences
+     * using the given key. When this is done and the checkbox is activated, this notice will no longer be shown when
+     * show() is called.
      *
-     * @return A key to store a "Dont show again" value in the Client Preferences
+     * @return A key to store a "Don't show again" value in the Client Preferences
      */
     protected String preferenceKey() {
         return "";

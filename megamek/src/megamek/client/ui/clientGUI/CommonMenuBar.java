@@ -1,21 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2003, 2004, 2005 Ben Mazur (bmazur@sev.org)
- * Copyright (c) 2021, 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2003, 2004, 2005 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI;
 
@@ -58,13 +72,13 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private static final GUIPreferences GUIP = GUIPreferences.getInstance();
 
     /** True when this menu is attached to the board editor. */
-    private boolean isBoardEditor = false;
+    private final boolean isBoardEditor;
 
     /** True when this menu is attached to the game's main menu. */
-    private boolean isMainMenu = false;
+    private final boolean isMainMenu;
 
-    /** True when this menu is attached to a client (lobby or ingame). */
-    private boolean isGame = false;
+    /** True when this menu is attached to a client (lobby or in game). */
+    private final boolean isGame;
 
     /** The current phase of the game, if any. */
     private GamePhase phase = GamePhase.UNKNOWN;
@@ -82,11 +96,12 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private final JCheckBoxMenuItem gamePlayerList = new JCheckBoxMenuItem(getString("CommonMenuBar.viewPlayerList"));
     private final JMenuItem gameGameOptions = new JMenuItem(getString("CommonMenuBar.viewGameOptions"));
     private final JMenuItem gamePlayerSettings = new JMenuItem(getString("CommonMenuBar.viewPlayerSettings"));
+    private final JMenuItem gameNetworkInformation = new JMenuItem(getString("CommonMenuBar.viewNetworkInformation"));
 
     // The Units menu
     private final JMenuItem fileUnitsReinforce = new JMenuItem(getString("CommonMenuBar.fileUnitsReinforce"));
     private final JMenuItem fileUnitsReinforceRAT = new JMenuItem(getString("CommonMenuBar.fileUnitsReinforceRAT"));
-    private final JMenuItem fileRefreshCache = new JMenuItem(getString("CommonMenuBar.fileUnitsRefreshUnitCache"));
+    private final JMenuItem fileCreateRandom = new JMenuItem("Create Random Army");
     private final JMenuItem fileUnitsPaste = new JMenuItem(getString("CommonMenuBar.fileUnitsPaste"));
     private final JMenuItem fileUnitsCopy = new JMenuItem(getString("CommonMenuBar.fileUnitsCopy"));
     private final JMenuItem fileUnitsSave = new JMenuItem(getString("CommonMenuBar.fileUnitsSave"));
@@ -100,9 +115,10 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private final JMenuItem boardSaveAs = new JMenuItem(getString("CommonMenuBar.fileBoardSaveAs"));
     private final JMenuItem boardSaveAsImage = new JMenuItem(getString("CommonMenuBar.fileBoardSaveAsImage"));
     private final JMenuItem boardSaveAsImageUnits = new JMenuItem(getString("CommonMenuBar.fileBoardSaveAsImageUnits"));
-    private final JCheckBoxMenuItem boardTrceOverlay = new JCheckBoxMenuItem(getString("CommonMenuBar.boardTraceOverlay"));
+    private final JCheckBoxMenuItem boardTraceOverlay = new JCheckBoxMenuItem(getString("CommonMenuBar.boardTraceOverlay"));
     private final JMenuItem boardResize = new JMenuItem(getString("CommonMenuBar.boardResize"));
     private final JMenuItem boardValidate = new JMenuItem(getString("CommonMenuBar.boardValidate"));
+    private final JMenuItem boardRunBoardTagger = new JMenuItem(getString("CommonMenuBar.boardRunBoardTagger"));
     private final JMenuItem boardSourceFile = new JMenuItem(getString("CommonMenuBar.boardSourceFile"));
     private final JMenuItem boardUndo = new JMenuItem(getString("CommonMenuBar.boardUndo"));
     private final JMenuItem boardRedo = new JMenuItem(getString("CommonMenuBar.boardRedo"));
@@ -121,6 +137,7 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private final JCheckBoxMenuItem viewMinimap = new JCheckBoxMenuItem(getString("CommonMenuBar.viewMinimap"));
     private final JCheckBoxMenuItem viewMekDisplay = new JCheckBoxMenuItem(getString("CommonMenuBar.viewMekDisplay"));
     private final JCheckBoxMenuItem viewForceDisplay = new JCheckBoxMenuItem(getString("CommonMenuBar.viewForceDisplay"));
+    private final JMenuItem viewNovaNetworks = new JMenuItem(getString("CommonMenuBar.viewNovaNetworks"));
     private final JMenuItem viewAccessibilityWindow = new JMenuItem(getString("CommonMenuBar.viewAccessibilityWindow"));
     private final JCheckBoxMenuItem viewKeybindsOverlay = new JCheckBoxMenuItem(getString(
           "CommonMenuBar.viewKeyboardShortcuts"));
@@ -131,7 +148,6 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private final JMenuItem viewZoomOverviewToggle = new JMenuItem(getString("CommonMenuBar.viewZoomOverviewToggle"));
     private final JMenuItem viewLabels = new JMenuItem(getString("CommonMenuBar.viewLabels"));
     private final JCheckBoxMenuItem viewBotCommands = new JCheckBoxMenuItem(getString("CommonMenuBar.viewBotCommands"));
-    private final JMenuItem viewResetWindowPositions = new JMenuItem(getString("CommonMenuBar.viewResetWindowPos"));
     private final JCheckBoxMenuItem toggleIsometric = new JCheckBoxMenuItem(getString(
           "CommonMenuBar.viewToggleIsometric"));
     private final JCheckBoxMenuItem toggleHexCoords = new JCheckBoxMenuItem(getString(
@@ -145,6 +161,8 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
           "CommonMenuBar.viewToggleFovHighlight"));
     private final JCheckBoxMenuItem toggleFovDarken = new JCheckBoxMenuItem(getString(
           "CommonMenuBar.viewToggleFovDarken"));
+    private final JCheckBoxMenuItem toggleFovSpotting = new JCheckBoxMenuItem(getString(
+          "CommonMenuBar.viewToggleFovSpotting"));
     private final JCheckBoxMenuItem toggleFiringSolutions = new JCheckBoxMenuItem(getString(
           "CommonMenuBar.viewToggleFiringSolutions"));
     private final JCheckBoxMenuItem toggleCFWarning = new JCheckBoxMenuItem(getString(
@@ -160,12 +178,6 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private final JMenuItem viewIncGUIScale = new JMenuItem(getString("CommonMenuBar.viewIncGUIScale"));
     private final JMenuItem viewDecGUIScale = new JMenuItem(getString("CommonMenuBar.viewDecGUIScale"));
 
-    // The Help menu
-    private final JMenuItem helpContents = new JMenuItem(getString("CommonMenuBar.helpContents"));
-    private final JMenuItem helpSkinning = new JMenuItem(getString("CommonMenuBar.helpSkinning"));
-    private final JMenuItem helpAbout = new JMenuItem(getString("CommonMenuBar.helpAbout"));
-    private final JMenuItem helpResetNags = new JMenuItem(getString("CommonMenuBar.helpResetNags"));
-
     // The Firing Action menu
     private final JMenuItem fireSaveWeaponOrder = new JMenuItem(getString("CommonMenuBar.fireSaveWeaponOrder"));
 
@@ -178,28 +190,28 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     private final Map<String, JMenuItem> itemMap = new HashMap<>();
 
     public static CommonMenuBar getMenuBarForGame() {
-        var menuBar = new CommonMenuBar();
-        menuBar.isGame = true;
+        var menuBar = new CommonMenuBar(false, true, false);
         menuBar.updateEnabledStates();
         return menuBar;
     }
 
     public static CommonMenuBar getMenuBarForBoardEditor() {
-        var menuBar = new CommonMenuBar();
-        menuBar.isBoardEditor = true;
+        var menuBar = new CommonMenuBar(false, false, true);
         menuBar.updateEnabledStates();
         return menuBar;
     }
 
     public static CommonMenuBar getMenuBarForMainMenu() {
-        var menuBar = new CommonMenuBar();
-        menuBar.isMainMenu = true;
+        var menuBar = new CommonMenuBar(true, false, false);
         menuBar.updateEnabledStates();
         return menuBar;
     }
 
     /** Creates the common MegaMek menu bar. */
-    public CommonMenuBar() {
+    private CommonMenuBar(boolean isMainMenu, boolean isGame, boolean isBoardEditor) {
+        this.isMainMenu = isMainMenu;
+        this.isGame = isGame;
+        this.isBoardEditor = isBoardEditor;
         // Create the Game menu
         JMenu menu = new JMenu(Messages.getString("CommonMenuBar.FileMenu"));
         menu.setMnemonic(VK_F);
@@ -207,8 +219,8 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         initMenuItem(gameStart, menu, FILE_GAME_NEW);
         initMenuItem(gameLoad, menu, FILE_GAME_LOAD, VK_L);
         initMenuItem(gameSave, menu, FILE_GAME_SAVE, VK_S);
-        initMenuItem(gameQSave, menu, FILE_GAME_QSAVE);
-        initMenuItem(gameQLoad, menu, FILE_GAME_QLOAD);
+        initMenuItem(gameQSave, menu, FILE_GAME_QUICK_SAVE);
+        initMenuItem(gameQLoad, menu, FILE_GAME_QUICK_LOAD);
         initMenuItem(gameSaveServer, menu, FILE_GAME_SAVE_SERVER);
         initMenuItem(gameConnect, menu, FILE_GAME_CONNECT);
 
@@ -222,18 +234,22 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
 
         initMenuItem(gameGameOptions, menu, VIEW_GAME_OPTIONS, VK_O);
         initMenuItem(gamePlayerSettings, menu, VIEW_PLAYER_SETTINGS);
+        initMenuItem(gameNetworkInformation, menu, VIEW_NETWORK_INFORMATION);
         initMenuItem(fileUnitsCopy, menu, FILE_UNITS_COPY);
         fileUnitsCopy.setAccelerator(KeyStroke.getKeyStroke(VK_C, CTRL_DOWN_MASK));
         initMenuItem(fileUnitsPaste, menu, FILE_UNITS_PASTE);
         fileUnitsPaste.setAccelerator(KeyStroke.getKeyStroke(VK_V, CTRL_DOWN_MASK));
         initMenuItem(fileUnitsReinforce, menu, FILE_UNITS_REINFORCE);
-        initMenuItem(fileUnitsReinforceRAT, menu, FILE_UNITS_REINFORCE_RAT);
+        initMenuItem(isMainMenu ? fileCreateRandom : fileUnitsReinforceRAT, menu, FILE_UNITS_REINFORCE_RAT);
         initMenuItem(fileUnitsSave, menu, FILE_UNITS_SAVE);
         menu.addSeparator();
 
+        JMenuItem fileRefreshCache = new JMenuItem(getString("CommonMenuBar.fileUnitsRefreshUnitCache"));
         initMenuItem(fileRefreshCache, menu, FILE_REFRESH_CACHE);
+        JMenuItem fileRebuildCache = new JMenuItem(getString("CommonMenuBar.fileUnitsRebuildUnitCache"));
+        initMenuItem(fileRebuildCache, menu, FILE_REBUILD_CACHE);
         initMenuItem(fileUnitsBrowse, menu, FILE_UNITS_BROWSE);
-        // The accelerator overlaps with that for changing label style but they are never active at the same time
+        // The accelerator overlaps with that for changing label style, but they are never active at the same time
         fileUnitsBrowse.setAccelerator(KeyStroke.getKeyStroke(VK_B, CTRL_DOWN_MASK));
         menu.addSeparator();
 
@@ -249,15 +265,18 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         initializeRecentBoardsMenu();
         initMenuItem(boardSave, menu, BOARD_SAVE);
         initMenuItem(boardSaveAs, menu, BOARD_SAVE_AS);
+        menu.addSeparator();
+
         initMenuItem(boardValidate, menu, BOARD_VALIDATE);
-        initMenuItem(boardSourceFile, menu, BOARD_SOURCEFILE);
+        initMenuItem(boardSourceFile, menu, BOARD_SOURCE_FILE);
+        initMenuItem(boardRunBoardTagger, menu, BOARD_RUN_BOARD_TAGGER);
         menu.addSeparator();
 
         initMenuItem(boardSaveAsImage, menu, BOARD_SAVE_AS_IMAGE);
         boardSaveAsImage.setToolTipText(Messages.getString("CommonMenuBar.fileBoardSaveAsImage.tooltip"));
         initMenuItem(boardSaveAsImageUnits, menu, BOARD_SAVE_AS_IMAGE_UNITS);
         boardSaveAsImageUnits.setToolTipText(Messages.getString("CommonMenuBar.fileBoardSaveAsImageUnits.tooltip"));
-        initMenuItem(boardTrceOverlay, menu, VIEW_TRACE_OVERLAY, GUIP.getShowTraceOverlay());
+        initMenuItem(boardTraceOverlay, menu, VIEW_TRACE_OVERLAY, GUIP.getShowTraceOverlay());
         menu.addSeparator();
 
         initMenuItem(boardUndo, menu, BOARD_UNDO);
@@ -282,8 +301,8 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         menu.setMnemonic(VK_V);
         add(menu);
         initMenuItem(viewClientSettings, menu, VIEW_CLIENT_SETTINGS, VK_S);
-        initMenuItem(viewIncGUIScale, menu, VIEW_INCGUISCALE);
-        initMenuItem(viewDecGUIScale, menu, VIEW_DECGUISCALE);
+        initMenuItem(viewIncGUIScale, menu, VIEW_INC_GUI_SCALE);
+        initMenuItem(viewDecGUIScale, menu, VIEW_DEC_GUI_SCALE);
         menu.addSeparator();
 
         GUIP.setUnitDisplayEnabled(false);
@@ -296,6 +315,7 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         initMenuItem(gamePlayerList, menu, VIEW_PLAYER_LIST, GUIP.getPlayerListEnabled());
         GUIP.setForceDisplayEnabled(false);
         initMenuItem(viewForceDisplay, menu, VIEW_FORCE_DISPLAY, GUIP.getForceDisplayEnabled());
+        initMenuItem(viewNovaNetworks, menu, VIEW_NOVA_NETWORKS);
         GUIP.setBotCommandsEnabled(false);
         initMenuItem(viewBotCommands, menu, VIEW_BOT_COMMANDS, VK_G, GUIP.getBotCommandsEnabled());
         menu.addSeparator();
@@ -303,12 +323,13 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         initMenuItem(viewKeybindsOverlay, menu, VIEW_KEYBINDS_OVERLAY, GUIP.getShowKeybindsOverlay());
         initMenuItem(viewPlanetaryConditionsOverlay,
               menu,
-              VIEW_PLANETARYCONDITIONS_OVERLAY,
+              VIEW_PLANETARY_CONDITIONS_OVERLAY,
               GUIP.getShowPlanetaryConditionsOverlay());
         initMenuItem(viewTurnDetailsOverlay, menu, VIEW_TURN_DETAILS_OVERLAY, GUIP.getTurnDetailsOverlay());
         initMenuItem(viewUnitOverview, menu, VIEW_UNIT_OVERVIEW, GUIP.getShowUnitOverview());
         menu.addSeparator();
 
+        JMenuItem viewResetWindowPositions = new JMenuItem(getString("CommonMenuBar.viewResetWindowPos"));
         initMenuItem(viewResetWindowPositions, menu, VIEW_RESET_WINDOW_POSITIONS);
         initMenuItem(viewAccessibilityWindow, menu, VIEW_ACCESSIBILITY_WINDOW, VK_A);
         viewAccessibilityWindow.setMnemonic(KeyEvent.VK_A);
@@ -318,7 +339,7 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         initMenuItem(viewZoomOut, menu, VIEW_ZOOM_OUT);
         initMenuItem(viewZoomOverviewToggle, menu, VIEW_ZOOM_OVERVIEW_TOGGLE);
         initMenuItem(toggleIsometric, menu, VIEW_TOGGLE_ISOMETRIC, VK_T, GUIP.getIsometricEnabled());
-        initMenuItem(toggleHexCoords, menu, VIEW_TOGGLE_HEXCOORDS, VK_G, GUIP.getCoordsEnabled());
+        initMenuItem(toggleHexCoords, menu, VIEW_TOGGLE_HEX_COORDS, VK_G, GUIP.getCoordsEnabled());
         initMenuItem(viewLabels, menu, VIEW_LABELS);
         menu.addSeparator();
 
@@ -326,6 +347,8 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         toggleFovDarken.setToolTipText(Messages.getString("CommonMenuBar.viewToggleFovDarkenTooltip"));
         initMenuItem(viewLOSSetting, menu, VIEW_LOS_SETTING);
         initMenuItem(toggleFovHighlight, menu, VIEW_TOGGLE_FOV_HIGHLIGHT, GUIP.getFovHighlight());
+        initMenuItem(toggleFovSpotting, menu, VIEW_TOGGLE_FOV_SPOTTING, GUIP.getFovSpottingMode());
+        toggleFovSpotting.setToolTipText(Messages.getString("CommonMenuBar.viewToggleFovSpottingTooltip"));
         initMenuItem(viewMovementEnvelope, menu, VIEW_MOVE_ENV, GUIP.getMoveEnvelope());
         initMenuItem(viewMovModEnvelope, menu, VIEW_MOVE_MOD_ENV);
         menu.addSeparator();
@@ -346,10 +369,15 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         menu = new JMenu(Messages.getString("CommonMenuBar.HelpMenu"));
         menu.setMnemonic(VK_H);
         add(menu);
-        initMenuItem(helpResetNags, menu, HELP_RESETNAGS);
+        JMenuItem helpResetNags = new JMenuItem(getString("CommonMenuBar.helpResetNags"));
+        initMenuItem(helpResetNags, menu, HELP_RESET_NAGS);
+        // The Help menu
+        JMenuItem helpContents = new JMenuItem(getString("CommonMenuBar.helpContents"));
         initMenuItem(helpContents, menu, HELP_CONTENTS);
+        JMenuItem helpSkinning = new JMenuItem(getString("CommonMenuBar.helpSkinning"));
         initMenuItem(helpSkinning, menu, HELP_SKINNING);
         menu.addSeparator();
+        JMenuItem helpAbout = new JMenuItem(getString("CommonMenuBar.helpAbout"));
         initMenuItem(helpAbout, menu, HELP_ABOUT);
 
         setKeyBinds();
@@ -361,6 +389,7 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     /** Sets/updates the accelerators from the KeyCommandBinds preferences. */
     private void setKeyBinds() {
         toggleSensorRange.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.SENSOR_RANGE));
+        toggleFovSpotting.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.FOV_SPOTTING));
         toggleFieldOfFire.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.FIELD_FIRE));
         toggleIsometric.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.TOGGLE_ISO));
         viewMovementEnvelope.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.MOVE_ENVELOPE));
@@ -375,8 +404,8 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         viewMekDisplay.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.UNIT_DISPLAY));
         viewUnitOverview.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.UNIT_OVERVIEW));
         viewLOSSetting.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.LOS_SETTING));
-        viewIncGUIScale.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.INC_GUISCALE));
-        viewDecGUIScale.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.DEC_GUISCALE));
+        viewIncGUIScale.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.INC_GUI_SCALE));
+        viewDecGUIScale.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.DEC_GUI_SCALE));
         viewClientSettings.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.CLIENT_SETTINGS));
         boardUndo.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.UNDO));
         boardRedo.setAccelerator(KeyCommandBind.keyStroke(KeyCommandBind.REDO));
@@ -395,37 +424,28 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     @Override
     public void actionPerformed(ActionEvent event) {
         // Changes that are independent of the current state of MM
-        // Boardview and others may listen to PreferenceChanges to detect these
-        if (event.getActionCommand().equals(ClientGUI.VIEW_INCGUISCALE)) {
-            float guiScale = GUIP.getGUIScale();
-            if (guiScale < ClientGUI.MAX_GUISCALE) {
-                GUIP.setValue(GUIPreferences.GUI_SCALE, guiScale + 0.1);
+        // BoardView and others may listen to PreferenceChanges to detect these
+        switch (event.getActionCommand()) {
+            case ClientGUI.VIEW_INC_GUI_SCALE -> {
+                float guiScale = GUIP.getGUIScale();
+                if (guiScale < ClientGUI.MAX_GUI_SCALE) {
+                    GUIP.setValue(GUIPreferences.GUI_SCALE, guiScale + 0.1);
+                }
             }
-        } else if (event.getActionCommand().equals(ClientGUI.VIEW_DECGUISCALE)) {
-            float guiScale = GUIP.getGUIScale();
-            if (guiScale > ClientGUI.MIN_GUISCALE) {
-                GUIP.setValue(GUIPreferences.GUI_SCALE, guiScale - 0.1);
+            case ClientGUI.VIEW_DEC_GUI_SCALE -> {
+                float guiScale = GUIP.getGUIScale();
+                if (guiScale > ClientGUI.MIN_GUI_SCALE) {
+                    GUIP.setValue(GUIPreferences.GUI_SCALE, guiScale - 0.1);
+                }
             }
-        } else if (event.getActionCommand().equals(ClientGUI.VIEW_PLANETARYCONDITIONS_OVERLAY)) {
-            GUIP.togglePlanetaryConditionsOverlay();
-
-        } else if (event.getActionCommand().equals(VIEW_TRACE_OVERLAY)) {
-            GUIP.toggleTraceConditionsOverlay();
-
-        } else if (event.getActionCommand().equals(VIEW_KEYBINDS_OVERLAY)) {
-            GUIP.toggleKeybindsOverlay();
-
-        } else if (event.getActionCommand().equals(VIEW_TURN_DETAILS_OVERLAY)) {
-            GUIP.setTurnDetailsOverlay(!GUIP.getTurnDetailsOverlay());
-
-        } else if (event.getActionCommand().equals(ClientGUI.VIEW_LABELS)) {
-            GUIP.setUnitLabelStyle(GUIP.getUnitLabelStyle().next());
-
-        } else if (event.getActionCommand().equals(VIEW_UNIT_OVERVIEW)) {
-            GUIP.setShowUnitOverview(!GUIP.getShowUnitOverview());
-
-        } else if (event.getActionCommand().equals(ClientGUI.HELP_RESETNAGS)) {
-            MegaMek.getMMOptions().setNagDialogIgnore(MMConstants.NAG_BOT_README, false);
+            case ClientGUI.VIEW_PLANETARY_CONDITIONS_OVERLAY -> GUIP.togglePlanetaryConditionsOverlay();
+            case VIEW_TRACE_OVERLAY -> GUIP.toggleTraceConditionsOverlay();
+            case VIEW_KEYBINDS_OVERLAY -> GUIP.toggleKeybindsOverlay();
+            case VIEW_TURN_DETAILS_OVERLAY -> GUIP.setTurnDetailsOverlay(!GUIP.getTurnDetailsOverlay());
+            case ClientGUI.VIEW_LABELS -> GUIP.setUnitLabelStyle(GUIP.getUnitLabelStyle().next());
+            case VIEW_UNIT_OVERVIEW -> GUIP.setShowUnitOverview(!GUIP.getShowUnitOverview());
+            case ClientGUI.HELP_RESET_NAGS ->
+                  MegaMek.getMMOptions().setNagDialogIgnore(MMConstants.NAG_BOT_README, false);
         }
 
         // Pass the action on to each of our listeners.
@@ -492,10 +512,11 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         boardRemoveForests.setEnabled(isBoardEditor);
         boardFlatten.setEnabled(isBoardEditor);
         boardValidate.setEnabled(isBoardEditor);
+        boardRunBoardTagger.setEnabled(isBoardEditor);
         boardResize.setEnabled(isBoardEditor);
         boardSourceFile.setEnabled(isBoardEditor);
-        gameQLoad.setEnabled(isMainMenu);
-        gameLoad.setEnabled(isMainMenu);
+        gameQLoad.setEnabled(isMainMenu || isLobby);
+        gameLoad.setEnabled(isMainMenu || isLobby);
         gameStart.setEnabled(isMainMenu);
         gameConnect.setEnabled(isMainMenu);
 
@@ -509,11 +530,11 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         boardNew.setEnabled(isBoardEditor || isMainMenu);
         boardOpen.setEnabled(isBoardEditor || isMainMenu);
         boardRecent.setEnabled((isBoardEditor || isMainMenu) && !RecentBoardList.getRecentBoards().isEmpty());
-        boardTrceOverlay.setEnabled(isBoardEditor);
+        boardTraceOverlay.setEnabled(isBoardEditor);
         fileUnitsPaste.setEnabled(isLobby);
         fileUnitsCopy.setEnabled(isLobby);
         fileUnitsReinforce.setEnabled((isInGame) && isNotVictory);
-        fileUnitsReinforceRAT.setEnabled((isLobby || isInGame) && isNotVictory);
+        fileUnitsReinforceRAT.setEnabled((isMainMenu || isLobby || isInGame) && isNotVictory);
         fileUnitsSave.setEnabled(isLobby || (isInGame && canSave));
         fileUnitsBrowse.setEnabled(isMainMenu);
         boardSaveAsImageUnits.setEnabled(isInGame);
@@ -521,6 +542,7 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         viewLabels.setEnabled(isInGameBoardView);
 
         gameGameOptions.setEnabled(isInGame || isLobby);
+        gameNetworkInformation.setEnabled(isInGame || isLobby || isMainMenu);
         gamePlayerSettings.setEnabled(isInGame);
 
         viewMinimap.setEnabled(isBoardView);
@@ -539,6 +561,7 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
         toggleFleeZone.setEnabled(isInGameBoardView);
         toggleFovHighlight.setEnabled(isInGameBoardView);
         toggleFovDarken.setEnabled(isInGameBoardView);
+        toggleFovSpotting.setEnabled(isInGameBoardView);
         toggleFiringSolutions.setEnabled(isInGameBoardView);
         toggleCFWarning.setEnabled(isInGameBoardView);
         viewMovementEnvelope.setEnabled(isInGameBoardView);
@@ -572,38 +595,29 @@ public class CommonMenuBar extends JMenuBar implements ActionListener, IPreferen
     @Override
     public void preferenceChange(PreferenceChangeEvent e) {
         // Adapt the menu checkboxes to a new state where necessary
-        if (e.getName().equals(GUIPreferences.USE_ISOMETRIC)) {
-            toggleIsometric.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.SHOW_FIELD_OF_FIRE)) {
-            toggleFieldOfFire.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.SHOW_SENSOR_RANGE)) {
-            toggleSensorRange.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.SHOW_KEYBINDS_OVERLAY)) {
-            viewKeybindsOverlay.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.SHOW_PLANETARYCONDITIONS_OVERLAY)) {
-            viewPlanetaryConditionsOverlay.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.TURN_DETAILS_OVERLAY)) {
-            viewTurnDetailsOverlay.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.SHOW_UNIT_OVERVIEW)) {
-            viewUnitOverview.setSelected((Boolean) e.getNewValue());
-        } else if (e.getName().equals(GUIPreferences.MINI_MAP_ENABLED)) {
-            viewMinimap.setSelected(GUIP.getMinimapEnabled());
-        } else if (e.getName().equals(GUIPreferences.SHOW_COORDS)) {
-            toggleHexCoords.setSelected(GUIP.getCoordsEnabled());
-        } else if (e.getName().equals(KeyBindParser.KEYBINDS_CHANGED)) {
-            setKeyBinds();
-        } else if (e.getName().equals(GUIPreferences.UNIT_DISPLAY_ENABLED)) {
-            viewMekDisplay.setSelected(GUIP.getUnitDisplayEnabled());
-        } else if (e.getName().equals(GUIPreferences.FORCE_DISPLAY_ENABLED)) {
-            viewForceDisplay.setSelected(GUIP.getForceDisplayEnabled());
-        } else if (e.getName().equals(GUIPreferences.MINI_REPORT_ENABLED)) {
-            gameRoundReport.setSelected(GUIP.getMiniReportEnabled());
-        } else if (e.getName().equals(GUIPreferences.PLAYER_LIST_ENABLED)) {
-            gamePlayerList.setSelected(GUIP.getPlayerListEnabled());
-        } else if (e.getName().equals(RecentBoardList.RECENT_BOARDS_UPDATED)) {
-            initializeRecentBoardsMenu();
-        } else if (e.getName().equals(GUIPreferences.BOT_COMMANDS_ENABLED)) {
-            viewBotCommands.setSelected(GUIP.getBotCommandsEnabled());
+        switch (e.getName()) {
+            case GUIPreferences.USE_ISOMETRIC -> toggleIsometric.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.SHOW_FIELD_OF_FIRE -> toggleFieldOfFire.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.SHOW_SENSOR_RANGE -> toggleSensorRange.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.FOV_SPOTTING_MODE -> {
+                // Use invokeLater to avoid interfering with accelerator processing
+                final boolean newState = (Boolean) e.getNewValue();
+                javax.swing.SwingUtilities.invokeLater(() -> toggleFovSpotting.setSelected(newState));
+            }
+            case GUIPreferences.SHOW_KEYBINDS_OVERLAY -> viewKeybindsOverlay.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.SHOW_PLANETARY_CONDITIONS_OVERLAY ->
+                  viewPlanetaryConditionsOverlay.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.TURN_DETAILS_OVERLAY -> viewTurnDetailsOverlay.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.SHOW_UNIT_OVERVIEW -> viewUnitOverview.setSelected((Boolean) e.getNewValue());
+            case GUIPreferences.MINI_MAP_ENABLED -> viewMinimap.setSelected(GUIP.getMinimapEnabled());
+            case GUIPreferences.SHOW_COORDS -> toggleHexCoords.setSelected(GUIP.getCoordsEnabled());
+            case KeyBindParser.KEYBINDS_CHANGED -> setKeyBinds();
+            case GUIPreferences.UNIT_DISPLAY_ENABLED -> viewMekDisplay.setSelected(GUIP.getUnitDisplayEnabled());
+            case GUIPreferences.FORCE_DISPLAY_ENABLED -> viewForceDisplay.setSelected(GUIP.getForceDisplayEnabled());
+            case GUIPreferences.MINI_REPORT_ENABLED -> gameRoundReport.setSelected(GUIP.getMiniReportEnabled());
+            case GUIPreferences.PLAYER_LIST_ENABLED -> gamePlayerList.setSelected(GUIP.getPlayerListEnabled());
+            case RecentBoardList.RECENT_BOARDS_UPDATED -> initializeRecentBoardsMenu();
+            case GUIPreferences.BOT_COMMANDS_ENABLED -> viewBotCommands.setSelected(GUIP.getBotCommandsEnabled());
         }
     }
 

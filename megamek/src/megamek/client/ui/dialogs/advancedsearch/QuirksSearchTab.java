@@ -1,51 +1,74 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.advancedsearch;
 
-import megamek.client.ui.Messages;
-import megamek.common.options.*;
+import java.awt.BorderLayout;
+import java.awt.GridLayout;
+import javax.swing.Box;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 
-import javax.swing.*;
-import java.awt.*;
+import megamek.client.ui.Messages;
+import megamek.common.options.Quirks;
+import megamek.common.options.WeaponQuirks;
 
 class QuirksSearchTab extends JPanel {
 
-    private final JButton btnQuirksClear = new JButton(Messages.getString("MekSelectorDialog.ClearTab"));
     final JComboBox<String> cQuirkInclude = new JComboBox<>();
     final JComboBox<String> cQuirkExclude = new JComboBox<>();
     final JComboBox<String> cWeaponQuirkInclude = new JComboBox<>();
     final JComboBox<String> cWeaponQuirkExclude = new JComboBox<>();
-    TriStateItemList listQuirkType;
-    TriStateItemList listWeaponQuirkType;
+    TriStateItemList chassisQuirks;
+    TriStateItemList weaponQuirks;
 
     QuirksSearchTab() {
+        JButton btnQuirksClear = new JButton(Messages.getString("MekSelectorDialog.ClearTab"));
         btnQuirksClear.addActionListener(e -> clear());
 
         loadAndOr(cQuirkInclude, 0);
         loadAndOr(cQuirkExclude, 1);
-        listQuirkType = new TriStateItemList(new Quirks(), 25);
+        chassisQuirks = new TriStateItemList(new Quirks(), 0);
 
         loadAndOr(cWeaponQuirkInclude, 0);
         loadAndOr(cWeaponQuirkExclude, 1);
         cWeaponQuirkExclude.setSelectedIndex(1);
+        weaponQuirks = new TriStateItemList(new WeaponQuirks(), 0);
 
-        listWeaponQuirkType = new TriStateItemList(new WeaponQuirks(), 17);
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(btnQuirksClear);
 
         JPanel unitQuirksPanel = new JPanel(new BorderLayout());
         JPanel quirkIEPanel = new JPanel();
@@ -56,10 +79,7 @@ class QuirksSearchTab extends JPanel {
         quirkIEPanel.add(new JLabel("\u2612"));
         quirkIEPanel.add(cQuirkExclude);
         unitQuirksPanel.add(quirkIEPanel, BorderLayout.NORTH);
-        unitQuirksPanel.add(new JScrollPane(listQuirkType.getComponent()), BorderLayout.CENTER);
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.add(btnQuirksClear);
-        unitQuirksPanel.add(buttonPanel, BorderLayout.SOUTH);
+        unitQuirksPanel.add(new JScrollPane(chassisQuirks.getComponent()), BorderLayout.CENTER);
 
         JPanel weaponQuirkPanel = new JPanel(new BorderLayout());
         JPanel weaponQuirkIEPanel = new JPanel();
@@ -70,12 +90,15 @@ class QuirksSearchTab extends JPanel {
         weaponQuirkIEPanel.add(new JLabel("\u2612"));
         weaponQuirkIEPanel.add(cWeaponQuirkExclude);
         weaponQuirkPanel.add(weaponQuirkIEPanel, BorderLayout.NORTH);
-        weaponQuirkPanel.add(new JScrollPane(listWeaponQuirkType.getComponent()), BorderLayout.CENTER);
+        weaponQuirkPanel.add(new JScrollPane(weaponQuirks.getComponent()), BorderLayout.CENTER);
 
         JPanel innerPanel = new JPanel(new GridLayout(1, 2, 20, 0));
         innerPanel.add(unitQuirksPanel);
         innerPanel.add(weaponQuirkPanel);
-        add(innerPanel);
+
+        setLayout(new BorderLayout());
+        add(innerPanel, BorderLayout.CENTER);
+        add(buttonPanel, BorderLayout.SOUTH);
     }
 
     private void loadAndOr(JComboBox<String> cb, int index) {
@@ -87,10 +110,30 @@ class QuirksSearchTab extends JPanel {
     void clear() {
         cQuirkInclude.setSelectedIndex(0);
         cQuirkExclude.setSelectedIndex(1);
-        listQuirkType.clear();
+        chassisQuirks.clear();
 
         cWeaponQuirkInclude.setSelectedIndex(0);
         cWeaponQuirkExclude.setSelectedIndex(1);
-        listWeaponQuirkType.clear();
+        weaponQuirks.clear();
+    }
+
+    AdvSearchState.QuirksState getState() {
+        var state = new AdvSearchState.QuirksState();
+        state.chassisInclude = cQuirkInclude.getSelectedIndex();
+        state.chassisExclude = cQuirkExclude.getSelectedIndex();
+        state.weaponInclude = cWeaponQuirkInclude.getSelectedIndex();
+        state.weaponExclude = cWeaponQuirkExclude.getSelectedIndex();
+        state.chassisQuirks = chassisQuirks.getState();
+        state.weaponQuirks = weaponQuirks.getState();
+        return state;
+    }
+
+    void applyState(AdvSearchState.QuirksState state) {
+        cQuirkInclude.setSelectedIndex(state.chassisInclude);
+        cQuirkExclude.setSelectedIndex(state.chassisExclude);
+        cWeaponQuirkInclude.setSelectedIndex(state.weaponInclude);
+        cWeaponQuirkExclude.setSelectedIndex(state.weaponExclude);
+        chassisQuirks.applyState(state.chassisQuirks);
+        weaponQuirks.applyState(state.weaponQuirks);
     }
 }

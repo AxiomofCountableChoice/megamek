@@ -1,16 +1,34 @@
 /*
- * MegaMek -
- * Copyright (C) 2016 The MegaMek Team
+ * Copyright (C) 2016-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ratgenerator;
 
@@ -18,16 +36,16 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import megamek.client.ratgenerator.Ruleset.ProgressListener;
-import megamek.common.Compute;
-import megamek.common.Entity;
-import megamek.common.EntityMovementMode;
-import megamek.common.EntityWeightClass;
-import megamek.common.MekFileParser;
-import megamek.common.MekSummary;
-import megamek.common.MekSummaryCache;
-import megamek.common.UnitType;
 import megamek.common.annotations.Nullable;
+import megamek.common.compute.Compute;
 import megamek.common.loaders.EntityLoadingException;
+import megamek.common.loaders.MekFileParser;
+import megamek.common.loaders.MekSummary;
+import megamek.common.loaders.MekSummaryCache;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityMovementMode;
+import megamek.common.units.EntityWeightClass;
+import megamek.common.units.UnitType;
 import megamek.logging.MMLogger;
 
 /**
@@ -75,7 +93,7 @@ public class ForceDescriptor {
     private String name;
     private String faction;
     private Integer year;
-    private Integer eschelon;
+    private Integer echelon;
     private int sizeMod;
     private boolean augmented;
     private Integer weightClass;
@@ -107,7 +125,7 @@ public class ForceDescriptor {
 
     private boolean generateAttachments;
     private ForceDescriptor parent;
-    private ArrayList<ForceDescriptor> subforces;
+    private ArrayList<ForceDescriptor> subForces;
     private ArrayList<ForceDescriptor> attached;
     private double dropshipPct = 0.0;
     private double jumpshipPct = 0.0;
@@ -124,7 +142,7 @@ public class ForceDescriptor {
         chassis = new HashSet<>();
         variants = new HashSet<>();
         parent = null;
-        subforces = new ArrayList<>();
+        subForces = new ArrayList<>();
         attached = new ArrayList<>();
         flags = new HashSet<>();
         topLevel = false;
@@ -179,7 +197,7 @@ public class ForceDescriptor {
         }
         // First see if a formation has been assigned. If unable to fulfill the
         // formation requirements, generate using default parameters.
-        if (subforces.isEmpty()) {
+        if (subForces.isEmpty()) {
             ModelRecord mr = generate();
             if (null == mr && !models.isEmpty()) {
                 mr = RATGenerator.getInstance().getModelRecord(getModelName());
@@ -195,23 +213,23 @@ public class ForceDescriptor {
                 if (null != generationRule) {
                     // In cases like Novas and air lances the formation rules only apply to some of
                     // the units
-                    if (!generateAndAssignFormation(subforces, generationRule.equals("chassis"), 0)) {
-                        generateLance(subforces);
+                    if (!generateAndAssignFormation(subForces, generationRule.equals("chassis"), 0)) {
+                        generateLance(subForces);
                         formationType = null;
                     }
                 } else {
                     // If group generation is not set, then either this is a compound formation (e.g. squadron,
                     // aero/vehicle Point) or we are generating uniform sub forces such as companies in SL line units
                     try {
-                        Map<String, List<ForceDescriptor>> byGenRule = subforces.stream()
-                                                                             .collect(Collectors.groupingBy(
-                                                                                   ForceDescriptor::getGenerationRule));
+                        Map<String, List<ForceDescriptor>> byGenRule = subForces.stream()
+                              .collect(Collectors.groupingBy(
+                                    ForceDescriptor::getGenerationRule));
                         if (byGenRule.containsKey("group")) {
                             if (!generateAndAssignFormation(byGenRule.get("group")
-                                                                  .stream()
-                                                                  .map(ForceDescriptor::getSubforces)
-                                                                  .flatMap(Collection::stream)
-                                                                  .collect(Collectors.toList()),
+                                        .stream()
+                                        .map(ForceDescriptor::getSubForces)
+                                        .flatMap(Collection::stream)
+                                        .collect(Collectors.toList()),
                                   false,
                                   byGenRule.get("group").size())) {
                                 formationType = null;
@@ -239,14 +257,14 @@ public class ForceDescriptor {
                             }
                             break;
                         case "group":
-                            generateLance(subforces);
+                            generateLance(subForces);
                             break;
                     }
                 }
             }
         }
-        int count = subforces.size() + attached.size();
-        subforces.forEach(fd -> fd.generateUnits(l, progress / count));
+        int count = subForces.size() + attached.size();
+        subForces.forEach(fd -> fd.generateUnits(l, progress / count));
         attached.forEach(fd -> fd.generateUnits(l, progress / count));
         if (count == 0 && null != l) {
             l.updateProgress(progress, "Populating force tree");
@@ -271,15 +289,15 @@ public class ForceDescriptor {
      */
     private boolean generateAndAssignFormation(List<ForceDescriptor> subs, boolean chassis, int numGroups) {
         Map<Boolean, List<ForceDescriptor>> eligibleSubs = subs.stream()
-                                                                 .collect(Collectors.groupingBy(fd -> null !=
-                                                                                                            fd.getUnitType() &&
-                                                                                                            (formationType.isAllowedUnitType(
-                                                                                                                  fd.getUnitType())) ||
-                                                                                                            (augmented &&
-                                                                                                                   (fd.getUnitType() ==
-                                                                                                                          UnitType.BATTLE_ARMOR) ||
-                                                                                                                   fd.getUnitType() ==
-                                                                                                                         UnitType.INFANTRY)));
+              .collect(Collectors.groupingBy(fd -> null !=
+                    fd.getUnitType() &&
+                    (formationType.isAllowedUnitType(
+                          fd.getUnitType())) ||
+                    (augmented &&
+                          (fd.getUnitType() ==
+                                UnitType.BATTLE_ARMOR) ||
+                          fd.getUnitType() ==
+                                UnitType.INFANTRY)));
         if (eligibleSubs.containsKey(true)) {
             if (eligibleSubs.get(true).isEmpty()) {
                 return false;
@@ -297,11 +315,11 @@ public class ForceDescriptor {
                         // The formation requirements do not apply to the infantry part of a nova, and
                         // those units have already been generated by generateNovaFormation.
                         if (augmented &&
-                                  (eligibleSubs.get(true).get(i).getUnitType() == UnitType.BATTLE_ARMOR ||
-                                         eligibleSubs.get(true).get(i).getUnitType() == UnitType.INFANTRY)) {
+                              (eligibleSubs.get(true).get(i).getUnitType() == UnitType.BATTLE_ARMOR ||
+                                    eligibleSubs.get(true).get(i).getUnitType() == UnitType.INFANTRY)) {
                             continue;
                         }
-                        if (eligibleSubs.get(true).get(i).getSubforces().isEmpty()) {
+                        if (eligibleSubs.get(true).get(i).getSubForces().isEmpty()) {
                             eligibleSubs.get(true).get(i).setUnit(list.get(i));
                         } else if (chassis) {
                             eligibleSubs.get(true).get(i).getChassis().add(list.get(i).getChassis());
@@ -424,8 +442,8 @@ public class ForceDescriptor {
             }
         }
         return unitList.stream()
-                     .map(ms -> RATGenerator.getInstance().getModelRecord(ms.getName()))
-                     .collect(Collectors.toList());
+              .map(ms -> RATGenerator.getInstance().getModelRecord(ms.getName()))
+              .collect(Collectors.toList());
     }
 
     /**
@@ -468,8 +486,8 @@ public class ForceDescriptor {
         if (!infSubs.isEmpty()) {
             generateLance(infSubs);
             int footCount = (int) infSubs.stream()
-                                        .filter(fd -> fd.getMovementModes().contains(EntityMovementMode.INF_LEG))
-                                        .count();
+                  .filter(fd -> fd.getMovementModes().contains(EntityMovementMode.INF_LEG))
+                  .count();
             for (ForceDescriptor baseSub : baseSubs) {
                 if (baseSub.getUnitType() == UnitType.TANK || baseSub.getUnitType() == UnitType.VTOL) {
                     if (footCount > 0) {
@@ -489,10 +507,10 @@ public class ForceDescriptor {
         if (null == baseUnitList) {
             generateLance(baseSubs);
             baseUnitList = baseSubs.stream()
-                                 .map(ForceDescriptor::getModelName)
-                                 .map(m -> RATGenerator.getInstance().getModelRecord(m))
-                                 .filter(Objects::nonNull)
-                                 .collect(Collectors.toList());
+                  .map(ForceDescriptor::getModelName)
+                  .map(m -> RATGenerator.getInstance().getModelRecord(m))
+                  .filter(Objects::nonNull)
+                  .collect(Collectors.toList());
         }
 
         // Any BA in excess of the number of omni base units will require mag clamps, up to the number of base units.
@@ -538,7 +556,7 @@ public class ForceDescriptor {
          * one of the sub forces rather than the current.
          */
 
-        Integer ut = subs.get(0).getUnitType();
+        Integer ut = subs.getFirst().getUnitType();
 
         boolean useWeights = useWeightClass(ut);
         ArrayList<Integer> weights = new ArrayList<>();
@@ -577,10 +595,10 @@ public class ForceDescriptor {
         ModelRecord baseModel = null;
         /* Generate base model using weight class of entire formation */
         if (ut != null) {
-            if (!(ut == UnitType.MEK || (ut == UnitType.AEROSPACEFIGHTER && subs.size() > 3))) {
-                baseModel = subs.get(0).generate();
+            if (!(ut == UnitType.MEK || (ut == UnitType.AEROSPACE_FIGHTER && subs.size() > 3))) {
+                baseModel = subs.getFirst().generate();
             }
-            if (ut == UnitType.AEROSPACEFIGHTER || ut == UnitType.CONV_FIGHTER || ut == UnitType.AERO) {
+            if (ut == UnitType.AEROSPACE_FIGHTER || ut == UnitType.CONV_FIGHTER || ut == UnitType.AERO) {
                 target -= 3;
             }
             if (roles.contains(MissionRole.ARTILLERY)) {
@@ -617,14 +635,14 @@ public class ForceDescriptor {
                         if (av == null) {
                             for (String alt : RATGenerator.getInstance().getFaction(faction).getParentFactions()) {
                                 av = RATGenerator.getInstance()
-                                           .findChassisAvailabilityRecord(era, model, alt, getYear());
+                                      .findChassisAvailabilityRecord(era, model, alt, getYear());
                                 if (av != null) {
                                     break;
                                 }
                             }
                         }
                         if (Compute.d6(2) >=
-                                  target - ((av == null) ? 0 : av.adjustForRating(ratingLevel, totalLevels))) {
+                              target - ((av == null) ? 0 : av.adjustForRating(ratingLevel, totalLevels))) {
                             sub.getChassis().clear();
                             sub.getChassis().add(model);
                             int oldWt = sub.getWeightClass();
@@ -644,24 +662,24 @@ public class ForceDescriptor {
                     } else {
                         ModelRecord mRec = RATGenerator.getInstance().getModelRecord(model);
                         if (mRec != null &&
-                                  weights.contains(mRec.getWeightClass()) &&
-                                  RATGenerator.getInstance().findModelAvailabilityRecord(era, model, faction) != null) {
+                              weights.contains(mRec.getWeightClass()) &&
+                              RATGenerator.getInstance().findModelAvailabilityRecord(era, model, faction) != null) {
                             av = RATGenerator.getInstance()
-                                       .findChassisAvailabilityRecord(era, mRec.getChassisKey(), faction, getYear());
+                                  .findChassisAvailabilityRecord(era, mRec.getChassisKey(), faction, getYear());
                             if (av == null) {
                                 for (String alt : RATGenerator.getInstance().getFaction(faction).getParentFactions()) {
                                     av = RATGenerator.getInstance()
-                                               .findChassisAvailabilityRecord(era,
-                                                     mRec.getChassisKey(),
-                                                     alt,
-                                                     getYear());
+                                          .findChassisAvailabilityRecord(era,
+                                                mRec.getChassisKey(),
+                                                alt,
+                                                getYear());
                                     if (av != null) {
                                         break;
                                     }
                                 }
                             }
                             if (Compute.d6(2) >=
-                                      target - ((av == null) ? 0 : av.adjustForRating(ratingLevel, totalLevels))) {
+                                  target - ((av == null) ? 0 : av.adjustForRating(ratingLevel, totalLevels))) {
                                 sub.setUnit(mRec);
                                 if (useWeights) {
                                     weights.remove((Object) mRec.getWeightClass());
@@ -674,11 +692,11 @@ public class ForceDescriptor {
                 }
                 if (!foundUnit && weights.contains(baseModel.getWeightClass())) {
                     av = RATGenerator.getInstance()
-                               .findChassisAvailabilityRecord(era, baseModel.getChassisKey(), faction, getYear());
+                          .findChassisAvailabilityRecord(era, baseModel.getChassisKey(), faction, getYear());
                     if (av == null) {
                         for (String alt : RATGenerator.getInstance().getFaction(faction).getParentFactions()) {
                             av = RATGenerator.getInstance()
-                                       .findChassisAvailabilityRecord(era, baseModel.getChassisKey(), alt, getYear());
+                                  .findChassisAvailabilityRecord(era, baseModel.getChassisKey(), alt, getYear());
                             if (av != null) {
                                 break;
                             }
@@ -717,7 +735,7 @@ public class ForceDescriptor {
             }
             if (!foundUnit) {
                 if (!weights.contains(sub.getWeightClass())) {
-                    sub.setWeightClass(weights.get(0));
+                    sub.setWeightClass(weights.getFirst());
                 }
                 unit = sub.generate();
                 if (unit == null) {
@@ -752,7 +770,7 @@ public class ForceDescriptor {
         if (useWeightClass()) {
             weightClass = unit.getWeightClass();
         }
-        if (subforces.isEmpty()) {
+        if (subForces.isEmpty()) {
             element = true;
             movementModes.clear();
             movementModes.add(unit.getMovementMode());
@@ -760,8 +778,8 @@ public class ForceDescriptor {
                 unitType = unit.getUnitType();
             }
             if (((unitType == UnitType.MEK) ||
-                       (unitType == UnitType.AEROSPACEFIGHTER) ||
-                       (unitType == UnitType.TANK)) && unit.isOmni()) {
+                  (unitType == UnitType.AEROSPACE_FIGHTER) ||
+                  (unitType == UnitType.TANK)) && unit.isOmni()) {
                 flags.add("omni");
             }
             if (unit.getRoles().contains(MissionRole.ARTILLERY)) {
@@ -806,7 +824,7 @@ public class ForceDescriptor {
         };
         /* Work with a copy */
         ForceDescriptor fd = createChild(index);
-        fd.setEschelon(eschelon);
+        fd.setEchelon(echelon);
         fd.setCoRank(coRank);
         fd.getRoles().clear();
         fd.getRoles().addAll(roles.stream().filter(r -> r.fitsUnitType(unitType)).toList());
@@ -847,10 +865,10 @@ public class ForceDescriptor {
                     fd.getMovementModes().clear();
                 } else {
                     if (useWeightClass() &&
-                              null != weightClass &&
-                              weightClass != -1 &&
-                              weightClass < altWeights.length &&
-                              wtIndex < altWeights[weightClass].length) {
+                          null != weightClass &&
+                          weightClass != -1 &&
+                          weightClass < altWeights.length &&
+                          wtIndex < altWeights[weightClass].length) {
                         fd.setWeightClass(altWeights[weightClass][wtIndex]);
                     }
                     wtIndex++;
@@ -877,8 +895,8 @@ public class ForceDescriptor {
                 }
             }
         }
-        int count = subforces.size() + attached.size();
-        subforces.forEach(fd -> fd.loadEntities(l, progress / count));
+        int count = subForces.size() + attached.size();
+        subForces.forEach(fd -> fd.loadEntities(l, progress / count));
         attached.forEach(fd -> fd.loadEntities(l, progress / count));
         if (count == 0 && null != l) {
             l.updateProgress(progress, "Loading entities");
@@ -907,7 +925,7 @@ public class ForceDescriptor {
     }
 
     public void assignCommanders() {
-        subforces.forEach(ForceDescriptor::assignCommanders);
+        subForces.forEach(ForceDescriptor::assignCommanders);
 
         Ruleset rules = Ruleset.findRuleset(this);
         CommanderNode coNode = null;
@@ -930,14 +948,14 @@ public class ForceDescriptor {
             return;
         }
 
-        if (!subforces.isEmpty()) {
+        if (!subForces.isEmpty()) {
             int coPos = (coNode.getPosition() == null) ? 1 : Math.min(coNode.getPosition(), 1);
             int xoPos = 0;
             if (xoNode != null && (xoNode.getPosition() == null || xoNode.getPosition() > 0)) {
                 xoPos = (xoNode.getPosition() == null) ? coPos + 1 : Math.max(coPos, xoNode.getPosition());
             }
             if (coPos + xoPos > 0) {
-                ForceDescriptor[] forces = subforces.toArray(new ForceDescriptor[0]);
+                ForceDescriptor[] forces = subForces.toArray(new ForceDescriptor[0]);
                 Arrays.sort(forces, forceSorter);
                 if (coPos != 0) {
                     ForceDescriptor coFound = null;
@@ -952,8 +970,8 @@ public class ForceDescriptor {
                         coFound = forces[0];
                     }
                     setCo(coFound.getCo());
-                    subforces.remove(coFound);
-                    subforces.add(0, coFound);
+                    subForces.remove(coFound);
+                    subForces.addFirst(coFound);
                 }
                 if (xoPos != 0) {
                     /*
@@ -985,25 +1003,25 @@ public class ForceDescriptor {
             getXo().setRank(xoNode.getRank());
             getXo().setTitle(xoNode.getTitle());
         }
-        if (!element && !subforces.isEmpty()) {
+        if (!element && !subForces.isEmpty()) {
             movementModes.clear();
             boolean isOmni = true;
             boolean isArtillery = true;
             boolean isMissileArtillery = true;
             boolean isFieldGun = true;
-            for (ForceDescriptor fd : subforces) {
+            for (ForceDescriptor fd : subForces) {
                 movementModes.addAll(fd.getMovementModes());
                 if ((fd.getUnitType() == null ||
-                           !((UnitType.MEK == fd.getUnitType()) ||
-                                   (UnitType.AEROSPACEFIGHTER == fd.getUnitType()) ||
-                                   (UnitType.TANK == fd.getUnitType()))) || !fd.getFlags().contains("omni")) {
+                      !((UnitType.MEK == fd.getUnitType()) ||
+                            (UnitType.AEROSPACE_FIGHTER == fd.getUnitType()) ||
+                            (UnitType.TANK == fd.getUnitType()))) || !fd.getFlags().contains("omni")) {
                     isOmni = false;
                 }
                 if (!fd.getRoles().contains(MissionRole.MISSILE_ARTILLERY)) {
                     isMissileArtillery = false;
                 }
                 if (!fd.getRoles().contains(MissionRole.ARTILLERY) &&
-                          !fd.getRoles().contains(MissionRole.MISSILE_ARTILLERY)) {
+                      !fd.getRoles().contains(MissionRole.MISSILE_ARTILLERY)) {
                     isArtillery = false;
                 }
                 if (!fd.getRoles().contains(MissionRole.FIELD_GUN)) {
@@ -1025,12 +1043,12 @@ public class ForceDescriptor {
 
             float wt = 0;
             int c = 0;
-            for (ForceDescriptor sub : subforces) {
+            for (ForceDescriptor sub : subForces) {
                 if (sub.useWeightClass()) {
                     if (sub.getWeightClass() == null) {
                         LOGGER.error("Weight class == null for {} with {} sub-forces",
                               sub.getUnitType(),
-                              sub.getSubforces().size());
+                              sub.getSubForces().size());
                     } else {
                         wt += sub.getWeightClass();
                         c++;
@@ -1047,26 +1065,26 @@ public class ForceDescriptor {
 
     private @Nullable ForceDescriptor getForceDescriptor(int coPos, int xoPos, CommanderNode xoNode) {
         ForceDescriptor xoFound = null;
-        ArrayList<ForceDescriptor> subforces = this.subforces;
+        ArrayList<ForceDescriptor> subForces = this.subForces;
         if (coPos == xoPos) {
-            subforces = this.subforces.get(0).getSubforces();
+            subForces = this.subForces.getFirst().getSubForces();
         }
-        if (subforces.size() > coPos) {
+        if (subForces.size() > coPos) {
             if (xoNode.getUnitType() != null) {
-                for (int i = coPos; i < subforces.size(); i++) {
-                    if (subforces.get(i).getUnitType() != null &&
-                              (xoNode.getUnitType().equals(subforces.get(i).getUnitTypeName()) ||
-                                     (xoNode.getUnitType().equals("other") &&
-                                            !subforces.get(i)
-                                                   .getUnitType()
-                                                   .equals(co.getAssignment().getUnitType())))) {
-                        xoFound = subforces.get(i);
+                for (int i = coPos; i < subForces.size(); i++) {
+                    if (subForces.get(i).getUnitType() != null &&
+                          (xoNode.getUnitType().equals(subForces.get(i).getUnitTypeName()) ||
+                                (xoNode.getUnitType().equals("other") &&
+                                      !subForces.get(i)
+                                            .getUnitType()
+                                            .equals(co.getAssignment().getUnitType())))) {
+                        xoFound = subForces.get(i);
                         break;
                     }
                 }
             }
             if (xoFound == null) {
-                xoFound = subforces.get(1);
+                xoFound = subForces.get(1);
             }
         }
         return xoFound;
@@ -1075,23 +1093,23 @@ public class ForceDescriptor {
     public void assignPositions() {
         int index = 0;
         HashMap<String, Integer> uniqueCount = new HashMap<>();
-        for (int i = 0; i < subforces.size(); i++) {
-            subforces.get(i).positionIndex = i + 1;
-            if (subforces.get(i).name == null) {
+        for (int i = 0; i < subForces.size(); i++) {
+            subForces.get(i).positionIndex = i + 1;
+            if (subForces.get(i).name == null) {
                 continue;
             }
-            if (subforces.get(i).name.contains(":distinct}")) {
-                if (uniqueCount.containsKey(subforces.get(i).name)) {
-                    uniqueCount.put(subforces.get(i).name, uniqueCount.get(subforces.get(i).name) + 1);
+            if (subForces.get(i).name.contains(":distinct}")) {
+                if (uniqueCount.containsKey(subForces.get(i).name)) {
+                    uniqueCount.put(subForces.get(i).name, uniqueCount.get(subForces.get(i).name) + 1);
                 } else {
-                    uniqueCount.put(subforces.get(i).name, 1);
+                    uniqueCount.put(subForces.get(i).name, 1);
                 }
-            } else if (subforces.get(i).name.matches(".*\\{[^:]*\\}.*")) {
-                subforces.get(i).nameIndex = index++;
+            } else if (subForces.get(i).name.matches(".*\\{[^:]*}.*")) {
+                subForces.get(i).nameIndex = index++;
             }
         }
         HashMap<String, Integer> indexCount = new HashMap<>();
-        for (ForceDescriptor sub : subforces) {
+        for (ForceDescriptor sub : subForces) {
             if (uniqueCount.containsKey(sub.name)) {
                 if (uniqueCount.get(sub.name) > 1) {
                     if (indexCount.containsKey(sub.name)) {
@@ -1166,22 +1184,22 @@ public class ForceDescriptor {
         }
         TransportCalculator tp = new TransportCalculator(this);
         List<MekSummary> dropships = tp.calcDropships(getDropshipPct());
-        ForceDescriptor transports = createChild(subforces.size() + attached.size());
+        ForceDescriptor transports = createChild(subForces.size() + attached.size());
         transports.setUnitType(null);
         transports.setName("Transport");
 
         // TODO: put this in the faction files
-        transports.setEschelon(3);
+        transports.setEchelon(3);
         transports.setCoRank(35);
 
         List<MekSummary> shipList = tp.calcJumpShips(getJumpshipPct(), dropships.size());
         shipList.addAll(dropships);
         for (MekSummary ms : shipList) {
-            ForceDescriptor sub = transports.createChild(transports.getSubforces().size());
+            ForceDescriptor sub = transports.createChild(transports.getSubForces().size());
             sub.setUnit(RATGenerator.getInstance().getModelRecord(ms.getName()));
-            sub.setEschelon(1);
+            sub.setEchelon(1);
             sub.setCoRank(34);
-            transports.addSubforce(sub);
+            transports.addSubForce(sub);
         }
         transports.assignCommanders();
         transports.assignPositions();
@@ -1228,11 +1246,11 @@ public class ForceDescriptor {
 
     private boolean useWeightClass(Integer ut) {
         return ut != null &&
-                     !(roles.contains(MissionRole.ARTILLERY) || roles.contains(MissionRole.MISSILE_ARTILLERY)) &&
-                     (ut == UnitType.MEK ||
-                            ut == UnitType.AEROSPACEFIGHTER ||
-                            ut == UnitType.TANK ||
-                            ut == UnitType.BATTLE_ARMOR);
+              !(roles.contains(MissionRole.ARTILLERY) || roles.contains(MissionRole.MISSILE_ARTILLERY)) &&
+              (ut == UnitType.MEK ||
+                    ut == UnitType.AEROSPACE_FIGHTER ||
+                    ut == UnitType.TANK ||
+                    ut == UnitType.BATTLE_ARMOR);
     }
 
     /**
@@ -1243,8 +1261,8 @@ public class ForceDescriptor {
      */
     public double recalcWeightClass() {
         double wc;
-        if (!subforces.isEmpty()) {
-            wc = subforces.stream().mapToDouble(ForceDescriptor::recalcWeightClass).sum() / subforces.size();
+        if (!subForces.isEmpty()) {
+            wc = subForces.stream().mapToDouble(ForceDescriptor::recalcWeightClass).sum() / subForces.size();
         } else if (null != weightClass && weightClass >= 0) {
             wc = weightClass;
         } else {
@@ -1268,7 +1286,7 @@ public class ForceDescriptor {
 
     public ArrayList<Object> getAllChildren() {
         ArrayList<Object> retVal = new ArrayList<>();
-        retVal.addAll(subforces);
+        retVal.addAll(subForces);
         retVal.addAll(attached);
         return retVal;
     }
@@ -1288,11 +1306,11 @@ public class ForceDescriptor {
     public String parseName() {
         String retVal = name;
         if (name == null) {
-            String eschName = Ruleset.findRuleset(this).getEschelonName(this);
-            if (eschName == null) {
+            String echelonName = Ruleset.findRuleset(this).getEschelonName(this);
+            if (echelonName == null) {
                 return "";
             }
-            retVal = "{ordinal} " + eschName;
+            retVal = "{ordinal} " + echelonName;
         }
         if (getParent() != null && getParent().getNameIndex() >= 0) {
             retVal = retVal.replace("{ordinal:parent}", ORDINALS[getParent().getNameIndex()]);
@@ -1304,11 +1322,11 @@ public class ForceDescriptor {
             retVal = retVal.replace("{alpha:parent}", Character.toString((char) (getParent().getNameIndex() + 'A')));
         }
         if (getParent() != null && retVal.contains("{name:parent}")) {
-            String parentName = getParent().getName().replaceAll(".*\\[", "").replaceAll("\\].*", "");
+            String parentName = getParent().getName().replaceAll(".*\\[", "").replaceAll("].*", "");
             retVal = retVal.replace("{name:parent}", parentName);
         }
         if (nameIndex < 0) {
-            retVal = retVal.replaceAll("\\{.*?\\}\\s?", "");
+            retVal = retVal.replaceAll("\\{.*?}\\s?", "");
         } else {
             retVal = retVal.replace("{ordinal}", ORDINALS[getNameIndex()]);
             retVal = retVal.replace("{greek}", GREEK[getNameIndex()]);
@@ -1322,13 +1340,13 @@ public class ForceDescriptor {
                     retVal = retVal.replace("{formation}",
                           formationType.getCategory()
                                 .replace("Striker/Cavalry", "Striker")
-                                .replaceAll(" Squadron", ""));
+                                .replace(" Squadron", ""));
                 } else {
                     retVal = retVal.replace("{formation} ", "");
                 }
             }
         }
-        retVal = retVal.replaceAll("\\{.*?\\}", "");
+        retVal = retVal.replaceAll("\\{.*?}", "");
         retVal = retVal.replaceAll("[\\[\\]]", "").replaceAll("\\s+", " ");
         return retVal.trim();
     }
@@ -1362,11 +1380,11 @@ public class ForceDescriptor {
             retVal.append(" (C3I)");
         }
         Ruleset rules = Ruleset.findRuleset(this);
-        String eschName = null;
+        String echelonName = null;
 
-        while (eschName == null && rules != null) {
-            eschName = rules.getEschelonName(this);
-            if (eschName == null) {
+        while (echelonName == null && rules != null) {
+            echelonName = rules.getEschelonName(this);
+            if (echelonName == null) {
                 if (rules.getParent() == null) {
                     rules = null;
                 } else {
@@ -1375,8 +1393,8 @@ public class ForceDescriptor {
             }
         }
 
-        if (eschName != null) {
-            retVal.append(" ").append(eschName);
+        if (echelonName != null) {
+            retVal.append(" ").append(echelonName);
         }
         if (null != formationType) {
             retVal.append(" (").append(formationType.getName()).append(")");
@@ -1408,20 +1426,20 @@ public class ForceDescriptor {
         this.year = year;
     }
 
-    public Integer getEschelon() {
-        return eschelon;
+    public Integer getEchelon() {
+        return echelon;
     }
 
-    public String getEschelonCode() {
-        String retVal = eschelon.toString();
+    public String getEchelonCode() {
+        String retVal = echelon.toString();
         if (augmented) {
             retVal += "^";
         }
         return retVal;
     }
 
-    public void setEschelon(Integer echelon) {
-        this.eschelon = echelon;
+    public void setEchelon(Integer echelon) {
+        this.echelon = echelon;
     }
 
     public int getSizeMod() {
@@ -1484,9 +1502,9 @@ public class ForceDescriptor {
     public String ratGeneratorRating() {
         FactionRecord fRec = getFactionRec();
         if ((null != fRec) &&
-                  !fRec.getRatingLevels().contains(rating) &&
-                  (getRatingLevel() >= 0) &&
-                  !fRec.getRatingLevels().isEmpty()) {
+              !fRec.getRatingLevels().contains(rating) &&
+              (getRatingLevel() >= 0) &&
+              !fRec.getRatingLevels().isEmpty()) {
             return fRec.getRatingLevels().get(Math.min(getRatingLevel(), fRec.getRatingLevels().size() - 1));
         }
         return rating;
@@ -1593,7 +1611,6 @@ public class ForceDescriptor {
      * Because some echelon names depend on knowing the actual weight class, we save a copy of the possibilities for
      * this node and defer selection until after the final weight class determination.
      *
-     * @param nameNodes
      */
     public void setNameNodes(List<ValueNode> nameNodes) {
         this.nameNodes = nameNodes;
@@ -1615,16 +1632,16 @@ public class ForceDescriptor {
         generateAttachments = attachments;
     }
 
-    public ArrayList<ForceDescriptor> getSubforces() {
-        return subforces;
+    public ArrayList<ForceDescriptor> getSubForces() {
+        return subForces;
     }
 
-    public void setSubforces(ArrayList<ForceDescriptor> subForces) {
-        this.subforces = subForces;
+    public void setSubForces(ArrayList<ForceDescriptor> subForces) {
+        this.subForces = subForces;
     }
 
-    public void addSubforce(ForceDescriptor fd) {
-        subforces.add(fd);
+    public void addSubForce(ForceDescriptor fd) {
+        subForces.add(fd);
         fd.setParent(this);
     }
 
@@ -1652,6 +1669,7 @@ public class ForceDescriptor {
         return jumpshipPct;
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setJumpshipPct(double jumpshipPct) {
         this.jumpshipPct = jumpshipPct;
     }
@@ -1706,7 +1724,7 @@ public class ForceDescriptor {
                 list.add(entity);
             }
         }
-        subforces.forEach(sf -> sf.addAllEntities(list));
+        subForces.forEach(sf -> sf.addAllEntities(list));
         attached.forEach(sf -> sf.addAllEntities(list));
     }
 

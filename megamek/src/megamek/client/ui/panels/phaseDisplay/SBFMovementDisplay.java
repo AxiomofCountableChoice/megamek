@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay;
 
@@ -30,23 +44,24 @@ import java.util.stream.Stream;
 
 import megamek.client.event.BoardViewEvent;
 import megamek.client.ui.Messages;
-import megamek.client.ui.enums.DialogResult;
 import megamek.client.ui.clientGUI.SBFClientGUI;
 import megamek.client.ui.dialogs.phaseDisplay.SBFJumpChoiceDialog;
+import megamek.client.ui.enums.DialogResult;
 import megamek.client.ui.util.KeyCommandBind;
 import megamek.client.ui.widget.MegaMekButton;
-import megamek.common.BTObject;
-import megamek.common.BoardLocation;
-import megamek.common.Coords;
 import megamek.common.annotations.Nullable;
+import megamek.common.board.BoardLocation;
+import megamek.common.board.Coords;
 import megamek.common.event.GameTurnChangeEvent;
-import megamek.common.pathfinder.AbstractPathFinder;
+import megamek.common.pathfinder.StopConditionTimeout;
 import megamek.common.preference.PreferenceManager;
 import megamek.common.strategicBattleSystems.SBFFormation;
 import megamek.common.strategicBattleSystems.SBFFormationTurn;
 import megamek.common.strategicBattleSystems.SBFGame;
 import megamek.common.strategicBattleSystems.SBFMovePath;
 import megamek.common.strategicBattleSystems.SBFMovePathFinder;
+import megamek.common.units.BTObject;
+import megamek.common.units.Entity;
 import megamek.logging.MMLogger;
 
 public class SBFMovementDisplay extends SBFActionPhaseDisplay {
@@ -60,7 +75,6 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
         MOVE_MORE("MoveMore");
 
         private final String cmd;
-        private final Predicate<SBFFormation> isEligible;
         private int priority;
 
         MoveCommand(String c) {
@@ -69,7 +83,6 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
 
         MoveCommand(String c, Predicate<SBFFormation> isEligible) {
             cmd = c;
-            this.isEligible = isEligible;
             priority = ordinal();
         }
 
@@ -108,7 +121,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
         game().addGameListener(this);
         // TODO: rather have clientGUI take BVListeners and forward all events -> dont have to deal with changing
         //  BoardViews
-        clientgui.boardViews().forEach(b -> b.addBoardViewListener(this));
+        clientGUI.boardViews().forEach(b -> b.addBoardViewListener(this));
     }
 
     @Override
@@ -123,7 +136,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
     private void selectFormation(@Nullable SBFFormation formation) {
         if (formation == null) {
             currentFormation = SBFFormation.NONE;
-            clientgui.clearMovementEnvelope();
+            clientGUI.clearMovementEnvelope();
         } else {
             currentFormation = formation.getId();
             if (isMyTurn() && GUIP.getMoveEnvelope()) {
@@ -134,7 +147,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
     }
 
     protected boolean shouldPerformClearKeyCommand() {
-        return !clientgui.isChatBoxActive() && !isIgnoringEvents() && isVisible();
+        return !clientGUI.isChatBoxActive() && !isIgnoringEvents() && isVisible();
     }
 
     private void registerKeyCommands() {
@@ -176,8 +189,8 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
                 plannedMovement = new SBFMovePath(currentFormation, formation.getPosition(), game());
             }
         }
-        clientgui.selectForAction(game().getFormation(currentFormation).orElse(null));
-        clientgui.showMovePath(plannedMovement);
+        clientGUI.selectForAction(game().getFormation(currentFormation).orElse(null));
+        clientGUI.showMovePath(plannedMovement);
         updateDonePanel();
     }
 
@@ -189,11 +202,11 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
     }
 
     private void selectNextFormation() {
-        clientgui.getClient().getGame().getNextEligibleFormation(currentFormation).ifPresent(this::selectFormation);
+        clientGUI.getClient().getGame().getNextEligibleFormation(currentFormation).ifPresent(this::selectFormation);
     }
 
     private void selectPreviousFormation() {
-        clientgui.getClient().getGame().getPreviousEligibleFormation(currentFormation).ifPresent(this::selectFormation);
+        clientGUI.getClient().getGame().getPreviousEligibleFormation(currentFormation).ifPresent(this::selectFormation);
     }
 
     @Override
@@ -218,7 +231,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
         }
 
         if (plannedMovement.getSteps().isEmpty() || planJump(formation.get()).isConfirmed()) {
-            clientgui.getClient().moveUnit(plannedMovement);
+            clientGUI.getClient().moveUnit(plannedMovement);
             endMyTurn();
         }
     }
@@ -227,8 +240,8 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
         // TODO SBF RULES Can you use JUMP if you remain in the hex?
         if (formation.getJumpMove() > 0) {
             List<Integer> choices = Stream.iterate(0, n -> n + 1).limit(formation.getJumpMove() + 1).toList();
-            SBFJumpChoiceDialog jumpChoiceDialog = new SBFJumpChoiceDialog(clientgui.getFrame(), choices);
-            jumpChoiceDialog.setLocationRelativeTo(clientgui.getFrame());
+            SBFJumpChoiceDialog jumpChoiceDialog = new SBFJumpChoiceDialog(clientGUI.getFrame(), choices);
+            jumpChoiceDialog.setLocationRelativeTo(clientGUI.getFrame());
             jumpChoiceDialog.pack();
             DialogResult result = jumpChoiceDialog.showDialog();
             if (result.isConfirmed()) {
@@ -254,27 +267,27 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
     @Override
     public void removeAllListeners() {
         game().removeGameListener(this);
-        clientgui.boardViews().forEach(b -> b.removeBoardViewListener(this));
+        clientGUI.boardViews().forEach(b -> b.removeBoardViewListener(this));
     }
 
     private void beginMyTurn() {
         initDonePanelForNewTurn();
         updateButtonStatus();
         if (GUIP.getAutoSelectNextUnit()) {
-            clientgui.getClient().getGame().getNextEligibleFormation().ifPresent(this::selectFormation);
+            clientGUI.getClient().getGame().getNextEligibleFormation().ifPresent(this::selectFormation);
         }
         startTimer();
     }
 
     private SBFGame game() {
-        return clientgui.getClient().getGame();
+        return clientGUI.getClient().getGame();
     }
 
     private void updateButtonStatus() {
         boolean myTurn = isMyTurn();
         boolean turnIsFormationTurn = (game().getTurn() instanceof SBFFormationTurn);
         boolean hasAvailableUnits = turnIsFormationTurn &&
-                                          game().hasEligibleFormation((SBFFormationTurn) game().getTurn());
+              game().hasEligibleFormation((SBFFormationTurn) game().getTurn());
 
         buttons.get(MoveCommand.MOVE_NEXT).setEnabled(myTurn && hasAvailableUnits);
         buttons.get(MoveCommand.MOVE_MORE).setEnabled(myTurn && (numButtonGroups > 1));
@@ -296,11 +309,10 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
     }
 
     /**
-     * Computes all the possible moves for an {@link megamek.common.Entity} in a particular gear. The
-     * {@link megamek.common.Entity} can either be a suggested {@link megamek.common.Entity} or the currently selected
-     * one. If there is a selected {@link megamek.common.Entity} (which implies it's the current players turn), then the
-     * current gear is used (which is set by the user). If there is no selected {@link megamek.common.Entity}, then the
-     * current gear is invalid, and it defaults to GEAR_LAND (standard "walk forward").
+     * Computes all the possible moves for an {@link Entity} in a particular gear. The {@link Entity} can either be a
+     * suggested {@link Entity} or the currently selected one. If there is a selected {@link Entity} (which implies it's
+     * the current players turn), then the current gear is used (which is set by the user). If there is no selected
+     * {@link Entity}, then the current gear is invalid, and it defaults to GEAR_LAND (standard "walk forward").
      */
     public void computeMovementEnvelope(SBFFormation formation) {
         if ((formation == null) || (formation.getPosition() == null) || !formation.isDeployed()) {
@@ -326,7 +338,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
             mvEnvMP.put(c.coords(), mvEnvData.get(c).getMpUsed());
         }
 
-        clientgui.showMovementEnvelope(formation, mvEnvMP);
+        clientGUI.showMovementEnvelope(formation, mvEnvMP);
     }
 
     @Override
@@ -367,7 +379,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
 
         final int timeLimit = PreferenceManager.getClientPreferences().getMaxPathfinderTime();
         SBFMovePathFinder pf = SBFMovePathFinder.aStarFinder(dest, game());
-        AbstractPathFinder.StopConditionTimeout<SBFMovePath> timeoutCondition = new AbstractPathFinder.StopConditionTimeout<>(
+        StopConditionTimeout<SBFMovePath> timeoutCondition = new StopConditionTimeout<>(
               timeLimit);
         pf.addStopCondition(timeoutCondition);
         pf.run(SBFMovePath.createMovePathShallow(currentPath));
@@ -375,7 +387,7 @@ public class SBFMovementDisplay extends SBFActionPhaseDisplay {
 
         if (finPath != null) {
             plannedMovement = finPath;
-            clientgui.showMovePath(plannedMovement);
+            clientGUI.showMovePath(plannedMovement);
         } else {
             resetPlannedMovement();
             logger.error("Unable to find a move path for formation {} to {}!", currentFormation, dest);

@@ -30,29 +30,32 @@
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
-package megamek.common.moves;
 
-import megamek.common.Entity;
-import megamek.common.Game;
-import megamek.common.pathfinder.CachedEntityState;
+package megamek.common.moves;
 
 import java.util.EnumSet;
 import java.util.Set;
 
+import megamek.common.enums.MoveStepType;
+import megamek.common.game.Game;
+import megamek.common.pathfinder.CachedEntityState;
+import megamek.common.units.Entity;
+
 /**
- * This class handles the acceleration and deceleration of a unit.
- * It is used in the MoveStep compilation to calculate the movement of a unit.
+ * This class handles the acceleration and deceleration of a unit. It is used in the MoveStep compilation to calculate
+ * the movement of a unit.
+ *
  * @author Luana Coppio
  * @since 0.50.07
  */
 class AccelerationStep implements PhasePass {
-    private static final EnumSet<MovePath.MoveStepType> TYPES = EnumSet.of(MovePath.MoveStepType.ACCN,
-          MovePath.MoveStepType.DECN,
-          MovePath.MoveStepType.ACC,
-          MovePath.MoveStepType.DEC);
+    private static final EnumSet<MoveStepType> TYPES = EnumSet.of(MoveStepType.ACCELERATION,
+          MoveStepType.DECELERATION,
+          MoveStepType.ACC,
+          MoveStepType.DEC);
 
     @Override
-    public Set<MovePath.MoveStepType> getTypesOfInterest() {
+    public Set<MoveStepType> getTypesOfInterest() {
         return TYPES;
     }
 
@@ -61,11 +64,11 @@ class AccelerationStep implements PhasePass {
           final CachedEntityState cachedEntityState) {
         // TODO: Simplify after the first refactor is completed
         switch (moveStep.getType()) {
-            case ACCN:
+            case ACCELERATION:
                 moveStep.setVelocityN(moveStep.getVelocityN() + 1);
                 moveStep.setMp(1);
                 break;
-            case DECN:
+            case DECELERATION:
                 moveStep.setVelocityN(moveStep.getVelocityN() - 1);
                 moveStep.setMp(1);
                 break;

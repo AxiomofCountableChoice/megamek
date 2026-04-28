@@ -1,22 +1,37 @@
 /*
  * Copyright (c) 2003, 2004 Ben Mazur (bmazur@sev.org)
- * Copyright (c) 2023-2025 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common;
 
 import static java.util.stream.Collectors.toList;
@@ -28,6 +43,11 @@ import java.util.Objects;
 
 import megamek.client.ratgenerator.FactionRecord;
 import megamek.common.annotations.Nullable;
+import megamek.common.game.Game;
+import megamek.common.game.IGame;
+import megamek.common.game.InitiativeBonusBreakdown;
+import megamek.common.turns.TurnOrdered;
+import megamek.common.turns.TurnVectors;
 
 /**
  * The Team class holds information about a team. It holds the initiative for the team, and contains a list of players
@@ -119,7 +139,7 @@ public final class Team extends TurnOrdered {
         // If Team Initiative is not turned on, id will be 0 for all teams,
         // however the players accurately store their team id
         if (!players.isEmpty()) {
-            return players.get(0).getTeam();
+            return players.getFirst().getTeam();
         } else {
             return id;
         }
@@ -213,18 +233,57 @@ public final class Team extends TurnOrdered {
 
     /** @return The best initiative among the team's players. */
     public int getTotalInitBonus(boolean bInitiativeCompensationBonus) {
-        int dynamicBonus = Integer.MIN_VALUE;
-        int constantBonus = Integer.MIN_VALUE;
+        return getInitBonusBreakdown(bInitiativeCompensationBonus).total();
+    }
+
+    /**
+     * Returns a breakdown of all initiative bonus components for this team. This allows the initiative report to show
+     * what contributes to the total bonus.
+     *
+     * @param bInitiativeCompensationBonus Whether to include initiative compensation bonus
+     *
+     * @return The breakdown of all bonus components
+     */
+    public InitiativeBonusBreakdown getInitBonusBreakdown(boolean bInitiativeCompensationBonus) {
+        int hqBonus = 0;
+        int quirkBonus = 0;
+        String quirkName = null;
+        int consoleBonus = 0;
+        int crewCommandBonus = 0;
+        int tcpBonus = 0;
 
         for (Player player : players) {
-            dynamicBonus = Math.max(dynamicBonus, player.getTurnInitBonus());
-            dynamicBonus = Math.max(dynamicBonus, player.getOverallCommandBonus());
+            // Track each source separately - these bonuses are always >= 0
+            hqBonus = Math.max(hqBonus, player.getHQInitBonus());
 
-            // this is a special case: it's an arbitrary bonus associated with a player
-            constantBonus = Math.max(constantBonus, player.getConstantInitBonus());
+            // For quirks, track both the bonus and the name of the quirk
+            int playerQuirkBonus = player.getQuirkInitBonus();
+            if (playerQuirkBonus > quirkBonus) {
+                quirkBonus = playerQuirkBonus;
+                quirkName = player.getQuirkInitBonusName();
+            }
+
+            consoleBonus = Math.max(consoleBonus, player.getCommandConsoleBonus());
+            crewCommandBonus = Math.max(crewCommandBonus, player.getCrewCommandBonus());
+            tcpBonus = Math.max(tcpBonus, player.getTCPInitBonus());
         }
 
-        return constantBonus + dynamicBonus + getInitCompensationBonus(bInitiativeCompensationBonus);
+        // Constant bonus can be negative, so we need to take max across players properly
+        int constantBonus = players.stream().mapToInt(Player::getConstantInitBonus).max().orElse(0);
+
+        int compensationBonus = getInitCompensationBonus(bInitiativeCompensationBonus);
+
+        return new InitiativeBonusBreakdown(
+              hqBonus,
+              quirkBonus,
+              quirkName,
+              consoleBonus,
+              crewCommandBonus,
+              tcpBonus,
+              constantBonus,
+              compensationBonus,
+              0  // crew bonus is for individual initiative mode only
+        );
     }
 
     @Override
@@ -256,9 +315,7 @@ public final class Team extends TurnOrdered {
     /**
      * Determine if another team is an enemy of this team
      *
-     * @param t
      *
-     * @return
      */
     public boolean isEnemyOf(Team t) {
         boolean enemy = true;
@@ -268,7 +325,7 @@ public final class Team extends TurnOrdered {
             enemy = false;
         } else if (players.isEmpty()) {
             enemy = false;
-        } else if (t.players().stream().noneMatch(p -> p.isEnemyOf(players.get(0)))) {
+        } else if (t.players().stream().noneMatch(p -> p.isEnemyOf(players.getFirst()))) {
             enemy = false;
         }
         return enemy;

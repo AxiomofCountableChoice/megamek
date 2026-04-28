@@ -18,8 +18,6 @@
  */
 package megamek.client.bot.rl;
 
-import java.io.InputStream;
-import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Vector;
@@ -28,9 +26,9 @@ import java.util.ArrayList;
 
 import megamek.client.bot.BotClient;
 import megamek.client.bot.PhysicalOption;
-import megamek.common.BoardLocation;
-import megamek.common.Entity;
-import megamek.common.event.GamePlayerChatEvent;
+import megamek.common.board.BoardLocation;
+import megamek.common.units.Entity;
+import megamek.common.event.player.GamePlayerChatEvent;
 import megamek.common.moves.MovePath;
 
 public class RLBotClient extends BotClient {
@@ -58,6 +56,12 @@ public class RLBotClient extends BotClient {
     protected void initFiring() {}
 
     @Override
+    protected void calculatePreEndDeclarationsTurn() {}
+
+    @Override
+    protected void calculateInfantryVsInfantryCombatTurn() {}
+
+    @Override
     protected MovePath calculateMoveTurn() {
         // Find an unmoved entity and ask Python for its move
         List<Entity> myUnits = getEntitiesOwned();
@@ -75,18 +79,18 @@ public class RLBotClient extends BotClient {
     @Override
     protected MovePath continueMovementFor(Entity entity) {
         try {
-            Map<String, Object> maskData = new HashMap<>();
+            RLActionMask maskData = new RLActionMask();
             int activeIndex = game.getEntitiesVector().indexOf(entity);
-            maskData.put("active_entity_index", activeIndex);
+            maskData.active_entity_index = activeIndex;
             
-            List<Map<String, Object>> serializedMask = new java.util.ArrayList<>();
+            List<RLActionMask.RLPathMask> serializedMask = new java.util.ArrayList<>();
             List<MovePath> calculatedPaths = dataPipeline.buildMovementMask(entity, serializedMask);
-            maskData.put("valid_paths", serializedMask);
+            maskData.valid_paths = serializedMask;
 
-            Map<String, Object> response = dataPipeline.queryPython("MOVEMENT", maskData, Map.class);
+            RLActionResponse response = dataPipeline.queryPython("MOVEMENT", maskData, RLActionResponse.class);
             
-            if (response != null && response.containsKey("selected_path_index")) {
-                int idx = ((Number) response.get("selected_path_index")).intValue();
+            if (response != null && response.selected_path_index != null) {
+                int idx = response.selected_path_index;
                 if (idx >= 0 && idx < calculatedPaths.size()) {
                     return calculatedPaths.get(idx);
                 }
@@ -101,15 +105,15 @@ public class RLBotClient extends BotClient {
         return null;
     }
 
-    private List<Map<String, Object>> buildFiringMask(Entity shooter) {
-        List<Map<String, Object>> targetsMask = new ArrayList<>();
+    private List<RLActionMask.RLTargetMask> buildFiringMask(Entity shooter) {
+        List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
         
         for (Entity target : game.getEntitiesVector()) {
             if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) {
                 continue;
             }
             
-            List<Map<String, Object>> validWeapons = new ArrayList<>();
+            List<RLActionMask.RLWeaponMask> validWeapons = new ArrayList<>();
             for (megamek.common.equipment.WeaponMounted wm : shooter.getWeaponList()) {
                 if (!wm.canFire() || (wm.getLinkedAmmo() != null && wm.getLinkedAmmo().getUsableShotsLeft() == 0)) {
                     continue;
@@ -119,22 +123,22 @@ public class RLBotClient extends BotClient {
                 megamek.common.ToHitData toHit = megamek.common.actions.WeaponAttackAction.toHit(
                         game, shooter.getId(), target, shooter.getEquipmentNum(wm), false);
                 
-                if (toHit.getValue() != megamek.common.TargetRoll.IMPOSSIBLE 
-                        && toHit.getValue() != megamek.common.TargetRoll.AUTOMATIC_FAIL) {
+                if (toHit.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE 
+                        && toHit.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
                     
-                    Map<String, Object> wData = new HashMap<>();
-                    wData.put("weapon_id", shooter.getEquipmentNum(wm));
-                    wData.put("weapon_name", wm.getName());
-                    wData.put("to_hit", toHit.getValue());
+                    RLActionMask.RLWeaponMask wData = new RLActionMask.RLWeaponMask();
+                    wData.weapon_id = shooter.getEquipmentNum(wm);
+                    wData.weapon_name = wm.getName();
+                    wData.to_hit = toHit.getValue();
                     validWeapons.add(wData);
                 }
             }
             
             if (!validWeapons.isEmpty()) {
-                Map<String, Object> tm = new HashMap<>();
+                RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
                 int targetIndex = game.getEntitiesVector().indexOf(target);
-                tm.put("target_entity_index", targetIndex);
-                tm.put("valid_weapons", validWeapons);
+                tm.target_entity_index = targetIndex;
+                tm.valid_weapons = validWeapons;
                 targetsMask.add(tm);
             }
         }
@@ -150,19 +154,18 @@ public class RLBotClient extends BotClient {
             return;
         }
 
-        Map<String, Object> maskData = new HashMap<>();
-        maskData.put("active_entity", shooter.getId());
-        maskData.put("valid_targets", buildFiringMask(shooter));
+        RLActionMask maskData = new RLActionMask();
+        maskData.active_entity = shooter.getId();
+        maskData.valid_targets = buildFiringMask(shooter);
 
-        Map<String, Object> response = dataPipeline.queryPython("FIRING", maskData, Map.class);
+        RLActionResponse response = dataPipeline.queryPython("FIRING", maskData, RLActionResponse.class);
 
         Vector<megamek.common.actions.EntityAction> actions = new Vector<>();
-        if (response != null && response.containsKey("attacks")) {
-            List<Map<String, Object>> attacks = (List<Map<String, Object>>) response.get("attacks");
-            for (Map<String, Object> att : attacks) {
-                int targetId = ((Number) att.get("target_id")).intValue();
-                int weaponId = ((Number) att.get("weapon_id")).intValue();
-                actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), targetId, weaponId));
+        if (response != null && response.attacks != null) {
+            for (RLActionResponse.RLAttack att : response.attacks) {
+                if (att.target_id != null && att.weapon_id != null) {
+                    actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), att.target_id, att.weapon_id));
+                }
             }
         }
         
@@ -171,17 +174,17 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected void calculateDeployment() throws Exception {
-        Map<String, Object> map = dataPipeline.queryPython("DEPLOYMENT", new HashMap<>(), Map.class);
+        dataPipeline.queryPython("DEPLOYMENT", new HashMap<>(), RLActionResponse.class);
         sendDone(true);
     }
 
-    private List<Map<String, Object>> buildPhysicalMask(Entity shooter) {
-        List<Map<String, Object>> targetsMask = new ArrayList<>();
+    private List<RLActionMask.RLTargetMask> buildPhysicalMask(Entity shooter) {
+        List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
         
         for (Entity target : game.getEntitiesVector()) {
             if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) continue;
             
-            List<Map<String, Object>> validAttacks = new ArrayList<>();
+            List<RLActionMask.RLPhysicalMask> validAttacks = new ArrayList<>();
             
             // Try PUNCH
             for (int i = 0; i < 2; i++) {
@@ -190,11 +193,11 @@ public class RLBotClient extends BotClient {
                 
                 megamek.common.ToHitData th = megamek.common.actions.PunchAttackAction.toHit(
                         game, shooter.getId(), target, arm, false);
-                if (th.getValue() != megamek.common.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.TargetRoll.AUTOMATIC_FAIL) {
-                    Map<String, Object> att = new HashMap<>();
-                    att.put("action_type", poType);
-                    att.put("name", (i==0) ? "PUNCH_LEFT" : "PUNCH_RIGHT");
-                    att.put("to_hit", th.getValue());
+                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                    RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
+                    att.action_type = poType;
+                    att.name = (i==0) ? "PUNCH_LEFT" : "PUNCH_RIGHT";
+                    att.to_hit = th.getValue();
                     validAttacks.add(att);
                 }
             }
@@ -206,29 +209,29 @@ public class RLBotClient extends BotClient {
                 
                 megamek.common.ToHitData th = megamek.common.actions.KickAttackAction.toHit(
                         game, shooter.getId(), target, leg);
-                if (th.getValue() != megamek.common.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.TargetRoll.AUTOMATIC_FAIL) {
-                    Map<String, Object> att = new HashMap<>();
-                    att.put("action_type", poType);
-                    att.put("name", (i==0) ? "KICK_LEFT" : "KICK_RIGHT");
-                    att.put("to_hit", th.getValue());
+                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                    RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
+                    att.action_type = poType;
+                    att.name = (i==0) ? "KICK_LEFT" : "KICK_RIGHT";
+                    att.to_hit = th.getValue();
                     validAttacks.add(att);
                 }
             }
             
             // Try PUSH
             megamek.common.ToHitData pushTh = megamek.common.actions.PushAttackAction.toHit(game, shooter.getId(), target);
-            if (pushTh.getValue() != megamek.common.TargetRoll.IMPOSSIBLE && pushTh.getValue() != megamek.common.TargetRoll.AUTOMATIC_FAIL) {
-                Map<String, Object> att = new HashMap<>();
-                att.put("action_type", megamek.client.bot.PhysicalOption.PUSH_ATTACK);
-                att.put("name", "PUSH");
-                att.put("to_hit", pushTh.getValue());
+            if (pushTh.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && pushTh.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
+                att.action_type = megamek.client.bot.PhysicalOption.PUSH_ATTACK;
+                att.name = "PUSH";
+                att.to_hit = pushTh.getValue();
                 validAttacks.add(att);
             }
             
             if (!validAttacks.isEmpty()) {
-                Map<String, Object> tm = new HashMap<>();
-                tm.put("target_entity_id", target.getId());
-                tm.put("valid_attacks", validAttacks);
+                RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
+                tm.target_entity_id = target.getId();
+                tm.valid_attacks = validAttacks;
                 targetsMask.add(tm);
             }
         }
@@ -242,20 +245,19 @@ public class RLBotClient extends BotClient {
             return null;
         }
 
-        Map<String, Object> maskData = new HashMap<>();
-        maskData.put("active_entity", shooter.getId());
-        maskData.put("valid_targets", buildPhysicalMask(shooter));
+        RLActionMask maskData = new RLActionMask();
+        maskData.active_entity = shooter.getId();
+        maskData.valid_targets = buildPhysicalMask(shooter);
 
-        Map<String, Object> response = dataPipeline.queryPython("PHYSICAL", maskData, Map.class);
+        RLActionResponse response = dataPipeline.queryPython("PHYSICAL", maskData, RLActionResponse.class);
         
-        if (response != null && response.containsKey("attack")) {
-            Map<String, Object> att = (Map<String, Object>) response.get("attack");
-            int targetId = ((Number) att.get("target_id")).intValue();
-            int actionType = ((Number) att.get("action_type")).intValue();
-            
-            megamek.common.Targetable target = game.getEntity(targetId);
-            if (target != null) {
-                return new PhysicalOption(shooter, target, 0.0, actionType, null);
+        if (response != null && response.attack != null) {
+            RLActionResponse.RLPhysicalAttack att = response.attack;
+            if (att.target_id != null && att.action_type != null) {
+                megamek.common.units.Targetable target = game.getEntity(att.target_id);
+                if (target != null) {
+                    return new PhysicalOption(shooter, target, 0.0, att.action_type, null);
+                }
             }
         }
 

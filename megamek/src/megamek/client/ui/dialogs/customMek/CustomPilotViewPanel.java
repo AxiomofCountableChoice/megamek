@@ -1,27 +1,44 @@
 /*
- * Copyright (C) 2017 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2017-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.customMek;
 
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -36,26 +53,25 @@ import megamek.client.generator.RandomNameGenerator;
 import megamek.client.ui.GBC;
 import megamek.client.ui.Messages;
 import megamek.client.ui.dialogs.iconChooser.PortraitChooserDialog;
-import megamek.client.ui.dialogs.customMek.CustomMekDialog;
-import megamek.common.Entity;
-import megamek.common.EntitySelector;
-import megamek.common.Infantry;
-import megamek.common.LAMPilot;
-import megamek.common.ProtoMek;
-import megamek.common.Tank;
 import megamek.common.enums.Gender;
 import megamek.common.icons.Portrait;
 import megamek.common.options.OptionsConstants;
 import megamek.common.preference.PreferenceManager;
+import megamek.common.units.Entity;
+import megamek.common.units.EntitySelector;
+import megamek.common.units.Infantry;
+import megamek.common.units.LAMPilot;
+import megamek.common.units.ProtoMek;
+import megamek.common.units.Tank;
 
 /**
- * Controls for customizing crew in the chat lounge. For most crew types this is part of the pilot tab.
- * For multi-crew cockpits there is a separate tab for each crew member and another that shows common options
- * for the entire crew.
+ * Controls for customizing crew in the chat lounge. For most crew types this is part of the pilot tab. For multi-crew
+ * cockpits there is a separate tab for each crew member and another that shows common options for the entire crew.
  *
  * @author Neoancient
  */
 public class CustomPilotViewPanel extends JPanel {
+    @Serial
     private static final long serialVersionUID = 345126674612500365L;
 
     private final Entity entity;
@@ -106,7 +122,7 @@ public class CustomPilotViewPanel extends JPanel {
             portraitButton.setName("portrait");
             portraitButton.addActionListener(e -> {
                 final PortraitChooserDialog portraitDialog = new PortraitChooserDialog(
-                        parent.getFrame(), entity.getCrew().getPortrait(slot));
+                      parent.getFrame(), entity.getCrew().getPortrait(slot));
                 if (portraitDialog.showDialog().isConfirmed()) {
                     portrait = portraitDialog.getSelectedItem();
                     portraitButton.setIcon(portraitDialog.getSelectedItem().getImageIcon());
@@ -115,12 +131,13 @@ public class CustomPilotViewPanel extends JPanel {
 
             portrait = entity.getCrew().getPortrait(slot);
             portraitButton.setIcon(entity.getCrew().getPortrait(slot).getImageIcon());
-            add(portraitButton, GBC.std().gridheight(4));
+            add(portraitButton, GBC.std().gridHeight(4));
 
             JButton button = new JButton(Messages.getString("CustomMekDialog.RandomName"));
             button.addActionListener(e -> {
                 gender = RandomGenderGenerator.generate();
-                fldName.setText(RandomNameGenerator.getInstance().generate(gender, isClanPilot(), entity.getOwner().getName()));
+                fldName.setText(RandomNameGenerator.getInstance()
+                      .generate(gender, isClanPilot(), entity.getOwner().getName()));
             });
             add(button, GBC.eop());
 
@@ -198,8 +215,7 @@ public class CustomPilotViewPanel extends JPanel {
                 add(fldGunneryAero, GBC.eol());
             }
         }
-        if (entity.getCrew() instanceof LAMPilot) {
-            LAMPilot pilot = (LAMPilot) entity.getCrew();
+        if (entity.getCrew() instanceof LAMPilot pilot) {
             fldGunneryL.setText(Integer.toString(pilot.getGunneryMekL()));
             fldGunneryM.setText(Integer.toString(pilot.getGunneryMekM()));
             fldGunneryB.setText(Integer.toString(pilot.getGunneryMekB()));
@@ -254,7 +270,7 @@ public class CustomPilotViewPanel extends JPanel {
         }
         fldTough.setText(Integer.toString(entity.getCrew().getToughness(slot)));
 
-        if (parent.getClient().getGame().getOptions().booleanOption(OptionsConstants.ADVANCED_TACOPS_FATIGUE)) {
+        if (parent.getClient().getGame().getOptions().booleanOption(OptionsConstants.ADVANCED_TAC_OPS_FATIGUE)) {
             label = new JLabel(Messages.getString("CustomMekDialog.labFatigue"), SwingConstants.RIGHT);
             add(label, GBC.std());
             add(fldFatigue, GBC.eop());
@@ -272,44 +288,47 @@ public class CustomPilotViewPanel extends JPanel {
                 add(label, GBC.std());
                 add(cbBackup, GBC.eop());
                 cbBackup.setToolTipText(Messages.getString("CustomMekDialog.tooltipBackupPilot"));
-                cbBackup.setSelectedItem(entity.getCrew().getCrewType().getRoleName(entity.getCrew().getBackupPilotPos()));
+                cbBackup.setSelectedItem(entity.getCrew()
+                      .getCrewType()
+                      .getRoleName(entity.getCrew().getBackupPilotPos()));
             } else if (slot == entity.getCrew().getCrewType().getGunnerPos()) {
                 label = new JLabel(Messages.getString("CustomMekDialog.labBackupGunner"), SwingConstants.RIGHT);
                 add(label, GBC.std());
                 add(cbBackup, GBC.eop());
                 cbBackup.setToolTipText(Messages.getString("CustomMekDialog.tooltipBackupGunner"));
-                cbBackup.setSelectedItem(entity.getCrew().getCrewType().getRoleName(entity.getCrew().getBackupGunnerPos()));
+                cbBackup.setSelectedItem(entity.getCrew()
+                      .getCrewType()
+                      .getRoleName(entity.getCrew().getBackupGunnerPos()));
             }
         }
 
         if (entity instanceof ProtoMek) {
             // All ProtoMeks have a callsign.
             String callsign = Messages.getString("CustomMekDialog.Callsign") + ": " +
-                    (entity.getUnitNumber() + PreferenceManager
-                            .getClientPreferences().getUnitStartChar()) +
-                    '-' + entity.getId();
+                  (entity.getUnitNumber() + PreferenceManager
+                        .getClientPreferences().getUnitStartChar()) +
+                  '-' + entity.getId();
             label = new JLabel(callsign, SwingConstants.CENTER);
             add(label, GBC.eol().anchor(GridBagConstraints.CENTER));
 
             // Get the ProtoMeks of this entity's player
             // that *aren't* in the entity's unit.
             Iterator<Entity> otherUnitEntities = parent.getClient().getGame()
-                    .getSelectedEntities(new EntitySelector() {
-                        private final int ownerId = entity.getOwnerId();
+                  .getSelectedEntities(new EntitySelector() {
+                      private final int ownerId = entity.getOwnerId();
 
-                        private final short unitNumber = entity.getUnitNumber();
+                      private final short unitNumber = entity.getUnitNumber();
 
-                        @Override
-                        public boolean accept(Entity unitEntity) {
-                            return (unitEntity instanceof ProtoMek)
-                                    && (ownerId == unitEntity.getOwnerId())
-                                    && (unitNumber != unitEntity.getUnitNumber());
-                        }
-                    });
+                      @Override
+                      public boolean accept(Entity unitEntity) {
+                          return (unitEntity instanceof ProtoMek)
+                                && (ownerId == unitEntity.getOwnerId())
+                                && (unitNumber != unitEntity.getUnitNumber());
+                      }
+                  });
 
             // If we got any other entities, show the unit number controls.
             if (otherUnitEntities.hasNext()) {
-                label = new JLabel(Messages.getString("CustomMekDialog.labUnitNum"), SwingConstants.CENTER);
                 add(choUnitNum, GBC.eop());
                 refreshUnitNum(otherUnitEntities);
             }
@@ -341,9 +360,7 @@ public class CustomPilotViewPanel extends JPanel {
     /**
      * Populate the list of entities in other units from the given enumeration.
      *
-     * @param others
-     *            the <code>Enumeration</code> containing entities in other
-     *            units.
+     * @param others the <code>Enumeration</code> containing entities in other units.
      */
     private void refreshUnitNum(Iterator<Entity> others) {
         // Clear the list of old values
@@ -362,8 +379,8 @@ public class CustomPilotViewPanel extends JPanel {
 
             // Show the other entity's name and callsign.
             String callsign = other.getDisplayName() + " (" +
-                    (other.getUnitNumber() + PreferenceManager.getClientPreferences().getUnitStartChar())
-                    + '-' + other.getId() + ')';
+                  (other.getUnitNumber() + PreferenceManager.getClientPreferences().getUnitStartChar())
+                  + '-' + other.getId() + ')';
             choUnitNum.addItem(callsign);
         }
         choUnitNum.setSelectedIndex(0);

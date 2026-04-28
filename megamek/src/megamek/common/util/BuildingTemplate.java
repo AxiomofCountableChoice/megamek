@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2005-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -37,9 +37,9 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-import megamek.common.Building;
-import megamek.common.Coords;
+import megamek.common.board.Coords;
 import megamek.common.enums.BuildingType;
+import megamek.common.units.IBuilding;
 
 /**
  * Building template, for placing on the map during map generation.
@@ -64,13 +64,14 @@ public class BuildingTemplate implements Serializable {
      *
      * @param type   type of the building {@link BuildingType}
      * @param coords vector containing Coords of all hexes the building covers
+     *
      * @deprecated Unused, will be removed in future versions. Use the other constructor
      */
     @Deprecated(since = "0.50.07", forRemoval = true)
     public BuildingTemplate(BuildingType type, ArrayList<Coords> coords) {
         this.type = type;
         coordsList = coords;
-        CF = Building.getDefaultCF(type);
+        CF = IBuilding.getDefaultCF(type);
     }
 
     public BuildingTemplate(BuildingType type, ArrayList<Coords> coords, int CF, int height, int basement) {

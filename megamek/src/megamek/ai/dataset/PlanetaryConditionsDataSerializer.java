@@ -36,13 +36,14 @@ import megamek.ai.dataset.PlanetaryConditionsData.Field;
 
 /**
  * <p>Serializer for PlanetaryConditionsData to TSV format.</p>
+ *
  * @author Luana Coppio
  */
 public class PlanetaryConditionsDataSerializer
       extends EntityDataSerializer<PlanetaryConditionsData.Field, PlanetaryConditionsData> {
 
     /**
-     * Creates a serializer with default field order.
+     * Creates a serializer with the default field order.
      */
     public PlanetaryConditionsDataSerializer() {
         super(Field.class);

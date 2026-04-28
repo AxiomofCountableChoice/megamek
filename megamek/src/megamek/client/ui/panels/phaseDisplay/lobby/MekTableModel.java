@@ -1,24 +1,37 @@
 /*
- * Copyright (c) 2021 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2020-2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay.lobby;
 
-import static megamek.client.ui.util.UIUtil.alternateTableBGColor;
 import static megamek.client.ui.util.UIUtil.fontHTML;
 import static megamek.client.ui.util.UIUtil.uiGreen;
 
@@ -27,7 +40,6 @@ import java.awt.Component;
 import java.awt.Image;
 import java.text.NumberFormat;
 import java.util.ArrayList;
-
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JTable;
@@ -36,18 +48,16 @@ import javax.swing.table.DefaultTableCellRenderer;
 
 import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.ClientGUI;
-import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.clientGUI.tooltip.PilotToolTip;
 import megamek.client.ui.clientGUI.tooltip.UnitToolTip;
 import megamek.client.ui.tileset.EntityImage;
 import megamek.client.ui.tileset.MMStaticDirectoryManager;
 import megamek.client.ui.util.UIUtil;
 import megamek.common.Configuration;
-import megamek.common.Entity;
-import megamek.common.InGameObject;
-import megamek.common.MapSettings;
+import megamek.common.units.Entity;
+import megamek.common.game.InGameObject;
+import megamek.common.loaders.MapSettings;
 import megamek.common.Player;
-import megamek.common.annotations.Nullable;
 import megamek.common.icons.Camouflage;
 import megamek.common.icons.Portrait;
 import megamek.common.options.OptionsConstants;
@@ -69,20 +79,19 @@ public class MekTableModel extends AbstractTableModel {
     public static final int COL_BV = COLS.BV.ordinal();
     public static final int N_COL = COLS.values().length;
 
-    // Some unicode symbols. These work on Windows when setting the font
+    // Some Unicode symbols. These work on Windows when setting the font
     // to Dialog (which I believe uses Arial). I hope they work on other systems.
     public static final String DOT_SPACER = " \u2B1D ";
 
     /**
-     * Control value for the size of camo and portraits in the table at GUI scale ==
-     * 1.
+     * Control value for the size of camo and portraits in the table at GUI scale == 1.
      */
-    static final int MEKTABLE_IMGHEIGHT = 60;
+    static final int MEK_TABLE_IMG_HEIGHT = 60;
 
     private static final String UNKNOWN_UNIT = new MegaMekFile(Configuration.miscImagesDir(),
-            "unknown_unit.gif").toString();
+          "unknown_unit.gif").toString();
     private static final String DEF_PORTRAIT = new MegaMekFile(Configuration.portraitImagesDir(),
-            Portrait.DEFAULT_PORTRAIT_FILENAME).toString();
+          Portrait.DEFAULT_PORTRAIT_FILENAME).toString();
 
     // Parent access
     private final ClientGUI clientGui;
@@ -91,8 +100,7 @@ public class MekTableModel extends AbstractTableModel {
     /** The displayed entities. This list is the actual table data. */
     private final ArrayList<InGameObject> entities = new ArrayList<>();
     /**
-     * The contents of the battle value column. Gets formatted for display (font
-     * scaling).
+     * The contents of the battle value column. Gets formatted for display (font scaling).
      */
     private final ArrayList<Integer> bv = new ArrayList<>();
     /** The displayed contents of the Unit column. */
@@ -105,7 +113,6 @@ public class MekTableModel extends AbstractTableModel {
     private final ArrayList<String> pilotTooltips = new ArrayList<>();
     /** The displayed contents of the Player column. */
     private final ArrayList<String> playerCells = new ArrayList<>();
-    private static final GUIPreferences GUIP = GUIPreferences.getInstance();
     // endregion Variable Declarations
 
     // region Constructors
@@ -125,7 +132,7 @@ public class MekTableModel extends AbstractTableModel {
         if (col == COLS.BV.ordinal()) {
             boolean isEnemy = clientGui.getClient().getLocalPlayer().isEnemyOf(ownerOf(entity));
             boolean isBlindDrop = clientGui.getClient().getGame().getOptions()
-                    .booleanOption(OptionsConstants.BASE_BLIND_DROP);
+                  .booleanOption(OptionsConstants.BASE_BLIND_DROP);
             boolean localGM = clientGui.getClient().getLocalPlayer().isGameMaster();
             boolean hideEntity = !localGM && isEnemy && isBlindDrop;
             float size = chatLounge.isCompact() ? 0 : 0.2f;
@@ -163,8 +170,7 @@ public class MekTableModel extends AbstractTableModel {
     }
 
     /**
-     * Rebuilds the display content of the table cells from the present entity list.
-     * Used when the GUI scale changes.
+     * Rebuilds the display content of the table cells from the present entity list. Used when the GUI scale changes.
      */
     public void refreshCells() {
         bv.clear();
@@ -187,9 +193,8 @@ public class MekTableModel extends AbstractTableModel {
     }
 
     /**
-     * Adds display content for the given entity.
-     * The entity is assumed to be the last entity added to the table and
-     * the display content will be added as a new last table row.
+     * Adds display content for the given entity. The entity is assumed to be the last entity added to the table and the
+     * display content will be added as a new last table row.
      */
     private void addCellData(InGameObject entity) {
         bv.add(entity.getStrength());
@@ -203,24 +208,24 @@ public class MekTableModel extends AbstractTableModel {
         // the obscured units but has to actively decide to do it.
         boolean localGM = clientGui.getClient().getLocalPlayer().isGameMaster();
         boolean hideEntity = !localGM && clientGui.getClient().getLocalPlayer().isEnemyOf(owner)
-                && clientGui.getClient().getGame().getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP);
+              && clientGui.getClient().getGame().getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP);
 
         if (hideEntity) {
             unitTooltips.add(null);
             pilotTooltips.add(null);
         } else {
-            MapSettings mset = chatLounge.mapSettings;
+            MapSettings mapSettings = chatLounge.mapSettings;
             Player lPlayer = clientGui.getClient().getLocalPlayer();
-            String s = UnitToolTip.lobbyTip(entity, lPlayer, mset).toString();
+            String s = UnitToolTip.lobbyTip(entity, lPlayer, mapSettings).toString();
             unitTooltips.add(UnitToolTip.wrapWithHTML(s));
             s = PilotToolTip.lobbyTip(entity).toString();
             if (entity instanceof Entity) {
-                s += PilotToolTip.getCrewAdvs((Entity) entity, true).toString();
+                s += PilotToolTip.getCrewAdvantages((Entity) entity, true).toString();
             }
             pilotTooltips.add(UnitToolTip.wrapWithHTML(s));
         }
         final boolean rpgSkills = clientGui.getClient().getGame().getOptions()
-                .booleanOption(OptionsConstants.RPG_RPG_GUNNERY);
+              .booleanOption(OptionsConstants.RPG_RPG_GUNNERY);
         unitCells.add(LobbyMekCellFormatter.unitTableEntry(entity, chatLounge, false, chatLounge.isCompact()));
         pilotCells.add(LobbyMekCellFormatter.pilotTableEntry(entity, chatLounge.isCompact(), hideEntity, rpgSkills));
     }
@@ -237,8 +242,7 @@ public class MekTableModel extends AbstractTableModel {
     }
 
     /**
-     * Returns the column header for the given column. The header text is HTML and
-     * scaled according to the GUI scale.
+     * Returns the column header for the given column. The header text is HTML and scaled according to the GUI scale.
      */
     @Override
     public String getColumnName(int column) {
@@ -264,8 +268,7 @@ public class MekTableModel extends AbstractTableModel {
     }
 
     /**
-     * Creates and returns the display content of the "Player" column for the given
-     * entity.
+     * Creates and returns the display content of the "Player" column for the given entity.
      */
     private String playerCellContent(final InGameObject entity) {
         if (entity == null) {
@@ -277,9 +280,9 @@ public class MekTableModel extends AbstractTableModel {
         boolean isEnemy = clientGui.getClient().getLocalPlayer().isEnemyOf(owner);
         String sep = chatLounge.isCompact() ? DOT_SPACER : "<BR>";
         result.append(UIUtil.fontHTML(owner.getColour().getColour())).append(owner.getName())
-                .append("</FONT>").append(fontHTML()).append(sep).append("</FONT>")
-                .append(UIUtil.fontHTML(isEnemy ? Color.RED : uiGreen()))
-                .append(Player.TEAM_NAMES[owner.getTeam()]);
+              .append("</FONT>").append(fontHTML()).append(sep).append("</FONT>")
+              .append(UIUtil.fontHTML(isEnemy ? Color.RED : uiGreen()))
+              .append(Player.TEAM_NAMES[owner.getTeam()]);
         return result.toString();
     }
 
@@ -299,40 +302,26 @@ public class MekTableModel extends AbstractTableModel {
     public class Renderer extends DefaultTableCellRenderer {
 
         @Override
-        public Component getTableCellRendererComponent(final JTable table,
-                final @Nullable Object value,
-                final boolean isSelected,
-                final boolean hasFocus,
-                final int row, final int column) {
-            final InGameObject entity = getEntityAt(row);
-            if ((entity == null) || (value == null)) {
-                return null;
+        public Component getTableCellRendererComponent(final JTable table, Object value, boolean isSelected,
+              boolean hasFocus, int row, final int column) {
+
+            final InGameObject unit = getEntityAt(row);
+            if ((unit == null) || (value == null)) {
+                return super.getTableCellRendererComponent(table, "", isSelected, hasFocus, row, column);
             }
 
             setIconTextGap(UIUtil.scaleForGUI(10));
-            setText("<HTML>" + value);
+            super.getTableCellRendererComponent(table, "<HTML>" + value, isSelected, hasFocus, row, column);
             boolean compact = chatLounge.isCompact();
             if (compact) {
                 setIcon(null);
             }
 
-            if (isSelected) {
-                setForeground(table.getSelectionForeground());
-                setBackground(table.getSelectionBackground());
-            } else {
-                setForeground(table.getForeground());
-                Color background = table.getBackground();
-                if (row % 2 != 0) {
-                    background = alternateTableBGColor();
-                }
-                setBackground(background);
-            }
-
-            Player owner = ownerOf(entity);
+            Player owner = ownerOf(unit);
             boolean localGM = clientGui.getClient().getLocalPlayer().isGameMaster();
             boolean showAsUnknown = !localGM && clientGui.getClient().getLocalPlayer().isEnemyOf(owner)
-                    && clientGui.getClient().getGame().getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP);
-            int size = UIUtil.scaleForGUI(MEKTABLE_IMGHEIGHT);
+                  && clientGui.getClient().getGame().getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP);
+            int size = UIUtil.scaleForGUI(MEK_TABLE_IMG_HEIGHT);
 
             if (showAsUnknown) {
                 setToolTipText(null);
@@ -348,10 +337,11 @@ public class MekTableModel extends AbstractTableModel {
             } else {
                 if (column == COLS.UNIT.ordinal()) {
                     setToolTipText(unitTooltips.get(row));
-                    if (entity instanceof Entity) {
-                        final Camouflage camouflage = ((Entity) entity).getCamouflageOrElseOwners();
-                        final Image base = MMStaticDirectoryManager.getMekTileset().imageFor((Entity) entity);
-                        final Image icon = new EntityImage(base, camouflage, this, (Entity) entity).loadPreviewImage(true);
+                    if (unit instanceof Entity entity) {
+                        final Camouflage camouflage = entity.getCamouflageOrElseOwners();
+                        final Image base = MMStaticDirectoryManager.getMekTileset().imageFor(entity);
+                        final Image icon = new EntityImage(base, camouflage, this, entity).loadPreviewImage(
+                              true);
                         if (!compact) {
                             setIcon(icon, size);
                             setIconTextGap(UIUtil.scaleForGUI(10));
@@ -362,19 +352,15 @@ public class MekTableModel extends AbstractTableModel {
                     }
                 } else if (column == COLS.PILOT.ordinal()) {
                     setToolTipText(pilotTooltips.get(row));
-                    if (!compact && (entity instanceof Entity)) {
-                        setIcon(new ImageIcon(((Entity) entity).getCrew().getPortrait(0).getImage(size)));
+                    if (!compact && (unit instanceof Entity entity)) {
+                        setIcon(new ImageIcon(entity.getCrew().getPortrait(0).getImage(size)));
                     }
                 } else {
                     setToolTipText(null);
                 }
             }
 
-            if (column == COLS.BV.ordinal()) {
-                setHorizontalAlignment(JLabel.CENTER);
-            } else {
-                setHorizontalAlignment(JLabel.LEFT);
-            }
+            setHorizontalAlignment(column == COLS.BV.ordinal() ? JLabel.CENTER : JLabel.LEFT);
 
             return this;
         }

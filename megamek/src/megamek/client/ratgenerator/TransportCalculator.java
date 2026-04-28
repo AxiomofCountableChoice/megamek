@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2018-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ratgenerator;
 
@@ -24,8 +38,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import megamek.common.*;
+import megamek.common.bays.*;
 import megamek.common.loaders.EntityLoadingException;
+import megamek.common.loaders.MekFileParser;
+import megamek.common.loaders.MekSummary;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityMovementMode;
+import megamek.common.units.PlatoonType;
+import megamek.common.units.UnitType;
 
 /**
  * Generates drop-ships and jump ships to fulfill transport requirements for a unit.
@@ -78,14 +98,14 @@ public class TransportCalculator {
             } else if (en.hasETypeFlag(Entity.ETYPE_INFANTRY)) {
                 // Here we need to count the transport weight of the platoon rather than just the number
                 unitCounts.merge(UnitType.INFANTRY,
-                      InfantryTransporter.PlatoonType.getPlatoonType(en).getWeight(),
+                      PlatoonType.getPlatoonType(en).getWeight(),
                       Integer::sum);
             } else if (en.hasETypeFlag(Entity.ETYPE_DROPSHIP)) {
                 unitCounts.merge(UnitType.DROPSHIP, 1, Integer::sum);
             } else if (en.hasETypeFlag(Entity.ETYPE_SMALL_CRAFT)) {
                 unitCounts.merge(UnitType.SMALL_CRAFT, 1, Integer::sum);
             } else if (en.isFighter()) {
-                unitCounts.merge(UnitType.AEROSPACEFIGHTER, 1, Integer::sum);
+                unitCounts.merge(UnitType.AEROSPACE_FIGHTER, 1, Integer::sum);
             }
         }
         return unitCounts;
@@ -240,7 +260,7 @@ public class TransportCalculator {
             } else if (bay instanceof InfantryBay) {
                 bayCount.merge(UnitType.BATTLE_ARMOR, (int) bay.getCapacity(), Integer::sum);
             } else if (bay instanceof ASFBay) {
-                bayCount.merge(UnitType.AEROSPACEFIGHTER, (int) bay.getCapacity(), Integer::sum);
+                bayCount.merge(UnitType.AEROSPACE_FIGHTER, (int) bay.getCapacity(), Integer::sum);
             } else if (bay instanceof SmallCraftBay) {
                 bayCount.merge(UnitType.SMALL_CRAFT, (int) bay.getCapacity(), Integer::sum);
             }

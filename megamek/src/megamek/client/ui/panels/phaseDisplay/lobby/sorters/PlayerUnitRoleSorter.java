@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -35,7 +35,7 @@ package megamek.client.ui.panels.phaseDisplay.lobby.sorters;
 import megamek.client.Client;
 import megamek.client.ui.clientGUI.ClientGUI;
 import megamek.client.ui.panels.phaseDisplay.lobby.MekTableModel;
-import megamek.common.Entity;
+import megamek.common.units.Entity;
 import megamek.common.internationalization.I18n;
 
 /** A Lobby Mek Table sorter that sorts by 1) player 2) unit role. */
@@ -49,7 +49,8 @@ public class PlayerUnitRoleSorter extends MekTableSorter {
 
     /**
      * A Lobby Mek Table sorter that sorts by 1) player 2) unit role.
-     * @param client the client instance
+     *
+     * @param client  the client instance
      * @param sorting The sorting direction (ascending or descending).
      */
     public PlayerUnitRoleSorter(Client client, Sorting sorting) {

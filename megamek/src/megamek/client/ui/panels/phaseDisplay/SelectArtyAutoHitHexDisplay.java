@@ -1,15 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2004-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay;
 
@@ -28,21 +48,20 @@ import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.ClientGUI;
 import megamek.client.ui.clientGUI.boardview.BoardView;
 import megamek.client.ui.clientGUI.boardview.IBoardView;
+import megamek.client.ui.clientGUI.boardview.overlay.ToastLevel;
 import megamek.client.ui.util.KeyCommandBind;
 import megamek.client.ui.util.UIUtil;
 import megamek.client.ui.widget.MegaMekButton;
 import megamek.client.ui.widget.SkinSpecification;
-import megamek.common.Board;
-import megamek.common.BoardLocation;
-import megamek.common.Game;
 import megamek.common.Player;
 import megamek.common.SpecialHexDisplay;
+import megamek.common.board.Board;
+import megamek.common.board.BoardLocation;
 import megamek.common.containers.PlayerIDAndList;
 import megamek.common.event.GamePhaseChangeEvent;
 import megamek.common.event.GameTurnChangeEvent;
+import megamek.common.game.Game;
 import megamek.common.options.OptionsConstants;
-
-import javax.swing.JOptionPane;
 
 public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
     @Serial
@@ -92,14 +111,14 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
     }
 
     private final ClientGUI clientgui;
-    private Map<PhaseCommand,MegaMekButton> buttons;
+    private Map<PhaseCommand, MegaMekButton> buttons;
 
     private Player player;
     private final Map<BoardLocation, SpecialHexDisplay> plannedAutoHits = new HashMap<>();
     private int allowedNumberOfHexes;
 
     /**
-     * Creates and lays out a new select designated hex phase display for the specified clientgui.getClient().
+     * Creates and lays out a new select designated hex phase display for the specified clientGUI.getClient().
      */
     public SelectArtyAutoHitHexDisplay(ClientGUI clientgui) {
         super(clientgui);
@@ -171,10 +190,10 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
     private void beginMyTurn() {
         // Make sure we've got the correct local player
         player = clientgui.getClient().getLocalPlayer();
-        // By default, we should get 5 hexes per 4 mapsheets (4 mapsheets is 16*17*4 = 1088 hexes)
+        // By default, we should get 5 hexes per 4 map sheets (4 map sheets is 16*17*4 = 1088 hexes)
         Board board = game().getBoard();
-        int preDesignateArea = game().getOptions().intOption(OptionsConstants.ADVCOMBAT_MAP_AREA_PREDESIGNATE);
-        int hexesPer = game().getOptions().intOption(OptionsConstants.ADVCOMBAT_NUM_HEXES_PREDESIGNATE);
+        int preDesignateArea = game().getOptions().intOption(OptionsConstants.ADVANCED_COMBAT_MAP_AREA_PREDESIGNATE);
+        int hexesPer = game().getOptions().intOption(OptionsConstants.ADVANCED_COMBAT_NUM_HEXES_PREDESIGNATE);
         double mapArea = board.getWidth() * board.getHeight();
         allowedNumberOfHexes = (int) Math.ceil(mapArea / preDesignateArea) * hexesPer;
         plannedAutoHits.clear();
@@ -232,17 +251,13 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
     }
 
     private void showTooManyTargetsMessage() {
-        JOptionPane.showMessageDialog(clientgui.getFrame(),
-              Messages.getString("SelectArtyAutoHitHexDisplay.TooManyTargets.message"),
-              Messages.getString("SelectArtyAutoHitHexDisplay.TooManyTargets.title"),
-              JOptionPane.INFORMATION_MESSAGE);
+        clientgui.addToast(ToastLevel.WARNING,
+              Messages.getString("SelectArtyAutoHitHexDisplay.TooManyTargets.message"));
     }
 
     private void showInvalidLocationMessage() {
-        JOptionPane.showMessageDialog(clientgui.getFrame(),
-              Messages.getString("SelectArtyAutoHitHexDisplay.NotAllowed.message"),
-              Messages.getString("SelectArtyAutoHitHexDisplay.NotAllowed.title"),
-              JOptionPane.INFORMATION_MESSAGE);
+        clientgui.addToast(ToastLevel.ERROR,
+              Messages.getString("SelectArtyAutoHitHexDisplay.NotAllowed.message"));
     }
 
     //
@@ -251,7 +266,7 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
     @Override
     public void hexMoused(BoardViewEvent event) {
         if (isIgnoringEvents() || !isMyTurn() || (event.getType() != BoardViewEvent.BOARD_HEX_CLICKED) ||
-                  (event.getButton() != MouseEvent.BUTTON1)) {
+              (event.getButton() != MouseEvent.BUTTON1)) {
             return;
         }
 
@@ -285,7 +300,7 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
         if (isIgnoringEvents()) {
             return;
         }
-        if (game().getPhase().isSetArtilleryAutohitHexes()) {
+        if (game().getPhase().isSetArtilleryAutoHitHexes()) {
             setStatusBarText(Messages.getString("SelectArtyAutoHitHexDisplay.waitingMinefieldPhase"));
         } else if (isMyTurn()) {
             endMyTurn();
@@ -293,12 +308,12 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
     }
 
     @Override
-    public void actionPerformed(ActionEvent ev) { }
+    public void actionPerformed(ActionEvent ev) {}
 
     @Override
     public void clear() {
         plannedAutoHits.forEach((location, shd) ->
-                  game().getBoard(location).removeSpecialHexDisplay(location.coords(), shd, true));
+              game().getBoard(location).removeSpecialHexDisplay(location.coords(), shd, true));
         plannedAutoHits.clear();
         player.removeArtyAutoHitHexes();
         setArtyEnabled(allowedNumberOfHexes);
@@ -317,8 +332,8 @@ public class SelectArtyAutoHitHexDisplay extends StatusBarPhaseDisplay {
 
     private void setArtyEnabled(int remainingHexes) {
         buttons.get(ArtyAutoHitCommand.SET_HIT_HEX).setText(
-                Messages.getString("SelectArtyAutoHitHexDisplay." + ArtyAutoHitCommand.SET_HIT_HEX.getCmd(),
-                      remainingHexes));
+              Messages.getString("SelectArtyAutoHitHexDisplay." + ArtyAutoHitCommand.SET_HIT_HEX.getCmd(),
+                    remainingHexes));
         buttons.get(ArtyAutoHitCommand.SET_HIT_HEX).setEnabled(remainingHexes > 0);
     }
 

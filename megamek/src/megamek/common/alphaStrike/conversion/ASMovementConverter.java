@@ -1,38 +1,69 @@
 /*
- * Copyright (c) 2022 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2022-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.alphaStrike.conversion;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import megamek.client.ui.clientGUI.calculationReport.CalculationReport;
-import megamek.common.*;
+import megamek.common.MPCalculationSetting;
 import megamek.common.alphaStrike.AlphaStrikeElement;
+import megamek.common.equipment.EquipmentTypeLookup;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
+import megamek.common.equipment.enums.MiscTypeFlag;
+import megamek.common.units.Aero;
+import megamek.common.units.Entity;
+import megamek.common.units.Infantry;
+import megamek.common.units.Jumpship;
+import megamek.common.units.Mek;
+import megamek.common.units.ProtoMek;
+import megamek.common.units.QuadVee;
+import megamek.common.units.Warship;
 
 final class ASMovementConverter {
+
+    static int minimumConvertedMovement(int movementValue) {
+        return (movementValue > 0) ? Math.max(movementValue, 2) : movementValue;
+    }
 
     /**
      * Movement conversion, AlphaStrike Companion, p.92
      */
     static Map<String, Integer> convertMovement(ASConverter.ConversionData conversionData) {
-        Entity entity = conversionData.entity;
-        CalculationReport report = conversionData.conversionReport;
+        Entity entity = conversionData.entity();
+        CalculationReport report = conversionData.conversionReport();
         report.addEmptyLine();
         report.addSubHeader("Movement:");
 
@@ -46,16 +77,18 @@ final class ASMovementConverter {
     }
 
     private static Map<String, Integer> convertMovementForAero(ASConverter.ConversionData conversionData) {
-        Entity entity = conversionData.entity;
-        CalculationReport report = conversionData.conversionReport;
+        Entity entity = conversionData.entity();
+        CalculationReport report = conversionData.conversionReport();
 
         var result = new HashMap<String, Integer>();
         if (entity instanceof Warship) {
             result.put("", entity.getWalkMP());
             report.addLine("WarShip", "Cruise MP", Integer.toString(entity.getWalkMP()));
         } else if (entity instanceof Jumpship) {
-            result.put("k", (int)(((Jumpship) entity).getStationKeepingThrust() * 10));
-            report.addLine("JumpShip", "Station Keeping Thrust x 10", (int) (((Jumpship) entity).getStationKeepingThrust() * 10) + "k");
+            result.put("k", (int) (((Jumpship) entity).getStationKeepingThrust() * 10));
+            report.addLine("JumpShip",
+                  "Station Keeping Thrust x 10",
+                  (int) (((Jumpship) entity).getStationKeepingThrust() * 10) + "k");
         } else {
             String movementCode = getMovementCode(conversionData);
             result.put(movementCode, entity.getWalkMP());
@@ -65,9 +98,9 @@ final class ASMovementConverter {
     }
 
     private static Map<String, Integer> convertMovementForNonInfantry(ASConverter.ConversionData conversionData) {
-        Entity entity = conversionData.entity;
-        AlphaStrikeElement element = conversionData.element;
-        CalculationReport report = conversionData.conversionReport;
+        Entity entity = conversionData.entity();
+        AlphaStrikeElement element = conversionData.element();
+        CalculationReport report = conversionData.conversionReport();
 
         var result = new HashMap<String, Integer>();
         double walkMP = entity.getOriginalWalkMP();
@@ -81,7 +114,7 @@ final class ASMovementConverter {
             walkMP *= 1.5;
             report.addLine("MASC + Supercharger", "x 1.5", "= ", walkMP);
         } else if (hasSupercharger(entity) || hasMekMASC(entity)
-                || hasJetBooster(entity) || hasMyomerBooster(entity)) {
+              || hasJetBooster(entity) || hasMyomerBooster(entity)) {
             walkMP *= 1.25;
             report.addLine("MASC, SC, Jet or Myomer Booster", "x 1.25", "= ", walkMP);
         }
@@ -102,7 +135,7 @@ final class ASMovementConverter {
         }
 
         walkMP = Math.max(walkMP, 0);
-        int baseMove = ((int)Math.round(walkMP * 2));
+        int baseMove = ((int) Math.round(walkMP * 2));
         report.addLine("Hex to inch", "x 2", "= " + baseMove);
         if (baseMove % 2 == 1) {
             baseMove++;
@@ -129,25 +162,29 @@ final class ASMovementConverter {
     }
 
     private static Map<String, Integer> convertMovementForInfantry(ASConverter.ConversionData conversionData) {
-        Entity entity = conversionData.entity;
-        AlphaStrikeElement element = conversionData.element;
-        CalculationReport report = conversionData.conversionReport;
+        Infantry infantry = (Infantry) conversionData.entity();
+        AlphaStrikeElement element = conversionData.element();
+        CalculationReport report = conversionData.conversionReport();
 
         var result = new HashMap<String, Integer>();
-        int walkingMP = entity.getWalkMP(MPCalculationSetting.AS_CONVERSION);
-        int jumpingMP = entity.getJumpMP(MPCalculationSetting.AS_CONVERSION);
+        int walkingMP = infantry.getWalkMP(MPCalculationSetting.AS_CONVERSION);
+        int jumpingMP = infantry.getJumpMP(MPCalculationSetting.AS_CONVERSION);
+        boolean minimalGroundMovement = infantry.hasMinimalGroundMP(MPCalculationSetting.AS_CONVERSION);
+        int walkingMove = minimalGroundMovement ? 2 : minimumConvertedMovement(walkingMP * 2);
+        int jumpingMove = minimumConvertedMovement(jumpingMP * 2);
 
-        report.addLine("Walking MP:", Integer.toString(walkingMP));
+        report.addLine("Walking MP:", minimalGroundMovement ? "0*" : Integer.toString(walkingMP));
         report.addLine("Jumping MP:", Integer.toString(jumpingMP));
         String movementCode = getMovementCode(conversionData);
         element.setPrimaryMovementMode(movementCode);
 
         if ((walkingMP > jumpingMP) || (jumpingMP == 0)) {
-            result.put(movementCode, walkingMP * 2);
-            report.addLine("Walking MP > Jumping MP", walkingMP + " x 2", walkingMP * 2 + "\"" + movementCode);
+            result.put(movementCode, walkingMove);
+            String walkingCalculation = minimalGroundMovement ? "0* minimum" : walkingMP + " x 2";
+            report.addLine("Walking MP > Jumping MP", walkingCalculation, walkingMove + "\"" + movementCode);
         } else {
-            result.put(movementCode.equals("v") ? movementCode : "j", jumpingMP * 2);
-            report.addLine("Walking MP <= Jumping MP", jumpingMP + " x 2", jumpingMP * 2 + "\"j");
+            result.put(movementCode.equals("v") ? movementCode : "j", jumpingMove);
+            report.addLine("Walking MP <= Jumping MP", jumpingMP + " x 2", jumpingMove + "\"j");
         }
 
         addUMUMovement(result, conversionData);
@@ -155,8 +192,8 @@ final class ASMovementConverter {
     }
 
     private static void addUMUMovement(Map<String, Integer> moves, ASConverter.ConversionData conversionData) {
-        Entity entity = conversionData.entity;
-        CalculationReport report = conversionData.conversionReport;
+        Entity entity = conversionData.entity();
+        CalculationReport report = conversionData.conversionReport();
 
         int umu = entity.getAllUMUCount();
         if (umu > 0) {
@@ -168,15 +205,15 @@ final class ASMovementConverter {
     /** Returns true if the given entity has a Supercharger, regardless of its state (convert as if undamaged). */
     private static boolean hasSupercharger(Entity entity) {
         return entity.getMisc().stream()
-                .map(m -> (MiscType) m.getType())
-                .anyMatch(m -> (m.hasFlag(MiscType.F_MASC) && m.hasSubType(MiscType.S_SUPERCHARGER)));
+              .map(Mounted::getType)
+              .anyMatch(m -> (m.hasFlag(MiscType.F_MASC) && m.hasFlag(MiscTypeFlag.S_SUPERCHARGER)));
     }
 
     /** Returns true if the given entity has a Jet Booster, regardless of its state (convert as if undamaged). */
     private static boolean hasJetBooster(Entity entity) {
         return entity.getMisc().stream()
-                .map(m -> (MiscType) m.getType())
-                .anyMatch(m -> (m.hasFlag(MiscType.F_MASC) && m.hasSubType(MiscType.S_JETBOOSTER)));
+              .map(Mounted::getType)
+              .anyMatch(m -> (m.hasFlag(MiscType.F_MASC) && m.hasFlag(MiscTypeFlag.S_JET_BOOSTER)));
     }
 
     /** Returns true if the given entity has a ProtoMek Myomer Booster. */
@@ -187,28 +224,30 @@ final class ASMovementConverter {
     /** Returns true if the given entity is a Mek and has MASC, regardless of its state (convert as if undamaged). */
     private static boolean hasMekMASC(Entity entity) {
         return (entity instanceof Mek)
-                && entity.getMisc().stream()
-                .map(m -> (MiscType) m.getType())
-                .anyMatch(m -> (m.hasFlag(MiscType.F_MASC) && !m.hasSubType(MiscType.S_SUPERCHARGER)));
+              && entity.getMisc().stream()
+              .map(Mounted::getType)
+              .anyMatch(m -> (m.hasFlag(MiscType.F_MASC) && !m.hasFlag(MiscTypeFlag.S_SUPERCHARGER)));
     }
 
-    /** Returns true if the given entity has a movement reducing shield, regardless of its state (convert as if undamaged). */
+    /**
+     * Returns true if the given entity has a movement reducing shield, regardless of its state (convert as if
+     * undamaged).
+     */
     private static boolean hasMPReducingShield(Entity entity) {
         return entity.getMisc().stream()
-                .map(m -> (MiscType) m.getType())
-                .anyMatch(m -> (m.hasFlag(MiscType.F_CLUB)
-                        && (m.hasSubType(MiscType.S_SHIELD_LARGE)
-                        || m.hasSubType(MiscType.S_SHIELD_MEDIUM))));
+              .map(Mounted::getType)
+              .anyMatch(m -> (m.hasFlag(MiscType.F_CLUB)
+                    && (m.hasAnyFlag(MiscTypeFlag.S_SHIELD_LARGE, MiscTypeFlag.S_SHIELD_MEDIUM))));
     }
 
     /** Returns the AlphaStrike movement type code letter such as "v" for VTOL. */
     public static String getMovementCode(ASConverter.ConversionData conversionData) {
-        Entity entity = conversionData.entity;
-        CalculationReport report = conversionData.conversionReport;
+        Entity entity = conversionData.entity();
+        CalculationReport report = conversionData.conversionReport();
         String type = "Movement Code:";
 
         if (entity instanceof QuadVee) {
-            if (((QuadVee)entity).getMotiveType() == QuadVee.MOTIVE_TRACK) {
+            if (((QuadVee) entity).getMotiveType() == QuadVee.MOTIVE_TRACK) {
                 report.addLine(type, "Tracked Quadvee", "qt");
                 return "qt";
             } else {
@@ -271,6 +310,9 @@ final class ASMovementConverter {
             case WIGE:
                 report.addLine(type, "Wige", "g");
                 return "g";
+            case RAIL:
+                report.addLine(type, "Rail", "r");
+                return "r";
             case AERODYNE:
                 report.addLine(type, "Aerodyne", "a");
                 return "a";
@@ -284,11 +326,11 @@ final class ASMovementConverter {
     }
 
     /**
-     *  Determines the element's TMM, AlphaStrike Companion Errata v1.4, p.8
+     * Determines the element's TMM, AlphaStrike Companion Errata v1.4, p.8
      */
     static int convertTMM(ASConverter.ConversionData conversionData) {
-        CalculationReport report = conversionData.conversionReport;
-        AlphaStrikeElement element = conversionData.element;
+        CalculationReport report = conversionData.conversionReport();
+        AlphaStrikeElement element = conversionData.element();
         if (element.isAerospace()) {
             return 0;
         }
@@ -306,5 +348,5 @@ final class ASMovementConverter {
     }
 
     // Make non-instantiable
-    private ASMovementConverter() { }
+    private ASMovementConverter() {}
 }

@@ -1,27 +1,45 @@
 /*
-* MegaMek -
-* Copyright (C) 2003 Ben Mazur (bmazur@sev.org)
-* Copyright (C) 2018 The MegaMek Team
-*
-* This program is free software; you can redistribute it and/or modify it under
-* the terms of the GNU General Public License as published by the Free Software
-* Foundation; either version 2 of the License, or (at your option) any later
-* version.
-*
-* This program is distributed in the hope that it will be useful, but WITHOUT
-* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-* FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
-* details.
-*/
+ * Copyright (C) 2003 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MegaMek.
+ *
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 package megamek.client.ui.widget;
 
 import java.awt.Graphics;
 import java.awt.Image;
 
 /**
- * Background drawer is a class which keeps reference to a single Image and
- * draws it according specified rules. For example, we can order to draw image
- * by fully tiling it over all area, or tile it in a single row or column with
+ * Background drawer is a class which keeps reference to a single Image and draws it according specified rules. For
+ * example, we can order to draw image by fully tiling it over all area, or tile it in a single row or column with
  * desired alignment, or draw it just once. Alignment of drawing can be
  * <ol>
  * <li>logical (top, bottom, center for vertical alignment and left, right,
@@ -49,56 +67,54 @@ public class BackGroundDrawer {
     /**
      * Alignment to the top in case of Horizontal or single tiling.
      */
-    public static final int VALIGN_TOP = 16;
+    public static final int V_ALIGN_TOP = 16;
     /**
      * Alignment to the centre in case of Horizontal or single tiling.
      */
-    public static final int VALIGN_CENTER = 32;
+    public static final int V_ALIGN_CENTER = 32;
     /**
      * Alignment to the bottom in case of Horizontal or single tiling.
      */
-    public static final int VALIGN_BOTTOM = 64;
+    public static final int V_ALIGN_BOTTOM = 64;
     /**
-     * Shift down from top border of area by exact number of pixels. (default 0
-     * pixels)
+     * Shift down from top border of area by exact number of pixels. (default 0 pixels)
      */
-    public static final int VALIGN_EXACT = 128;
+    public static final int V_ALIGN_EXACT = 128;
     /**
      * Alignment to the left in case of Vertical or single tiling.
      */
-    public static final int HALIGN_LEFT = 256;
+    public static final int H_ALIGN_LEFT = 256;
     /**
      * Alignment to the center in case of Vertical or single tiling.
      */
-    public static final int HALIGN_CENTER = 512;
+    public static final int H_ALIGN_CENTER = 512;
     /**
      * Alignment to the right in case of Vertical or single tiling.
      */
-    public static final int HALIGN_RIGHT = 1024;
+    public static final int H_ALIGN_RIGHT = 1024;
     /**
-     * Shift right from left border of area by exact number of pixels. (default
-     * 0 pixels)
+     * Shift right from left border of area by exact number of pixels. (default 0 pixels)
      */
-    public static final int HALIGN_EXACT = 2048;
+    public static final int H_ALIGN_EXACT = 2048;
 
     // Required bit masks to manipulate behavior variable.
     private static final int TILING_TYPE_MASK = 4080;
-    private static final int VALIGN_MASK = 3855;
-    private static final int HALIGN_MASK = 255;
+    private static final int V_ALIGN_MASK = 3855;
+    private static final int H_ALIGN_MASK = 255;
     private static final int TILING_TYPE_SELECT_MASK = 15;
-    private static final int VALIGN_SELECT_MASK = 240;
-    private static final int HALIGN_SELECT_MASK = 3840;
+    private static final int V_ALIGN_SELECT_MASK = 240;
+    private static final int H_ALIGN_SELECT_MASK = 3840;
 
     private Image mainImage;
-    private int behavior = NO_TILING | VALIGN_CENTER | HALIGN_CENTER;
+    private int behavior = NO_TILING | V_ALIGN_CENTER | H_ALIGN_CENTER;
     private int fixedX = 0;
     private int fixedY = 0;
 
     /**
      * @param mainImage image to draw by BackGroundDrawer.
-     * @param behavior Integer value specifying way of tiling and alignment. For
-     *            exapmple:
-     *            <code> BackGroundDrawer(myImage, BackGroundDrawer.TILING_VERTICAL | BackGroundDrawer.HALIGN_RIGHT);
+     * @param behavior  Integer value specifying way of tiling and alignment. For example:
+     *                  <code> BackGroundDrawer(myImage, BackGroundDrawer.TILING_VERTICAL |
+     *                  BackGroundDrawer.H_ALIGN_RIGHT);
      *                  </code>
      */
 
@@ -108,7 +124,7 @@ public class BackGroundDrawer {
     }
 
     /**
-     * Tiling style is set to NO_TILING | VALIGN_CENTER | HALIGN_CENTER.
+     * Tiling style is set to NO_TILING | V_ALIGN_CENTER | H_ALIGN_CENTER.
      *
      * @param mainImage image to draw by BackGroundDrawer.
      */
@@ -135,9 +151,9 @@ public class BackGroundDrawer {
     /**
      * Sets type of tiling.
      *
-     * @param type Possible values: NO_TILING, TILING_BOTH, TILING_VERTICAL,
-     *            TILING_HORIZONTAL.
+     * @param type Possible values: NO_TILING, TILING_BOTH, TILING_VERTICAL, TILING_HORIZONTAL.
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setTilingType(int type) {
         type &= TILING_TYPE_SELECT_MASK;
         behavior &= TILING_TYPE_MASK;
@@ -147,23 +163,23 @@ public class BackGroundDrawer {
     /**
      * Sets vertical align of tiling
      *
-     * @param vAlign Must be VALIGN_TOP, VALIGN_CENTER, VALIGN_BOTTOM
+     * @param vAlign Must be V_ALIGN_TOP, V_ALIGN_CENTER, V_ALIGN_BOTTOM
      */
 
     public void setValign(int vAlign) {
-        vAlign &= VALIGN_SELECT_MASK;
-        behavior &= VALIGN_MASK;
+        vAlign &= V_ALIGN_SELECT_MASK;
+        behavior &= V_ALIGN_MASK;
         behavior |= vAlign;
     }
 
     /**
      * Sets horizontal align of tiling
      *
-     * @param hAlign Must be HALIGN_LEFT, HALIGN_CENTER, HALIGN_RIGHT
+     * @param hAlign Must be H_ALIGN_LEFT, H_ALIGN_CENTER, H_ALIGN_RIGHT
      */
-    public void setHalign(int hAlign) {
-        hAlign &= HALIGN_SELECT_MASK;
-        behavior &= HALIGN_MASK;
+    public void setHAlign(int hAlign) {
+        hAlign &= H_ALIGN_SELECT_MASK;
+        behavior &= H_ALIGN_MASK;
         behavior |= hAlign;
     }
 
@@ -171,8 +187,9 @@ public class BackGroundDrawer {
      * Sets exact vertical alignment exactly at "y" pixels
      */
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setValignExactAt(int y) {
-        setValign(VALIGN_EXACT);
+        setValign(V_ALIGN_EXACT);
         fixedY = y;
     }
 
@@ -180,8 +197,9 @@ public class BackGroundDrawer {
      * Sets exact horizontal alignment exactly at "x" pixels
      */
 
-    public void setHalignExactAt(int x) {
-        setHalign(HALIGN_EXACT);
+    @Deprecated(since = "0.51.0", forRemoval = true)
+    public void setHAlignExactAt(int x) {
+        setHAlign(H_ALIGN_EXACT);
         fixedX = x;
     }
 
@@ -196,8 +214,8 @@ public class BackGroundDrawer {
     /**
      * Draws image into Graphics with custom tiling type and alignment.
      *
-     * @param g Graphics to which draw to.
-     * @param width Width of the drawing area.
+     * @param g      Graphics to which draw to.
+     * @param width  Width of the drawing area.
      * @param height Height of the drawing area.
      */
 
@@ -224,7 +242,6 @@ public class BackGroundDrawer {
 
         if ((behavior & TILING_HORIZONTAL) != 0) {
             drawTilingHorizontal(g, width, height);
-            return;
         }
     }
 
@@ -278,13 +295,13 @@ public class BackGroundDrawer {
 
     private int getDX(int width) {
         int tw = mainImage.getWidth(null);
-        if ((behavior & HALIGN_LEFT) != 0) {
+        if ((behavior & H_ALIGN_LEFT) != 0) {
             return 0;
-        } else if ((behavior & HALIGN_CENTER) != 0) {
+        } else if ((behavior & H_ALIGN_CENTER) != 0) {
             return Math.max((width - tw) / 2, 0);
-        } else if ((behavior & HALIGN_RIGHT) != 0) {
+        } else if ((behavior & H_ALIGN_RIGHT) != 0) {
             return width - tw;
-        } else if ((behavior & HALIGN_EXACT) != 0) {
+        } else if ((behavior & H_ALIGN_EXACT) != 0) {
             return fixedX;
         } else {
             return 0;
@@ -293,13 +310,13 @@ public class BackGroundDrawer {
 
     private int getDY(int height) {
         int th = mainImage.getHeight(null);
-        if ((behavior & VALIGN_TOP) != 0) {
+        if ((behavior & V_ALIGN_TOP) != 0) {
             return 0;
-        } else if ((behavior & VALIGN_CENTER) != 0) {
+        } else if ((behavior & V_ALIGN_CENTER) != 0) {
             return Math.max((height - th) / 2, 0);
-        } else if ((behavior & VALIGN_BOTTOM) != 0) {
+        } else if ((behavior & V_ALIGN_BOTTOM) != 0) {
             return height - th;
-        } else if ((behavior & VALIGN_EXACT) != 0) {
+        } else if ((behavior & V_ALIGN_EXACT) != 0) {
             return fixedY;
         } else {
             return 0;

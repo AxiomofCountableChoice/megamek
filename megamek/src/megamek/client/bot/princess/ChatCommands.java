@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2014-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -134,15 +134,15 @@ public enum ChatCommands {
 
     public String getSyntax() {
         return "princessName: " +
-                     getAbbreviation() +
-                     "/" +
-                     getCommand() +
-                     (chatCommand.defineArguments().isEmpty() ? "" : ": " + chatCommand.getArgumentsRepr());
+              getAbbreviation() +
+              "/" +
+              getCommand() +
+              (chatCommand.defineArguments().isEmpty() ? "" : ": " + chatCommand.getArgumentsRepresentation());
     }
 
     public String getDescription() {
         return (chatCommand.defineArguments().isEmpty() ? "" : chatCommand.getArgumentsDescription() + " ") +
-                     description;
+              description;
     }
 
     public String getCommand() {

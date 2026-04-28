@@ -1,33 +1,52 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.advancedsearch;
 
-import megamek.client.ui.Messages;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
 
-import javax.swing.*;
-import java.awt.*;
+import megamek.client.ui.Messages;
 
 class TransportsSearchTab extends JPanel {
 
     final JButton btnTransportsClear = new JButton(Messages.getString("MekSelectorDialog.ClearTab"));
     final JLabel lblTroopSpace = new JLabel(Messages.getString("MekSelectorDialog.Search.TroopSpace"));
-    final JTextField tStartTroopSpace  = new JTextField(4);
+    final JTextField tStartTroopSpace = new JTextField(4);
     final JTextField tEndTroopSpace = new JTextField(4);
     final JLabel lblASFBays = new JLabel(Messages.getString("MekSelectorDialog.Search.ASFBays"));
     final JTextField tStartASFBays = new JTextField(4);
@@ -101,7 +120,8 @@ class TransportsSearchTab extends JPanel {
     final JLabel lblInfantryUnits = new JLabel(Messages.getString("MekSelectorDialog.Search.Units"));
     final JTextField tStartInfantryUnits = new JTextField(4);
     final JTextField tEndInfantryUnits = new JTextField(4);
-    final JLabel lblSuperHeavyVehicleBays = new JLabel(Messages.getString("MekSelectorDialog.Search.SuperHeavyVehicleBays"));
+    final JLabel lblSuperHeavyVehicleBays = new JLabel(Messages.getString(
+          "MekSelectorDialog.Search.SuperHeavyVehicleBays"));
     final JTextField tStartSuperHeavyVehicleBays = new JTextField(4);
     final JTextField tEndSuperHeavyVehicleBays = new JTextField(4);
     final JLabel lblSuperHeavyVehicleDoors = new JLabel(Messages.getString("MekSelectorDialog.Search.Doors"));
@@ -110,15 +130,15 @@ class TransportsSearchTab extends JPanel {
     final JLabel lblSuperHeavyVehicleUnits = new JLabel(Messages.getString("MekSelectorDialog.Search.Units"));
     final JTextField tStartSuperHeavyVehicleUnits = new JTextField(4);
     final JTextField tEndSuperHeavyVehicleUnits = new JTextField(4);
-    final JLabel lblDropshuttleBays = new JLabel(Messages.getString("MekSelectorDialog.Search.DropshuttleBays"));
-    final JTextField tStartDropshuttleBays = new JTextField(4);
-    final JTextField tEndDropshuttleBays = new JTextField(4);
-    final JLabel lblDropshuttleDoors = new JLabel(Messages.getString("MekSelectorDialog.Search.Doors"));
-    final JTextField tStartDropshuttleDoors = new JTextField(4);
-    final JTextField tEndDropshuttleDoors = new JTextField(4);
-    final JLabel lblDropshuttleUnits = new JLabel(Messages.getString("MekSelectorDialog.Search.Units"));
-    final JTextField tStartDropshuttleUnits = new JTextField(4);
-    final JTextField tEndDropshuttleUnits = new JTextField(4);
+    final JLabel lblDropShuttleBays = new JLabel(Messages.getString("MekSelectorDialog.Search.DropshuttleBays"));
+    final JTextField tStartDropShuttleBays = new JTextField(4);
+    final JTextField tEndDropShuttleBays = new JTextField(4);
+    final JLabel lblDropShuttleDoors = new JLabel(Messages.getString("MekSelectorDialog.Search.Doors"));
+    final JTextField tStartDropShuttleDoors = new JTextField(4);
+    final JTextField tEndDropShuttleDoors = new JTextField(4);
+    final JLabel lblDropShuttleUnits = new JLabel(Messages.getString("MekSelectorDialog.Search.Units"));
+    final JTextField tStartDropShuttleUnits = new JTextField(4);
+    final JTextField tEndDropShuttleUnits = new JTextField(4);
     final JLabel lblDockingCollars = new JLabel(Messages.getString("MekSelectorDialog.Search.DockingCollars"));
     final JTextField tStartDockingCollars = new JTextField(4);
     final JTextField tEndDockingCollars = new JTextField(4);
@@ -128,7 +148,8 @@ class TransportsSearchTab extends JPanel {
     final JLabel lblCargoBayUnits = new JLabel(Messages.getString("MekSelectorDialog.Search.CargoBayUnits"));
     final JTextField tStartCargoBayUnits = new JTextField(4);
     final JTextField tEndCargoBayUnits = new JTextField(4);
-    final JLabel lblNavalRepairFacilities = new JLabel(Messages.getString("MekSelectorDialog.Search.NavalRepairFacilities"));
+    final JLabel lblNavalRepairFacilities = new JLabel(Messages.getString(
+          "MekSelectorDialog.Search.NavalRepairFacilities"));
     final JTextField tStartNavalRepairFacilities = new JTextField(4);
     final JTextField tEndNavalRepairFacilities = new JTextField(4);
 
@@ -143,8 +164,9 @@ class TransportsSearchTab extends JPanel {
         c.fill = GridBagConstraints.NONE;
         c.insets = new Insets(20, 10, 0, 0);
 
-        c.gridwidth  = 1;
-        c.gridx = 0; c.gridy++;
+        c.gridwidth = 1;
+        c.gridx = 0;
+        c.gridy++;
         JPanel mbPanel = new JPanel();
         mbPanel.add(lblMekBays);
         mbPanel.add(tStartMekBays);
@@ -160,7 +182,8 @@ class TransportsSearchTab extends JPanel {
         mbPanel.add(tEndMekUnits);
         add(mbPanel, c);
         c.insets = new Insets(5, 10, 0, 0);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel abPanel = new JPanel();
         abPanel.add(lblASFBays);
         abPanel.add(tStartASFBays);
@@ -175,7 +198,8 @@ class TransportsSearchTab extends JPanel {
         abPanel.add(new JLabel("-"));
         abPanel.add(tEndASFUnits);
         add(abPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel scbPanel = new JPanel();
         scbPanel.add(lblSmallCraftBays);
         scbPanel.add(tStartSmallCraftBays);
@@ -190,22 +214,24 @@ class TransportsSearchTab extends JPanel {
         scbPanel.add(new JLabel("-"));
         scbPanel.add(tEndSmallCraftUnits);
         add(scbPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel dPanel = new JPanel();
-        dPanel.add(lblDropshuttleBays);
-        dPanel.add(tStartDropshuttleBays);
+        dPanel.add(lblDropShuttleBays);
+        dPanel.add(tStartDropShuttleBays);
         dPanel.add(new JLabel("-"));
-        dPanel.add(tEndDropshuttleBays);
-        dPanel.add(lblDropshuttleDoors);
-        dPanel.add(tStartDropshuttleDoors);
+        dPanel.add(tEndDropShuttleBays);
+        dPanel.add(lblDropShuttleDoors);
+        dPanel.add(tStartDropShuttleDoors);
         dPanel.add(new JLabel("-"));
-        dPanel.add(tEndDropshuttleDoors);
-        dPanel.add(lblDropshuttleUnits);
-        dPanel.add(tStartDropshuttleUnits);
+        dPanel.add(tEndDropShuttleDoors);
+        dPanel.add(lblDropShuttleUnits);
+        dPanel.add(tStartDropShuttleUnits);
         dPanel.add(new JLabel("-"));
-        dPanel.add(tEndDropshuttleUnits);
+        dPanel.add(tEndDropShuttleUnits);
         add(dPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel lvPanel = new JPanel();
         lvPanel.add(lblLightVehicleBays);
         lvPanel.add(tStartLightVehicleBays);
@@ -220,7 +246,8 @@ class TransportsSearchTab extends JPanel {
         lvPanel.add(new JLabel("-"));
         lvPanel.add(tEndLightVehicleUnits);
         add(lvPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel hvPanel = new JPanel();
         hvPanel.add(lblHeavyVehicleBays);
         hvPanel.add(tStartHeavyVehicleBays);
@@ -235,7 +262,8 @@ class TransportsSearchTab extends JPanel {
         hvPanel.add(new JLabel("-"));
         hvPanel.add(tEndHeavyVehicleUnits);
         add(hvPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel shvPanel = new JPanel();
         shvPanel.add(lblSuperHeavyVehicleBays);
         shvPanel.add(tStartSuperHeavyVehicleBays);
@@ -250,7 +278,8 @@ class TransportsSearchTab extends JPanel {
         shvPanel.add(new JLabel("-"));
         shvPanel.add(tEndSuperHeavyVehicleUnits);
         add(shvPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel pmPanel = new JPanel();
         pmPanel.add(lblProtomekBays);
         pmPanel.add(tStartProtomekBays);
@@ -265,7 +294,8 @@ class TransportsSearchTab extends JPanel {
         pmPanel.add(new JLabel("-"));
         pmPanel.add(tEndProtomekUnits);
         add(pmPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel baPanel = new JPanel();
         baPanel.add(lblBattleArmorBays);
         baPanel.add(tStartBattleArmorBays);
@@ -280,7 +310,8 @@ class TransportsSearchTab extends JPanel {
         baPanel.add(new JLabel("-"));
         baPanel.add(tEndBattleArmorUnits);
         add(baPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel iPanel = new JPanel();
         iPanel.add(lblInfantryBays);
         iPanel.add(tStartInfantryBays);
@@ -295,35 +326,40 @@ class TransportsSearchTab extends JPanel {
         iPanel.add(new JLabel("-"));
         iPanel.add(tEndInfantryUnits);
         add(iPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel dcPanel = new JPanel();
         dcPanel.add(lblDockingCollars);
         dcPanel.add(tStartDockingCollars);
         dcPanel.add(new JLabel("-"));
         dcPanel.add(tEndDockingCollars);
         add(dcPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel tsPanel = new JPanel();
         tsPanel.add(lblTroopSpace);
         tsPanel.add(tStartTroopSpace);
         tsPanel.add(new JLabel("-"));
         tsPanel.add(tEndTroopSpace);
         add(tsPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel cbPanel = new JPanel();
         cbPanel.add(lblCargoBayUnits);
         cbPanel.add(tStartCargoBayUnits);
         cbPanel.add(new JLabel("-"));
         cbPanel.add(tEndCargoBayUnits);
         add(cbPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel nrfPanel = new JPanel();
         nrfPanel.add(lblNavalRepairFacilities);
         nrfPanel.add(tStartNavalRepairFacilities);
         nrfPanel.add(new JLabel("-"));
         nrfPanel.add(tEndNavalRepairFacilities);
         add(nrfPanel, c);
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         JPanel bahPanel = new JPanel();
         bahPanel.add(lblBattleArmorHandles);
         bahPanel.add(tStartBattleArmorHandles);
@@ -333,7 +369,8 @@ class TransportsSearchTab extends JPanel {
 
         c.weighty = 1;
         JPanel blankPanel = new JPanel();
-        c.gridx = 0; c.gridy++;
+        c.gridx = 0;
+        c.gridy++;
         blankPanel.add(btnTransportsClear, c);
         add(blankPanel, c);
     }
@@ -395,12 +432,12 @@ class TransportsSearchTab extends JPanel {
         tEndSuperHeavyVehicleDoors.setText("");
         tStartSuperHeavyVehicleUnits.setText("");
         tEndSuperHeavyVehicleUnits.setText("");
-        tStartDropshuttleBays.setText("");
-        tEndDropshuttleBays.setText("");
-        tStartDropshuttleDoors.setText("");
-        tEndDropshuttleDoors.setText("");
-        tStartDropshuttleUnits.setText("");
-        tEndDropshuttleUnits.setText("");
+        tStartDropShuttleBays.setText("");
+        tEndDropShuttleBays.setText("");
+        tStartDropShuttleDoors.setText("");
+        tEndDropShuttleDoors.setText("");
+        tStartDropShuttleUnits.setText("");
+        tEndDropShuttleUnits.setText("");
         tStartDockingCollars.setText("");
         tEndDockingCollars.setText("");
         tStartBattleArmorHandles.setText("");
@@ -409,5 +446,153 @@ class TransportsSearchTab extends JPanel {
         tEndCargoBayUnits.setText("");
         tStartNavalRepairFacilities.setText("");
         tEndNavalRepairFacilities.setText("");
+    }
+
+    void applyState(AdvSearchState.TransportsState state) {
+        tStartTroopSpace.setText(state.startTroopSpace);
+        tEndTroopSpace.setText(state.endTroopSpace);
+        tStartASFBays.setText(state.startASFBays);
+        tEndASFBays.setText(state.endASFBays);
+        tStartASFDoors.setText(state.startASFDoors);
+        tEndASFDoors.setText(state.endASFDoors);
+        tStartASFUnits.setText(state.startASFUnits);
+        tEndASFUnits.setText(state.endASFUnits);
+        tStartSmallCraftBays.setText(state.startSmallCraftBays);
+        tEndSmallCraftBays.setText(state.endSmallCraftBays);
+        tStartSmallCraftDoors.setText(state.startSmallCraftDoors);
+        tEndSmallCraftDoors.setText(state.endSmallCraftDoors);
+        tStartSmallCraftUnits.setText(state.startSmallCraftUnits);
+        tEndSmallCraftUnits.setText(state.endSmallCraftUnits);
+        tStartMekBays.setText(state.startMekBays);
+        tEndMekBays.setText(state.endMekBays);
+        tStartMekDoors.setText(state.startMekDoors);
+        tEndMekDoors.setText(state.endMekDoors);
+        tStartMekUnits.setText(state.startMekUnits);
+        tEndMekUnits.setText(state.endMekUnits);
+        tStartHeavyVehicleBays.setText(state.startHeavyVehicleBays);
+        tEndHeavyVehicleBays.setText(state.endHeavyVehicleBays);
+        tStartHeavyVehicleDoors.setText(state.startHeavyVehicleDoors);
+        tEndHeavyVehicleDoors.setText(state.endHeavyVehicleDoors);
+        tStartHeavyVehicleUnits.setText(state.startHeavyVehicleUnits);
+        tEndHeavyVehicleUnits.setText(state.endHeavyVehicleUnits);
+        tStartLightVehicleBays.setText(state.startLightVehicleBays);
+        tEndLightVehicleBays.setText(state.endLightVehicleBays);
+        tStartLightVehicleDoors.setText(state.startLightVehicleDoors);
+        tEndLightVehicleDoors.setText(state.endLightVehicleDoors);
+        tStartLightVehicleUnits.setText(state.startLightVehicleUnits);
+        tEndLightVehicleUnits.setText(state.endLightVehicleUnits);
+        tStartProtomekBays.setText(state.startProtomekBays);
+        tEndProtomekBays.setText(state.endProtomekBays);
+        tStartProtomekDoors.setText(state.startProtomekDoors);
+        tEndProtomekDoors.setText(state.endProtomekDoors);
+        tStartProtomekUnits.setText(state.startProtomekUnits);
+        tEndProtomekUnits.setText(state.endProtomekUnits);
+        tStartBattleArmorBays.setText(state.startBattleArmorBays);
+        tEndBattleArmorBays.setText(state.endBattleArmorBays);
+        tStartBattleArmorDoors.setText(state.startBattleArmorDoors);
+        tEndBattleArmorDoors.setText(state.endBattleArmorDoors);
+        tStartBattleArmorUnits.setText(state.startBattleArmorUnits);
+        tEndBattleArmorUnits.setText(state.endBattleArmorUnits);
+        tStartInfantryBays.setText(state.startInfantryBays);
+        tEndInfantryBays.setText(state.endInfantryBays);
+        tStartInfantryDoors.setText(state.startInfantryDoors);
+        tEndInfantryDoors.setText(state.endInfantryDoors);
+        tStartInfantryUnits.setText(state.startInfantryUnits);
+        tEndInfantryUnits.setText(state.endInfantryUnits);
+        tStartSuperHeavyVehicleBays.setText(state.startSuperHeavyVehicleBays);
+        tEndSuperHeavyVehicleBays.setText(state.endSuperHeavyVehicleBays);
+        tStartSuperHeavyVehicleDoors.setText(state.startSuperHeavyVehicleDoors);
+        tEndSuperHeavyVehicleDoors.setText(state.endSuperHeavyVehicleDoors);
+        tStartSuperHeavyVehicleUnits.setText(state.startSuperHeavyVehicleUnits);
+        tEndSuperHeavyVehicleUnits.setText(state.endSuperHeavyVehicleUnits);
+        tStartDropShuttleBays.setText(state.startDropShuttleBays);
+        tEndDropShuttleBays.setText(state.endDropShuttleBays);
+        tStartDropShuttleDoors.setText(state.startDropShuttleDoors);
+        tEndDropShuttleDoors.setText(state.endDropShuttleDoors);
+        tStartDropShuttleUnits.setText(state.startDropShuttleUnits);
+        tEndDropShuttleUnits.setText(state.endDropShuttleUnits);
+        tStartDockingCollars.setText(state.startDockingCollars);
+        tEndDockingCollars.setText(state.endDockingCollars);
+        tStartBattleArmorHandles.setText(state.startBattleArmorHandles);
+        tEndBattleArmorHandles.setText(state.endBattleArmorHandles);
+        tStartCargoBayUnits.setText(state.startCargoBayUnits);
+        tEndCargoBayUnits.setText(state.endCargoBayUnits);
+        tStartNavalRepairFacilities.setText(state.startNavalRepairFacilities);
+        tEndNavalRepairFacilities.setText(state.endNavalRepairFacilities);
+    }
+
+    AdvSearchState.TransportsState getState() {
+        var state = new AdvSearchState.TransportsState();
+        state.startTroopSpace = tStartTroopSpace.getText();
+        state.endTroopSpace = tEndTroopSpace.getText();
+        state.startASFBays = tStartASFBays.getText();
+        state.endASFBays = tEndASFBays.getText();
+        state.startASFDoors = tStartASFDoors.getText();
+        state.endASFDoors = tEndASFDoors.getText();
+        state.startASFUnits = tStartASFUnits.getText();
+        state.endASFUnits = tEndASFUnits.getText();
+        state.startSmallCraftBays = tStartSmallCraftBays.getText();
+        state.endSmallCraftBays = tEndSmallCraftBays.getText();
+        state.startSmallCraftDoors = tStartSmallCraftDoors.getText();
+        state.endSmallCraftDoors = tEndSmallCraftDoors.getText();
+        state.startSmallCraftUnits = tStartSmallCraftUnits.getText();
+        state.endSmallCraftUnits = tEndSmallCraftUnits.getText();
+        state.startMekBays = tStartMekBays.getText();
+        state.endMekBays = tEndMekBays.getText();
+        state.startMekDoors = tStartMekDoors.getText();
+        state.endMekDoors = tEndMekDoors.getText();
+        state.startMekUnits = tStartMekUnits.getText();
+        state.endMekUnits = tEndMekUnits.getText();
+        state.startHeavyVehicleBays = tStartHeavyVehicleBays.getText();
+        state.endHeavyVehicleBays = tEndHeavyVehicleBays.getText();
+        state.startHeavyVehicleDoors = tStartHeavyVehicleDoors.getText();
+        state.endHeavyVehicleDoors = tEndHeavyVehicleDoors.getText();
+        state.startHeavyVehicleUnits = tStartHeavyVehicleUnits.getText();
+        state.endHeavyVehicleUnits = tEndHeavyVehicleUnits.getText();
+        state.startLightVehicleBays = tStartLightVehicleBays.getText();
+        state.endLightVehicleBays = tEndLightVehicleBays.getText();
+        state.startLightVehicleDoors = tStartLightVehicleDoors.getText();
+        state.endLightVehicleDoors = tEndLightVehicleDoors.getText();
+        state.startLightVehicleUnits = tStartLightVehicleUnits.getText();
+        state.endLightVehicleUnits = tEndLightVehicleUnits.getText();
+        state.startProtomekBays = tStartProtomekBays.getText();
+        state.endProtomekBays = tEndProtomekBays.getText();
+        state.startProtomekDoors = tStartProtomekDoors.getText();
+        state.endProtomekDoors = tEndProtomekDoors.getText();
+        state.startProtomekUnits = tStartProtomekUnits.getText();
+        state.endProtomekUnits = tEndProtomekUnits.getText();
+        state.startBattleArmorBays = tStartBattleArmorBays.getText();
+        state.endBattleArmorBays = tEndBattleArmorBays.getText();
+        state.startBattleArmorDoors = tStartBattleArmorDoors.getText();
+        state.endBattleArmorDoors = tEndBattleArmorDoors.getText();
+        state.startBattleArmorUnits = tStartBattleArmorUnits.getText();
+        state.endBattleArmorUnits = tEndBattleArmorUnits.getText();
+        state.startInfantryBays = tStartInfantryBays.getText();
+        state.endInfantryBays = tEndInfantryBays.getText();
+        state.startInfantryDoors = tStartInfantryDoors.getText();
+        state.endInfantryDoors = tEndInfantryDoors.getText();
+        state.startInfantryUnits = tStartInfantryUnits.getText();
+        state.endInfantryUnits = tEndInfantryUnits.getText();
+        state.startSuperHeavyVehicleBays = tStartSuperHeavyVehicleBays.getText();
+        state.endSuperHeavyVehicleBays = tEndSuperHeavyVehicleBays.getText();
+        state.startSuperHeavyVehicleDoors = tStartSuperHeavyVehicleDoors.getText();
+        state.endSuperHeavyVehicleDoors = tEndSuperHeavyVehicleDoors.getText();
+        state.startSuperHeavyVehicleUnits = tStartSuperHeavyVehicleUnits.getText();
+        state.endSuperHeavyVehicleUnits = tEndSuperHeavyVehicleUnits.getText();
+        state.startDropShuttleBays = tStartDropShuttleBays.getText();
+        state.endDropShuttleBays = tEndDropShuttleBays.getText();
+        state.startDropShuttleDoors = tStartDropShuttleDoors.getText();
+        state.endDropShuttleDoors = tEndDropShuttleDoors.getText();
+        state.startDropShuttleUnits = tStartDropShuttleUnits.getText();
+        state.endDropShuttleUnits = tEndDropShuttleUnits.getText();
+        state.startDockingCollars = tStartDockingCollars.getText();
+        state.endDockingCollars = tEndDockingCollars.getText();
+        state.startBattleArmorHandles = tStartBattleArmorHandles.getText();
+        state.endBattleArmorHandles = tEndBattleArmorHandles.getText();
+        state.startCargoBayUnits = tStartCargoBayUnits.getText();
+        state.endCargoBayUnits = tEndCargoBayUnits.getText();
+        state.startNavalRepairFacilities = tStartNavalRepairFacilities.getText();
+        state.endNavalRepairFacilities = tEndNavalRepairFacilities.getText();
+        return state;
     }
 }

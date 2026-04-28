@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -33,7 +33,7 @@
 package megamek.client.ui.panels.phaseDisplay.lobby.sorters;
 
 import megamek.client.ui.panels.phaseDisplay.lobby.MekTableModel;
-import megamek.common.Entity;
+import megamek.common.units.Entity;
 import megamek.common.internationalization.I18n;
 
 /** A Lobby Mek Table sorter that sorts by unit name. */
@@ -41,9 +41,11 @@ public class NameSorter extends MekTableSorter {
 
     /** A Lobby Mek Table sorter that sorts by unit name. */
     public NameSorter(Sorting sorting) {
-        super(I18n.getTextAt(MekTableSorter.RESOURCE_BUNDLE, "NameSorter.DisplayName"), MekTableModel.COL_UNIT, sorting);
+        super(I18n.getTextAt(MekTableSorter.RESOURCE_BUNDLE, "NameSorter.DisplayName"),
+              MekTableModel.COL_UNIT,
+              sorting);
     }
-    
+
     @Override
     public int compare(final Entity a, final Entity b) {
         String aVal = a.getDisplayName();

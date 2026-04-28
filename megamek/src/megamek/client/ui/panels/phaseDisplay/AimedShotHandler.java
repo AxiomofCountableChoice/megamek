@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2016-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay;
 
@@ -22,14 +36,26 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
+import java.util.Arrays;
 
 import megamek.client.ui.Messages;
-import megamek.client.ui.dialogs.phaseDisplay.AimedShotDialog;
 import megamek.client.ui.clientGUI.ClientGUI;
+import megamek.client.ui.dialogs.phaseDisplay.AimedShotDialog;
 import megamek.client.ui.widget.IndexedRadioButton;
-import megamek.common.*;
+import megamek.common.LosEffects;
+import megamek.common.ToHitData;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.compute.Compute;
+import megamek.common.compute.ComputeSideTable;
 import megamek.common.enums.AimingMode;
+import megamek.common.equipment.GunEmplacement;
 import megamek.common.equipment.WeaponMounted;
+import megamek.common.units.Entity;
+import megamek.common.units.LargeSupportTank;
+import megamek.common.units.Mek;
+import megamek.common.units.ProtoMek;
+import megamek.common.units.SuperHeavyTank;
+import megamek.common.units.Tank;
 
 public class AimedShotHandler implements ActionListener, ItemListener {
     private final FiringDisplay firingDisplay;
@@ -58,7 +84,7 @@ public class AimedShotHandler implements ActionListener, ItemListener {
             String[] options;
             boolean[] enabled;
 
-            if (this.firingDisplay.getTarget() instanceof GunEmplacement) {
+            if (this.firingDisplay.getTarget().isBuildingEntityOrGunEmplacement()) {
                 return;
             }
             if (this.firingDisplay.getTarget() instanceof Entity) {
@@ -71,19 +97,19 @@ public class AimedShotHandler implements ActionListener, ItemListener {
                 if (aimingMode.isImmobile()) {
                     aimingAt = Mek.LOC_HEAD;
                 } else if (aimingMode.isTargetingComputer()) {
-                    aimingAt = Mek.LOC_CT;
+                    aimingAt = Mek.LOC_CENTER_TORSO;
                 }
             } else if (this.firingDisplay.getTarget() instanceof Tank) {
-                int side = ComputeSideTable.sideTable(this.firingDisplay.ce(), this.firingDisplay.getTarget());
+                int side = ComputeSideTable.sideTable(this.firingDisplay.currentEntity(), this.firingDisplay.getTarget());
                 if (this.firingDisplay.getTarget() instanceof LargeSupportTank) {
-                    if (side == ToHitData.SIDE_FRONTLEFT) {
-                        aimingAt = LargeSupportTank.LOC_FRONTLEFT;
-                    } else if (side == ToHitData.SIDE_FRONTRIGHT) {
-                        aimingAt = LargeSupportTank.LOC_FRONTRIGHT;
-                    } else if (side == ToHitData.SIDE_REARRIGHT) {
-                        aimingAt = LargeSupportTank.LOC_REARRIGHT;
-                    } else if (side == ToHitData.SIDE_REARLEFT) {
-                        aimingAt = LargeSupportTank.LOC_REARLEFT;
+                    if (side == ToHitData.SIDE_FRONT_LEFT) {
+                        aimingAt = LargeSupportTank.LOC_FRONT_LEFT;
+                    } else if (side == ToHitData.SIDE_FRONT_RIGHT) {
+                        aimingAt = LargeSupportTank.LOC_FRONT_RIGHT;
+                    } else if (side == ToHitData.SIDE_REAR_RIGHT) {
+                        aimingAt = LargeSupportTank.LOC_REAR_RIGHT;
+                    } else if (side == ToHitData.SIDE_REAR_LEFT) {
+                        aimingAt = LargeSupportTank.LOC_REAR_LEFT;
                     }
                 }
                 if (side == ToHitData.SIDE_LEFT) {
@@ -94,8 +120,8 @@ public class AimedShotHandler implements ActionListener, ItemListener {
                 }
                 if (side == ToHitData.SIDE_REAR) {
                     aimingAt = (this.firingDisplay.getTarget() instanceof LargeSupportTank) ? LargeSupportTank.LOC_REAR
-                            : this.firingDisplay.getTarget() instanceof SuperHeavyTank ? SuperHeavyTank.LOC_REAR
-                                    : Tank.LOC_REAR;
+                          : this.firingDisplay.getTarget() instanceof SuperHeavyTank ? SuperHeavyTank.LOC_REAR
+                          : Tank.LOC_REAR;
                 }
                 if (side == ToHitData.SIDE_FRONT) {
                     aimingAt = Tank.LOC_FRONT;
@@ -110,12 +136,12 @@ public class AimedShotHandler implements ActionListener, ItemListener {
             }
 
             asd = new AimedShotDialog(
-                    this.firingDisplay.getClientgui().getFrame(),
-                    Messages.getString("FiringDisplay.AimedShotDialog.title"),
-                    Messages.getString("FiringDisplay.AimedShotDialog.message"),
-                    options, enabled, aimingAt,
-                    (ClientGUI) this.firingDisplay.getClientgui(), this.firingDisplay.getTarget(),
-                    this, this);
+                  this.firingDisplay.getClientGUI().getFrame(),
+                  Messages.getString("FiringDisplay.AimedShotDialog.title"),
+                  Messages.getString("FiringDisplay.AimedShotDialog.message"),
+                  options, enabled, aimingAt,
+                  (ClientGUI) this.firingDisplay.getClientGUI(), this.firingDisplay.getTarget(),
+                  this, this);
 
             asd.setVisible(true);
             this.firingDisplay.updateTarget();
@@ -125,11 +151,9 @@ public class AimedShotHandler implements ActionListener, ItemListener {
     private boolean[] createEnabledMask(int length) {
         boolean[] mask = new boolean[length];
 
-        for (int i = 0; i < length; i++) {
-            mask[i] = true;
-        }
+        Arrays.fill(mask, true);
 
-        int side = ComputeSideTable.sideTable(firingDisplay.ce(), firingDisplay.getTarget());
+        int side = ComputeSideTable.sideTable(firingDisplay.currentEntity(), firingDisplay.getTarget());
 
         // on a tank, remove turret if its missing
         // also, remove body
@@ -143,77 +167,77 @@ public class AimedShotHandler implements ActionListener, ItemListener {
             // remove non-visible sides
             if (firingDisplay.getTarget() instanceof LargeSupportTank) {
                 if (side == ToHitData.SIDE_FRONT) {
-                    mask[LargeSupportTank.LOC_FRONTLEFT] = false;
-                    mask[LargeSupportTank.LOC_REARLEFT] = false;
-                    mask[LargeSupportTank.LOC_REARRIGHT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_LEFT] = false;
+                    mask[LargeSupportTank.LOC_REAR_LEFT] = false;
+                    mask[LargeSupportTank.LOC_REAR_RIGHT] = false;
                     mask[LargeSupportTank.LOC_REAR] = false;
                 }
-                if (side == ToHitData.SIDE_FRONTLEFT) {
-                    mask[LargeSupportTank.LOC_FRONTRIGHT] = false;
-                    mask[LargeSupportTank.LOC_REARLEFT] = false;
-                    mask[LargeSupportTank.LOC_REARRIGHT] = false;
+                if (side == ToHitData.SIDE_FRONT_LEFT) {
+                    mask[LargeSupportTank.LOC_FRONT_RIGHT] = false;
+                    mask[LargeSupportTank.LOC_REAR_LEFT] = false;
+                    mask[LargeSupportTank.LOC_REAR_RIGHT] = false;
                     mask[LargeSupportTank.LOC_REAR] = false;
                 }
-                if (side == ToHitData.SIDE_FRONTRIGHT) {
-                    mask[LargeSupportTank.LOC_FRONTLEFT] = false;
-                    mask[LargeSupportTank.LOC_REARLEFT] = false;
-                    mask[LargeSupportTank.LOC_REARRIGHT] = false;
+                if (side == ToHitData.SIDE_FRONT_RIGHT) {
+                    mask[LargeSupportTank.LOC_FRONT_LEFT] = false;
+                    mask[LargeSupportTank.LOC_REAR_LEFT] = false;
+                    mask[LargeSupportTank.LOC_REAR_RIGHT] = false;
                     mask[LargeSupportTank.LOC_REAR] = false;
                 }
-                if (side == ToHitData.SIDE_REARRIGHT) {
+                if (side == ToHitData.SIDE_REAR_RIGHT) {
                     mask[Tank.LOC_FRONT] = false;
-                    mask[LargeSupportTank.LOC_FRONTLEFT] = false;
-                    mask[LargeSupportTank.LOC_FRONTRIGHT] = false;
-                    mask[LargeSupportTank.LOC_REARLEFT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_LEFT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_RIGHT] = false;
+                    mask[LargeSupportTank.LOC_REAR_LEFT] = false;
                 }
-                if (side == ToHitData.SIDE_REARLEFT) {
+                if (side == ToHitData.SIDE_REAR_LEFT) {
                     mask[Tank.LOC_FRONT] = false;
-                    mask[LargeSupportTank.LOC_FRONTLEFT] = false;
-                    mask[LargeSupportTank.LOC_FRONTRIGHT] = false;
-                    mask[LargeSupportTank.LOC_REARRIGHT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_LEFT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_RIGHT] = false;
+                    mask[LargeSupportTank.LOC_REAR_RIGHT] = false;
                 }
                 if (side == ToHitData.SIDE_REAR) {
                     mask[Tank.LOC_FRONT] = false;
-                    mask[LargeSupportTank.LOC_FRONTLEFT] = false;
-                    mask[LargeSupportTank.LOC_FRONTRIGHT] = false;
-                    mask[LargeSupportTank.LOC_REARRIGHT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_LEFT] = false;
+                    mask[LargeSupportTank.LOC_FRONT_RIGHT] = false;
+                    mask[LargeSupportTank.LOC_REAR_RIGHT] = false;
                 }
             } else if (this.firingDisplay.getTarget() instanceof SuperHeavyTank) {
                 if (side == ToHitData.SIDE_FRONT) {
-                    mask[SuperHeavyTank.LOC_FRONTLEFT] = false;
-                    mask[SuperHeavyTank.LOC_REARLEFT] = false;
-                    mask[SuperHeavyTank.LOC_REARRIGHT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_RIGHT] = false;
                     mask[SuperHeavyTank.LOC_REAR] = false;
                 }
-                if (side == ToHitData.SIDE_FRONTLEFT) {
-                    mask[SuperHeavyTank.LOC_FRONTRIGHT] = false;
-                    mask[SuperHeavyTank.LOC_REARLEFT] = false;
-                    mask[SuperHeavyTank.LOC_REARRIGHT] = false;
+                if (side == ToHitData.SIDE_FRONT_LEFT) {
+                    mask[SuperHeavyTank.LOC_FRONT_RIGHT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_RIGHT] = false;
                     mask[SuperHeavyTank.LOC_REAR] = false;
                 }
-                if (side == ToHitData.SIDE_FRONTRIGHT) {
-                    mask[SuperHeavyTank.LOC_FRONTLEFT] = false;
-                    mask[SuperHeavyTank.LOC_REARLEFT] = false;
-                    mask[SuperHeavyTank.LOC_REARRIGHT] = false;
+                if (side == ToHitData.SIDE_FRONT_RIGHT) {
+                    mask[SuperHeavyTank.LOC_FRONT_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_RIGHT] = false;
                     mask[SuperHeavyTank.LOC_REAR] = false;
                 }
-                if (side == ToHitData.SIDE_REARRIGHT) {
+                if (side == ToHitData.SIDE_REAR_RIGHT) {
                     mask[Tank.LOC_FRONT] = false;
-                    mask[SuperHeavyTank.LOC_FRONTLEFT] = false;
-                    mask[SuperHeavyTank.LOC_FRONTRIGHT] = false;
-                    mask[SuperHeavyTank.LOC_REARLEFT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_RIGHT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_LEFT] = false;
                 }
-                if (side == ToHitData.SIDE_REARLEFT) {
+                if (side == ToHitData.SIDE_REAR_LEFT) {
                     mask[Tank.LOC_FRONT] = false;
-                    mask[SuperHeavyTank.LOC_FRONTLEFT] = false;
-                    mask[SuperHeavyTank.LOC_FRONTRIGHT] = false;
-                    mask[SuperHeavyTank.LOC_REARRIGHT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_RIGHT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_RIGHT] = false;
                 }
                 if (side == ToHitData.SIDE_REAR) {
                     mask[Tank.LOC_FRONT] = false;
-                    mask[SuperHeavyTank.LOC_FRONTLEFT] = false;
-                    mask[SuperHeavyTank.LOC_FRONTRIGHT] = false;
-                    mask[SuperHeavyTank.LOC_REARRIGHT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_LEFT] = false;
+                    mask[SuperHeavyTank.LOC_FRONT_RIGHT] = false;
+                    mask[SuperHeavyTank.LOC_REAR_RIGHT] = false;
                 }
             } else {
                 if (side == ToHitData.SIDE_LEFT) {
@@ -234,7 +258,7 @@ public class AimedShotHandler implements ActionListener, ItemListener {
         // remove main gun on protos that don't have one
         if (this.firingDisplay.getTarget() instanceof ProtoMek) {
             if (!((ProtoMek) this.firingDisplay.getTarget()).hasMainGun()) {
-                mask[ProtoMek.LOC_MAINGUN] = false;
+                mask[ProtoMek.LOC_MAIN_GUN] = false;
             }
         }
 
@@ -246,38 +270,38 @@ public class AimedShotHandler implements ActionListener, ItemListener {
 
         // remove locations hidden by partial cover
         if ((partialCover & LosEffects.COVER_HORIZONTAL) != 0) {
-            mask[Mek.LOC_LLEG] = false;
-            mask[Mek.LOC_RLEG] = false;
+            mask[Mek.LOC_LEFT_LEG] = false;
+            mask[Mek.LOC_RIGHT_LEG] = false;
         }
         if (side == ToHitData.SIDE_FRONT) {
-            if ((partialCover & LosEffects.COVER_LOWLEFT) != 0) {
-                mask[Mek.LOC_RLEG] = false;
+            if ((partialCover & LosEffects.COVER_LOW_LEFT) != 0) {
+                mask[Mek.LOC_RIGHT_LEG] = false;
             }
-            if ((partialCover & LosEffects.COVER_LOWRIGHT) != 0) {
-                mask[Mek.LOC_LLEG] = false;
+            if ((partialCover & LosEffects.COVER_LOW_RIGHT) != 0) {
+                mask[Mek.LOC_LEFT_LEG] = false;
             }
             if ((partialCover & LosEffects.COVER_LEFT) != 0) {
-                mask[Mek.LOC_RARM] = false;
-                mask[Mek.LOC_RT] = false;
+                mask[Mek.LOC_RIGHT_ARM] = false;
+                mask[Mek.LOC_RIGHT_TORSO] = false;
             }
             if ((partialCover & LosEffects.COVER_RIGHT) != 0) {
-                mask[Mek.LOC_LARM] = false;
-                mask[Mek.LOC_LT] = false;
+                mask[Mek.LOC_LEFT_ARM] = false;
+                mask[Mek.LOC_LEFT_TORSO] = false;
             }
         } else {
-            if ((partialCover & LosEffects.COVER_LOWLEFT) != 0) {
-                mask[Mek.LOC_LLEG] = false;
+            if ((partialCover & LosEffects.COVER_LOW_LEFT) != 0) {
+                mask[Mek.LOC_LEFT_LEG] = false;
             }
-            if ((partialCover & LosEffects.COVER_LOWRIGHT) != 0) {
-                mask[Mek.LOC_RLEG] = false;
+            if ((partialCover & LosEffects.COVER_LOW_RIGHT) != 0) {
+                mask[Mek.LOC_RIGHT_LEG] = false;
             }
             if ((partialCover & LosEffects.COVER_LEFT) != 0) {
-                mask[Mek.LOC_LARM] = false;
-                mask[Mek.LOC_LT] = false;
+                mask[Mek.LOC_LEFT_ARM] = false;
+                mask[Mek.LOC_LEFT_TORSO] = false;
             }
             if ((partialCover & LosEffects.COVER_RIGHT) != 0) {
-                mask[Mek.LOC_RARM] = false;
-                mask[Mek.LOC_RT] = false;
+                mask[Mek.LOC_RIGHT_ARM] = false;
+                mask[Mek.LOC_RIGHT_TORSO] = false;
             }
         }
 
@@ -324,8 +348,8 @@ public class AimedShotHandler implements ActionListener, ItemListener {
      */
     public String getAimingLocation() {
         if ((this.firingDisplay.getTarget() != null) && (aimingAt != Entity.LOC_NONE)
-                && !getAimingMode().isNone()) {
-            if (this.firingDisplay.getTarget() instanceof GunEmplacement) {
+              && !getAimingMode().isNone()) {
+            if (this.firingDisplay.getTarget().isBuildingEntityOrGunEmplacement()) {
                 return GunEmplacement.HIT_LOCATION_NAMES[aimingAt];
             } else if (this.firingDisplay.getTarget() instanceof Entity) {
                 return ((Entity) this.firingDisplay.getTarget()).getLocationName(aimingAt);
@@ -335,31 +359,39 @@ public class AimedShotHandler implements ActionListener, ItemListener {
     }
 
     /**
-     * Sets the aiming mode, depending on the target and the attacker.
-     * Against immobile meks, targeting computer aiming mode will be used
-     * if turned on. (This is a hack, but it's the resolution suggested by
-     * the bug submitter, and I don't think it's half bad.
+     * Sets the aiming mode, depending on the target and the attacker. Against immobile meks, targeting computer aiming
+     * mode will be used if turned on. This is a hack, but it's the resolution suggested by the bug submitter, and I
+     * don't think it's half bad.
      */
 
     public void setAimingMode() {
         boolean allowAim;
 
+        // BA cannot use aimed shots - their anti-mek attacks (swarm/leg) don't support
+        // aimed shots, and EI's +2 aimed shot penalty makes it impractical for ranged weapons.
+        // This prevents the confusing aimed shot dialog from appearing for BA.
+        Entity attacker = this.firingDisplay.currentEntity();
+        if (attacker instanceof BattleArmor) {
+            aimingMode = AimingMode.NONE;
+            return;
+        }
+
         // TC against a mek
-        allowAim = ((this.firingDisplay.getTarget() != null) && (this.firingDisplay.ce() != null)
-                && this.firingDisplay.ce().hasAimModeTargComp() && ((this.firingDisplay.getTarget() instanceof Mek)
-                        || (this.firingDisplay.getTarget() instanceof Tank)
-                        || (this.firingDisplay.getTarget() instanceof BattleArmor)
-                        || (this.firingDisplay.getTarget() instanceof ProtoMek)));
+        allowAim = ((this.firingDisplay.getTarget() != null) && (attacker != null)
+              && attacker.hasAimModeTargComp() && ((this.firingDisplay.getTarget() instanceof Mek)
+              || (this.firingDisplay.getTarget() instanceof Tank)
+              || (this.firingDisplay.getTarget() instanceof BattleArmor)
+              || (this.firingDisplay.getTarget() instanceof ProtoMek)));
         if (allowAim) {
             aimingMode = AimingMode.TARGETING_COMPUTER;
             return;
         }
         // immobile mek or gun emplacement
         allowAim = ((this.firingDisplay.getTarget() != null)
-                && ((this.firingDisplay.getTarget().isImmobile()
-                        && ((this.firingDisplay.getTarget() instanceof Mek)
-                                || (this.firingDisplay.getTarget() instanceof Tank)))
-                        || (this.firingDisplay.getTarget() instanceof GunEmplacement)));
+              && ((this.firingDisplay.getTarget().isImmobile()
+              && ((this.firingDisplay.getTarget() instanceof Mek)
+              || (this.firingDisplay.getTarget() instanceof Tank)))
+              || (this.firingDisplay.getTarget().isBuildingEntityOrGunEmplacement())));
         if (allowAim) {
             aimingMode = AimingMode.IMMOBILE;
             return;
@@ -376,10 +408,8 @@ public class AimedShotHandler implements ActionListener, ItemListener {
     }
 
     /**
-     * should aimned shoots be allowed with the passed weapon
+     * should aimed shots be allowed with the passed weapon
      *
-     * @param weapon
-     * @return
      */
     public boolean allowAimedShotWith(WeaponMounted weapon) {
         return Compute.allowAimedShotWith(weapon, aimingMode);

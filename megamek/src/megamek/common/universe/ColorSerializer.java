@@ -32,13 +32,12 @@
  */
 package megamek.common.universe;
 
+import java.awt.Color;
+import java.io.IOException;
+
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
-
-import java.awt.*;
-import java.io.IOException;
 
 public class ColorSerializer extends StdSerializer<Color> {
 
@@ -51,16 +50,16 @@ public class ColorSerializer extends StdSerializer<Color> {
     }
 
     @Override
-    public void serialize(Color value, JsonGenerator jgen, SerializerProvider provider)
+    public void serialize(Color value, JsonGenerator jsonGenerator, SerializerProvider provider)
           throws IOException {
 
-        jgen.writeStartObject();
-        jgen.writeNumberField("red", value.getRed());
-        jgen.writeNumberField("green", value.getGreen());
-        jgen.writeNumberField("blue", value.getBlue());
+        jsonGenerator.writeStartObject();
+        jsonGenerator.writeNumberField("red", value.getRed());
+        jsonGenerator.writeNumberField("green", value.getGreen());
+        jsonGenerator.writeNumberField("blue", value.getBlue());
         if (value.getAlpha() < 255) {
-            jgen.writeNumberField("alpha", value.getAlpha());
+            jsonGenerator.writeNumberField("alpha", value.getAlpha());
         }
-        jgen.writeEndObject();
+        jsonGenerator.writeEndObject();
     }
 }

@@ -1,21 +1,52 @@
 /*
- * MegaMek - Copyright (C) 2000-2002 Ben Mazur (bmazur@sev.org)
- * Copyright (C) 2019 The MegaMek Team
+ * Copyright (C) 2000-2002 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2008-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
 package megamek.common.loaders;
 
-import megamek.common.*;
+import megamek.common.TechConstants;
+import megamek.common.bays.CargoBay;
+import megamek.common.equipment.Engine;
+import megamek.common.equipment.EquipmentType;
+import megamek.common.equipment.IArmorState;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
+import megamek.common.equipment.WeaponType;
+import megamek.common.exceptions.LocationFullException;
+import megamek.common.units.Aero;
+import megamek.common.units.AeroSpaceFighter;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityMovementMode;
 import megamek.common.util.BuildingBlock;
 import megamek.common.verifier.TestEntity;
 
@@ -130,6 +161,9 @@ public class BLKAeroSpaceFighterFile extends BLKFile implements IMekLoader {
             }
         }
 
+        // add Transporters prior to equipment to simplify F_CARGO bay assignment
+        addTransports(a);
+
         if (dataFile.exists("internal_type")) {
             a.setStructureType(dataFile.getDataAsInt("internal_type")[0]);
         } else {
@@ -147,8 +181,8 @@ public class BLKAeroSpaceFighterFile extends BLKFile implements IMekLoader {
         }
 
         a.initializeArmor(armor[BLKAeroSpaceFighterFile.NOSE], Aero.LOC_NOSE);
-        a.initializeArmor(armor[BLKAeroSpaceFighterFile.RW], Aero.LOC_RWING);
-        a.initializeArmor(armor[BLKAeroSpaceFighterFile.LW], Aero.LOC_LWING);
+        a.initializeArmor(armor[BLKAeroSpaceFighterFile.RW], Aero.LOC_RIGHT_WING);
+        a.initializeArmor(armor[BLKAeroSpaceFighterFile.LW], Aero.LOC_LEFT_WING);
         a.initializeArmor(armor[BLKAeroSpaceFighterFile.AFT], Aero.LOC_AFT);
         a.initializeArmor(0, Aero.LOC_WINGS);
         a.initializeArmor(IArmorState.ARMOR_NA, Aero.LOC_FUSELAGE);
@@ -174,6 +208,7 @@ public class BLKAeroSpaceFighterFile extends BLKFile implements IMekLoader {
 
         a.setArmorTonnage(a.getArmorWeight());
         loadQuirks(a);
+        loadSlotlessEquipment(a);
         return a;
     }
 
@@ -273,8 +308,8 @@ public class BLKAeroSpaceFighterFile extends BLKFile implements IMekLoader {
                             // Treat F_CARGO equipment as cargo bays with 1 door, e.g. for ASF with IBB.
                             int idx = t.getTransportBays().size();
                             double baySize = (mount.getName().contains("Container")) ?
-                                                   mount.getTonnage() :
-                                                   mount.getSize();
+                                  mount.getTonnage() :
+                                  mount.getSize();
                             t.addTransporter(new CargoBay(baySize, 1, idx), omniMounted);
                         }
                     } catch (LocationFullException ex) {

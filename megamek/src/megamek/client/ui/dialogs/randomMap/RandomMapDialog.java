@@ -1,15 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2000-2003 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2000-2003 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
  *
- *  This program is free software; you can redistribute it and/or modify it
- *  under the terms of the GNU General Public License as published by the Free
- *  Software Foundation; either version 2 of the License, or (at your option)
- *  any later version.
+ * This file is part of MegaMek.
  *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- *  or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- *  for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.randomMap;
 
@@ -32,7 +52,6 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Set;
-
 import javax.swing.*;
 import javax.swing.border.LineBorder;
 import javax.swing.border.TitledBorder;
@@ -43,10 +62,10 @@ import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.CloseAction;
 import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.clientGUI.IMapSettingsObserver;
-import megamek.client.ui.util.VerifyIsPositiveInteger;
+import megamek.client.ui.util.verifier.VerifyIsPositiveInteger;
 import megamek.client.ui.widget.VerifiableTextField;
 import megamek.codeUtilities.StringUtility;
-import megamek.common.MapSettings;
+import megamek.common.loaders.MapSettings;
 import megamek.logging.MMLogger;
 
 /**
@@ -56,8 +75,6 @@ public class RandomMapDialog extends JDialog implements ActionListener {
 
     private static final MMLogger LOGGER = MMLogger.create(RandomMapDialog.class);
 
-    // External helpers.
-    private final JFrame parentFrame;
     private final IMapSettingsObserver mapSettingsObserver;
     private final Client client;
     private final GUIPreferences guip = GUIPreferences.getInstance();
@@ -75,7 +92,7 @@ public class RandomMapDialog extends JDialog implements ActionListener {
 
     // General map settings.
     private final JLabel mapSizeLabel = new JLabel(Messages.getString("RandomMapDialog.BoardSize"));
-    private final JLabel mapSizeSeperatorLabel = new JLabel("x");
+    private final JLabel mapSizeSeparatorLabel = new JLabel("x");
     private final JLabel mapThemeLabel = new JLabel(Messages.getString("RandomMapDialog.labTheme"));
     private final VerifiableTextField mapWidthField = new VerifiableTextField(4);
     private final VerifiableTextField mapHeightField = new VerifiableTextField(4);
@@ -102,10 +119,10 @@ public class RandomMapDialog extends JDialog implements ActionListener {
      * @param mapSettings         The {@link MapSettings} describing the map to be generated.
      */
     public RandomMapDialog(JFrame parent, IMapSettingsObserver mapSettingsObserver, Client client,
-            MapSettings mapSettings) {
+          MapSettings mapSettings) {
         super(parent, Messages.getString("RandomMapDialog.title"), true);
         this.mapSettings = mapSettings;
-        parentFrame = parent;
+        // External helpers.
         this.mapSettingsObserver = mapSettingsObserver;
         this.client = client;
         basicPanel = new RandomMapPanelBasicPanel(mapSettings);
@@ -124,7 +141,7 @@ public class RandomMapDialog extends JDialog implements ActionListener {
         pack();
         validate();
         setSize(new Dimension(600, 600));
-        setLocationRelativeTo(parentFrame);
+        setLocationRelativeTo(parent);
 
         String closeAction = "closeAction";
         final KeyStroke escape = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
@@ -230,7 +247,7 @@ public class RandomMapDialog extends JDialog implements ActionListener {
 
         // Row 2, Column 3.
         constraints.gridx++;
-        panel.add(mapSizeSeperatorLabel, constraints);
+        panel.add(mapSizeSeparatorLabel, constraints);
 
         // Row 2, Column 4.
         constraints.gridx++;
@@ -257,7 +274,7 @@ public class RandomMapDialog extends JDialog implements ActionListener {
     }
 
     private JPanel setupControlsPanel() {
-        JPanel outerpanel = new JPanel(new BorderLayout());
+        JPanel outerPanel = new JPanel(new BorderLayout());
 
         // The left-side panel contains only the Show on startup option
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 2, 2));
@@ -289,19 +306,19 @@ public class RandomMapDialog extends JDialog implements ActionListener {
         cancelButton.setMnemonic(cancelButton.getText().charAt(0));
         panel.add(cancelButton);
 
-        outerpanel.add(leftPanel, BorderLayout.LINE_START);
-        outerpanel.add(panel, BorderLayout.CENTER);
+        outerPanel.add(leftPanel, BorderLayout.LINE_START);
+        outerPanel.add(panel, BorderLayout.CENTER);
 
-        return outerpanel;
+        return outerPanel;
     }
 
     private File fileBrowser(String title, String targetDir, String fileName, final String extension,
-            final String description, boolean isSave) {
+          final String description, boolean isSave) {
 
         // Create a new instance of the file chooser.
         JFileChooser fileChooser = new JFileChooser(targetDir);
 
-        // Only allow selectoin of one file.
+        // Only allow selection of one file.
         fileChooser.setMultiSelectionEnabled(false);
 
         // Give the file chooser a title.
@@ -336,7 +353,7 @@ public class RandomMapDialog extends JDialog implements ActionListener {
             option = fileChooser.showOpenDialog(null);
         }
 
-        // If the user did chose to open...
+        // If the user did choose to open...
         if (JFileChooser.APPROVE_OPTION == option) {
             // Get the file that was selected and return it.
             if (fileChooser.getSelectedFile().getPath().endsWith(extension)) {
@@ -351,7 +368,7 @@ public class RandomMapDialog extends JDialog implements ActionListener {
     private void doLoad() {
         // Get the user-selected file.
         File selectedFile = fileBrowser(Messages.getString("RandomMapDialog.FileLoadDialog"),
-                "data" + File.separator + "mapgen", null, ".xml", "(*.xml)", false);
+              "data" + File.separator + "mapgen", null, ".xml", "(*.xml)", false);
         if (selectedFile == null) {
             return;
         }
@@ -386,10 +403,10 @@ public class RandomMapDialog extends JDialog implements ActionListener {
 
         // Have the user choose a file to save the new settings to.
         File selectedFile = fileBrowser(
-                Messages.getString("RandomMapDialog.FileSaveDialog"), "data"
-                        + File.separator + "mapgen",
-                null, ".xml", "(*.xml)",
-                true);
+              Messages.getString("RandomMapDialog.FileSaveDialog"), "data"
+                    + File.separator + "mapgen",
+              null, ".xml", "(*.xml)",
+              true);
 
         // If no file was selected, we're done.
         if (selectedFile == null) {
@@ -495,9 +512,9 @@ public class RandomMapDialog extends JDialog implements ActionListener {
     private void loadWindowSettings() {
         GUIPreferences guip = GUIPreferences.getInstance();
         setSize(guip.getInt(GUIPreferences.RND_MAP_SIZE_WIDTH),
-                guip.getInt(GUIPreferences.RND_MAP_SIZE_HEIGHT));
+              guip.getInt(GUIPreferences.RND_MAP_SIZE_HEIGHT));
         setLocation(guip.getInt(GUIPreferences.RND_MAP_POS_X),
-                guip.getInt(GUIPreferences.RND_MAP_POS_Y));
+              guip.getInt(GUIPreferences.RND_MAP_POS_Y));
         // Restore the advanced view if it was used last
         if (guip.getBoolean(GUIPreferences.RND_MAP_ADVANCED)) {
             switchView(true, false);

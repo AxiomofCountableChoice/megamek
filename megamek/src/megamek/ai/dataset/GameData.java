@@ -36,13 +36,14 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 
-import megamek.common.Coords;
-import megamek.common.Entity;
-import megamek.common.Game;
-import megamek.common.Minefield;
+import megamek.common.board.Coords;
+import megamek.common.equipment.Minefield;
+import megamek.common.game.Game;
+import megamek.common.units.Entity;
 
 /**
  * Container for game state data using a map-based approach with enum keys.
+ *
  * @author Luana Coppio
  */
 public class GameData extends EntityDataMap<GameData.Field> {
@@ -107,7 +108,9 @@ public class GameData extends EntityDataMap<GameData.Field> {
 
     /**
      * Creates a GameData from a Game.
+     *
      * @param game The game to extract data from
+     *
      * @return A populated GameData
      */
     public static GameData fromGame(Game game) {
@@ -144,6 +147,7 @@ public class GameData extends EntityDataMap<GameData.Field> {
 
     /**
      * Gets the list of unit states in this game data.
+     *
      * @return List of UnitStateMap objects
      */
     @SuppressWarnings("unchecked")
@@ -153,6 +157,7 @@ public class GameData extends EntityDataMap<GameData.Field> {
 
     /**
      * Gets the list of minefields in this game data.
+     *
      * @return List of MinefieldData objects
      */
     @SuppressWarnings("unchecked")

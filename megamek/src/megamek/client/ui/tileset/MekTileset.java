@@ -1,22 +1,36 @@
 /*
  * Copyright (c) 2000-2002 - Ben Mazur (bmazur@sev.org)
  * Copyright (c) 2013 - Edward Cullen (eddy@obsessedcomputers.co.uk)
- * Copyright (c) 2020 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2002-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.tileset;
 
@@ -32,10 +46,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-import megamek.common.*;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.equipment.GunEmplacement;
+import megamek.common.equipment.HandheldWeapon;
+import megamek.common.units.*;
 import megamek.common.util.ImageUtil;
 import megamek.common.util.fileUtils.MegaMekFile;
 import megamek.common.util.fileUtils.StandardTextfileStreamTokenizer;
+import megamek.common.weapons.TeleMissile;
 import megamek.logging.MMLogger;
 
 /**
@@ -60,7 +78,7 @@ public class MekTileset {
     private static final String QUADVEE_STRING = "default_quadvee";
     private static final String QUADVEE_VEHICLE_STRING = "default_quadvee_vehicle";
     private static final String LAM_MEK_STRING = "default_lam_mek";
-    private static final String LAM_AIRMEK_STRING = "default_lam_airmek";
+    private static final String LAM_AIRMEK_STRING = "default_lam_air_mek";
     private static final String LAM_FIGHTER_STRING = "default_lam_fighter";
     private static final String TRIPOD_STRING = "default_tripod";
     private static final String TRACKED_STRING = "default_tracked";
@@ -115,7 +133,7 @@ public class MekTileset {
     private MekEntry default_quadvee;
     private MekEntry default_quadvee_vehicle;
     private MekEntry default_lam_mek;
-    private MekEntry default_lam_airmek;
+    private MekEntry default_lam_air_mek;
     private MekEntry default_lam_fighter;
     private MekEntry default_tripod;
     private MekEntry default_tracked;
@@ -189,7 +207,7 @@ public class MekTileset {
 
         if (entry == null) {
             LOGGER.warn("Entry is null, please make sure that there is a default entry for {} in both mekset.txt and" +
-                              " wreckset.txt. Defaulting to {}", entity.getShortNameRaw(), LIGHT_STRING);
+                  " wreckset.txt. Defaulting to {}", entity.getShortNameRaw(), LIGHT_STRING);
             entry = default_light;
         }
 
@@ -235,7 +253,7 @@ public class MekTileset {
         } else if (entity instanceof LandAirMek) {
             return switch (entity.getConversionMode()) {
                 case LandAirMek.CONV_MODE_FIGHTER -> default_lam_fighter;
-                case LandAirMek.CONV_MODE_AIRMEK -> default_lam_airmek;
+                case LandAirMek.CONV_MODE_AIR_MEK -> default_lam_air_mek;
                 default -> default_lam_mek;
             };
         } else if (entity instanceof Mek) {
@@ -282,37 +300,48 @@ public class MekTileset {
                     };
             }
         } else if (entity instanceof Aero) {
-            if (entity instanceof SpaceStation) {
-                return default_space_station;
-            } else if (entity instanceof Warship) {
-                return default_warship;
-            } else if (entity instanceof Jumpship) {
-                return default_jumpship;
-            } else if (entity instanceof Dropship ds) {
-                return switch (secondaryPos) {
-                    case 0 -> ds.isSpheroid() ? default_dropship_sphere_0 : default_dropship_aero_0;
-                    case 1 -> ds.isSpheroid() ? default_dropship_sphere_1 : default_dropship_aero_1;
-                    case 2 -> ds.isSpheroid() ? default_dropship_sphere_2 : default_dropship_aero_2;
-                    case 3 -> ds.isSpheroid() ? default_dropship_sphere_3 : default_dropship_aero_3;
-                    case 4 -> ds.isSpheroid() ? default_dropship_sphere_4 : default_dropship_aero_4;
-                    case 5 -> ds.isSpheroid() ? default_dropship_sphere_5 : default_dropship_aero_5;
-                    case 6 -> ds.isSpheroid() ? default_dropship_sphere_6 : default_dropship_aero_6;
-                    default -> ds.isSpheroid() ? default_dropship_sphere : default_dropship_aero;
-                };
-            } else if (entity instanceof FighterSquadron) {
-                return default_fighter_squadron;
-            } else if (entity instanceof SmallCraft sc) {
-                if (sc.isSpheroid()) {
-                    return default_small_craft_sphere;
-                } else {
-                    return default_small_craft_aero;
+            switch (entity) {
+                case SpaceStation ignored -> {
+                    return default_space_station;
                 }
-            } else if (entity instanceof TeleMissile) {
-                return default_tele_missile;
-            } else {
-                return default_aero;
+                case Warship ignored -> {
+                    return default_warship;
+                }
+                case Jumpship ignored -> {
+                    return default_jumpship;
+                }
+                case Dropship ds -> {
+                    return switch (secondaryPos) {
+                        case 0 -> ds.isSpheroid() ? default_dropship_sphere_0 : default_dropship_aero_0;
+                        case 1 -> ds.isSpheroid() ? default_dropship_sphere_1 : default_dropship_aero_1;
+                        case 2 -> ds.isSpheroid() ? default_dropship_sphere_2 : default_dropship_aero_2;
+                        case 3 -> ds.isSpheroid() ? default_dropship_sphere_3 : default_dropship_aero_3;
+                        case 4 -> ds.isSpheroid() ? default_dropship_sphere_4 : default_dropship_aero_4;
+                        case 5 -> ds.isSpheroid() ? default_dropship_sphere_5 : default_dropship_aero_5;
+                        case 6 -> ds.isSpheroid() ? default_dropship_sphere_6 : default_dropship_aero_6;
+                        default -> ds.isSpheroid() ? default_dropship_sphere : default_dropship_aero;
+                    };
+                }
+                case FighterSquadron ignored -> {
+                    return default_fighter_squadron;
+                }
+                case SmallCraft sc -> {
+                    if (sc.isSpheroid()) {
+                        return default_small_craft_sphere;
+                    } else {
+                        return default_small_craft_aero;
+                    }
+                }
+                case TeleMissile ignored -> {
+                    return default_tele_missile;
+                }
+                default -> {
+                    return default_aero;
+                }
             }
         } else if (entity instanceof HandheldWeapon) {
+            return default_handheld_weapon;
+        } else if (entity instanceof AbstractBuildingEntity) {
             return default_handheld_weapon;
         }
 
@@ -335,7 +364,7 @@ public class MekTileset {
                         } catch (IOException e) {
                             LOGGER.error("... failed: {}.", e.getMessage(), e);
                         }
-                    } else if (tokens.get(0).equals(CHASSIS_KEY)) {
+                    } else if (tokens.getFirst().equals(CHASSIS_KEY)) {
                         chassis.put(tokens.get(1).toUpperCase(Locale.ROOT), new MekEntry(tokens.get(2)));
                     } else {
                         exact.put(tokens.get(1).toUpperCase(Locale.ROOT), new MekEntry(tokens.get(2)));
@@ -356,7 +385,7 @@ public class MekTileset {
         default_quadvee = exact.get(QUADVEE_STRING.toUpperCase(Locale.ROOT));
         default_quadvee_vehicle = exact.get(QUADVEE_VEHICLE_STRING.toUpperCase(Locale.ROOT));
         default_lam_mek = exact.get(LAM_MEK_STRING.toUpperCase(Locale.ROOT));
-        default_lam_airmek = exact.get(LAM_AIRMEK_STRING.toUpperCase(Locale.ROOT));
+        default_lam_air_mek = exact.get(LAM_AIRMEK_STRING.toUpperCase(Locale.ROOT));
         default_lam_fighter = exact.get(LAM_FIGHTER_STRING.toUpperCase(Locale.ROOT));
         default_tripod = exact.get(TRIPOD_STRING.toUpperCase(Locale.ROOT));
         default_tracked = exact.get(TRACKED_STRING.toUpperCase(Locale.ROOT));
@@ -404,7 +433,7 @@ public class MekTileset {
 
     boolean hasOnlyChassisMatch(Entity entity) {
         return !exact.containsKey(entity.getShortNameRaw().toUpperCase(Locale.ROOT)) &&
-                     chassis.containsKey(entity.getShortNameRaw().toUpperCase(Locale.ROOT));
+              chassis.containsKey(entity.getShortNameRaw().toUpperCase(Locale.ROOT));
     }
 
     /**
@@ -430,5 +459,10 @@ public class MekTileset {
                 LOGGER.warn("Received null image from ImageUtil.loadImageFromFile! File: {}", fin);
             }
         }
+
+        public String getImageFile() {
+            return imageFile;
+        }
+
     }
 }

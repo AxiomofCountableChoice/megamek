@@ -1,30 +1,46 @@
 /*
  * Copyright (c) 2002, 2003 Ben Mazur (bmazur@sev.org)
- * Copyright (c) 2022-2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2010-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.advancedsearch;
 
-import java.awt.*;
-
-import javax.swing.*;
+import java.awt.Component;
+import javax.swing.JOptionPane;
+import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
 
 import com.formdev.flatlaf.extras.components.FlatTriStateCheckBox;
 import megamek.client.ui.Messages;
+import megamek.common.equipment.EquipmentType;
 
 /**
  * Panel that allows the user to create a unit filter.
@@ -45,13 +61,12 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
     private final TransportsSearchTab transportsPanel;
     private final WeaponSearchTab weaponEqPanel;
 
-    private boolean isCanceled = true;
-
     /**
      * Constructs a new advanced search panel for Total Warfare values
      */
     public TWAdvancedSearchPanel(int year) {
         gameYear = year;
+        EquipmentType.initializeTypes();
 
         basePanel = new MiscSearchTab();
         weaponEqPanel = new WeaponSearchTab(this);
@@ -67,10 +82,10 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
 
         addTab(msg_unitType, new StandardScrollPane(unitTypePanel));
         addTab(msg_base, new StandardScrollPane(basePanel));
-        // The weapon panel must manage its own scrollpane!
+        // The weapon panel must manage its own scroll pane!
         addTab(msg_weaponEq, weaponEqPanel);
         addTab(msg_transports, new StandardScrollPane(transportsPanel));
-        addTab(msg_quirkType, new StandardScrollPane(quirkPanel));
+        addTab(msg_quirkType, quirkPanel);
     }
 
     /**
@@ -87,11 +102,7 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
         weaponEqPanel.txtWEEqExp.setText(mekFilter.getEquipmentExpression());
         weaponEqPanel.adaptTokenButtons();
         setVisible(true);
-        if (isCanceled) {
-            mekFilter = currFilter;
-        } else {
-            updateMekSearchFilter();
-        }
+        mekFilter = currFilter;
         return mekFilter;
     }
 
@@ -100,11 +111,11 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
             mekFilter = new MekSearchFilter(mekFilter);
             mekFilter.createFilterExpressionFromTokens(weaponEqPanel.filterTokens);
             updateMekSearchFilter();
-        } catch (MekSearchFilter.FilterParsingException e) {
+        } catch (FilterParsingException e) {
             JOptionPane.showMessageDialog(this,
-                "Error parsing filter expression!\n\n" + e.msg,
-                "Filter Expression Parsing Error",
-                JOptionPane.ERROR_MESSAGE);
+                  "Error parsing filter expression!\n\n" + e.msg,
+                  "Filter Expression Parsing Error",
+                  JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -145,7 +156,7 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
         mekFilter.iPatchwork = basePanel.cPatchwork.getSelectedIndex();
 
         mekFilter.source = basePanel.tSource.getText();
-        mekFilter.mulid = basePanel.tMULId.getText();
+        mekFilter.mulID = basePanel.tMULId.getText();
 
         mekFilter.sStartYear = basePanel.tStartYear.getText();
         mekFilter.sEndYear = basePanel.tEndYear.getText();
@@ -163,7 +174,7 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
         basePanel.listGyroType.toIntegerResultLists(mekFilter.gyroType, mekFilter.gyroTypeExclude);
         basePanel.listTechLevel.toIntegerResultLists(mekFilter.techLevel, mekFilter.techLevelExclude);
         basePanel.listTechBase.toStringResultLists(mekFilter.techBase, mekFilter.techBaseExclude);
-        basePanel.listMoveMode.toStringResultLists(mekFilter.movemodes, mekFilter.movemodeExclude);
+        basePanel.listMoveMode.toStringResultLists(mekFilter.moveModes, mekFilter.moveModeExclude);
     }
 
     private void updateTransports() {
@@ -233,12 +244,12 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
         mekFilter.sStartSuperHeavyVehicleUnits = transportsPanel.tStartSuperHeavyVehicleUnits.getText();
         mekFilter.sEndSuperHeavyVehicleUnits = transportsPanel.tEndSuperHeavyVehicleUnits.getText();
 
-        mekFilter.sStartDropshuttleBays = transportsPanel.tStartDropshuttleBays.getText();
-        mekFilter.sEndDropshuttleBays = transportsPanel.tEndDropshuttleBays.getText();
-        mekFilter.sStartDropshuttleDoors = transportsPanel.tStartDropshuttleDoors.getText();
-        mekFilter.sEndDropshuttleDoors = transportsPanel.tEndDropshuttleDoors.getText();
-        mekFilter.sStartDropshuttleUnits = transportsPanel.tStartDropshuttleUnits.getText();
-        mekFilter.sEndDropshuttleUnits = transportsPanel.tEndDropshuttleUnits.getText();
+        mekFilter.sStartDropShuttleBays = transportsPanel.tStartDropShuttleBays.getText();
+        mekFilter.sEndDropShuttleBays = transportsPanel.tEndDropShuttleBays.getText();
+        mekFilter.sStartDropShuttleDoors = transportsPanel.tStartDropShuttleDoors.getText();
+        mekFilter.sEndDropShuttleDoors = transportsPanel.tEndDropShuttleDoors.getText();
+        mekFilter.sStartDropShuttleUnits = transportsPanel.tStartDropShuttleUnits.getText();
+        mekFilter.sEndDropShuttleUnits = transportsPanel.tEndDropShuttleUnits.getText();
 
         mekFilter.sStartDockingCollars = transportsPanel.tStartDockingCollars.getText();
         mekFilter.sEndDockingCollars = transportsPanel.tEndDockingCollars.getText();
@@ -257,12 +268,12 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
         mekFilter.quirkInclude = quirkPanel.cQuirkInclude.getSelectedIndex();
         mekFilter.quirkExclude = quirkPanel.cQuirkExclude.getSelectedIndex();
 
-        quirkPanel.listQuirkType.toStringResultLists(mekFilter.quirkType, mekFilter.quirkTypeExclude);
+        quirkPanel.chassisQuirks.toStringResultLists(mekFilter.quirkType, mekFilter.quirkTypeExclude);
 
         mekFilter.weaponQuirkInclude = quirkPanel.cWeaponQuirkInclude.getSelectedIndex();
         mekFilter.weaponQuirkExclude = quirkPanel.cWeaponQuirkExclude.getSelectedIndex();
 
-        quirkPanel.listWeaponQuirkType.toStringResultLists(mekFilter.weaponQuirkType, mekFilter.weaponQuirkTypeExclude);
+        quirkPanel.weaponQuirks.toStringResultLists(mekFilter.weaponQuirkType, mekFilter.weaponQuirkTypeExclude);
     }
 
     private void updateUnitTypes() {
@@ -316,15 +327,6 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
         updateUnitTypes();
     }
 
-    public int getValue(JButton b) {
-        return switch (b.getText()) {
-            case "\u2610" -> 0;
-            case "\u2611" -> 1;
-            case "\u2612" -> 2;
-            default -> -1;
-        };
-    }
-
     public int getValue(FlatTriStateCheckBox b) {
         return switch (b.getState()) {
             case INDETERMINATE -> 2;
@@ -341,5 +343,24 @@ public class TWAdvancedSearchPanel extends JTabbedPane {
             getHorizontalScrollBar().setUnitIncrement(16);
             setBorder(null);
         }
+    }
+
+    void applyState(AdvSearchState.TwState state) {
+        unitTypePanel.applyState(state.unitTypeState);
+        transportsPanel.applyState(state.transportsState);
+        quirkPanel.applyState(state.quirksState);
+        basePanel.applyState(state.miscState);
+        weaponEqPanel.applyState(state.equipmentState);
+        prepareFilter();
+    }
+
+    AdvSearchState.TwState getState() {
+        var state = new AdvSearchState.TwState();
+        state.unitTypeState = unitTypePanel.getState();
+        state.transportsState = transportsPanel.getState();
+        state.quirksState = quirkPanel.getState();
+        state.miscState = basePanel.getState();
+        state.equipmentState = weaponEqPanel.getState();
+        return state;
     }
 }

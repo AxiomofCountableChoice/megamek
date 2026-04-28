@@ -32,32 +32,34 @@
  */
 package megamek.common.moves;
 
-import megamek.common.Entity;
-import megamek.common.Game;
-import megamek.common.pathfinder.CachedEntityState;
-
 import java.util.EnumSet;
 import java.util.Set;
 
+import megamek.common.enums.MoveStepType;
+import megamek.common.game.Game;
+import megamek.common.pathfinder.CachedEntityState;
+import megamek.common.units.Entity;
+
 /**
- * This class handles the launch and drop step of a unit.
- * It is used in the MoveStep compilation to calculate the movement of a unit.
+ * This class handles the launch and drop step of a unit. It is used in the MoveStep compilation to calculate the
+ * movement of a unit.
+ *
  * @author Luana Coppio
  * @since 0.50.07
  */
 class LaunchDropStep implements PhasePass {
-    private static final EnumSet<MovePath.MoveStepType> TYPES = EnumSet.of(MovePath.MoveStepType.LAUNCH,
-          MovePath.MoveStepType.DROP);
+    private static final EnumSet<MoveStepType> TYPES = EnumSet.of(MoveStepType.LAUNCH,
+          MoveStepType.DROP);
 
     @Override
-    public Set<MovePath.MoveStepType> getTypesOfInterest() {
+    public Set<MoveStepType> getTypesOfInterest() {
         return TYPES;
     }
 
     @Override
     public PhasePassResult preCompilation(final MoveStep moveStep, final Game game, final Entity entity, MoveStep prev,
           final CachedEntityState cachedEntityState) {
-        moveStep.setHasEverUnloaded(true);
+        moveStep.setUnloaded(true);
         moveStep.setMp(0);
         return PhasePassResult.BREAK;
     }

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2002, 2004 Josh Yockey
- * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2002-2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -71,29 +71,28 @@ import megamek.client.ui.dialogs.abstractDialogs.BVDisplayDialog;
 import megamek.client.ui.dialogs.advancedsearch.AdvancedSearchDialog;
 import megamek.client.ui.dialogs.advancedsearch.MekSearchFilter;
 import megamek.client.ui.models.XTableColumnModel;
-import megamek.common.Entity;
-import megamek.common.EntityWeightClass;
-import megamek.common.MekFileParser;
-import megamek.common.MekSummary;
-import megamek.common.MekSummaryCache;
 import megamek.common.TechConstants;
-import megamek.common.UnitType;
 import megamek.common.annotations.Nullable;
-import megamek.common.battlevalue.BVCalculator;
+import megamek.common.battleValue.BVCalculator;
 import megamek.common.internationalization.I18n;
 import megamek.common.loaders.EntityLoadingException;
+import megamek.common.loaders.MekFileParser;
+import megamek.common.loaders.MekSummary;
+import megamek.common.loaders.MekSummaryCache;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.preference.ClientPreferences;
 import megamek.common.preference.PreferenceManager;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityWeightClass;
+import megamek.common.units.UnitType;
 import megamek.common.util.sorter.NaturalOrderComparator;
 import megamek.logging.MMLogger;
 
 /**
- * This is a heavily reworked version of the original MekSelectorDialog which
- * brings up a list of units for the player to select to add to their forces.
- * The original list has been changed to a sortable table and a text filter
- * is used for advanced searching.
+ * This is a heavily reworked version of the original MekSelectorDialog which brings up a list of units for the player
+ * to select to add to their forces. The original list has been changed to a sortable table and a text filter is used
+ * for advanced searching.
  */
 public abstract class AbstractUnitSelectorDialog extends JDialog implements Runnable, KeyListener,
                                                                             ActionListener, ListSelectionListener {
@@ -119,20 +118,17 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     protected JList<String> listTechLevel = new JList<>();
     private JLabel lblCount;
     /**
-     * We need to map the selected index of listTechLevel to the actual TL it
-     * belongs to
+     * We need to map the selected index of listTechLevel to the actual TL it belongs to
      */
     protected Map<Integer, Integer> techLevelListToIndex = new HashMap<>();
     protected JComboBox<String> comboUnitType = new JComboBox<>();
     protected JComboBox<String> comboWeight = new JComboBox<>();
-    private JPanel panelFilterButtons;
     protected JLabel labelImage = new JLabel(""); // inline to avoid potential null pointer issues
     protected JTable tableUnits;
     protected JTextField textFilter;
     protected JTextField textGunnery;
     protected JTextField textPilot;
     protected EntityViewPane panePreview;
-    private JPanel selectionPanel;
     private JSplitPane splitPane;
 
     private StringBuffer searchBuffer = new StringBuffer();
@@ -158,7 +154,6 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     private AdvancedSearchDialog advancedSearchDialog;
 
     protected TableRowSorter<MekTableModel> sorter;
-    private JScrollPane scrollTableUnits;
 
     protected GameOptions gameOptions = null;
     protected boolean enableYearLimits = false;
@@ -193,8 +188,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     public abstract void updateOptionValues();
 
     /**
-     * This has been set up to permit preference implementation in anything that
-     * extends this
+     * This has been set up to permit preference implementation in anything that extends this
      */
     private void setUserPreferences() {
         comboUnitType.setSelectedIndex(GUIP.getMekSelectorUnitType());
@@ -244,7 +238,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         // endregion Unit Preview Pane
 
         // region Selection Panel
-        selectionPanel = new JPanel(new GridBagLayout());
+        JPanel selectionPanel = new JPanel(new GridBagLayout());
 
         tableUnits = new JTable(unitModel);
         tableUnits.setColumnModel(unitColumnModel);
@@ -262,7 +256,9 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         tableUnits.getColumnModel().getColumn(MekTableModel.COL_LEVEL).setCellRenderer(centeredRenderer);
         tableUnits.getColumnModel().getColumn(MekTableModel.COL_VTL).setCellRenderer(centeredRenderer);
 
-        tableUnits.setSelectionMode(multiSelect ? ListSelectionModel.MULTIPLE_INTERVAL_SELECTION : ListSelectionModel.SINGLE_SELECTION);
+        tableUnits.setSelectionMode(multiSelect ?
+              ListSelectionModel.MULTIPLE_INTERVAL_SELECTION :
+              ListSelectionModel.SINGLE_SELECTION);
         sorter = new TableRowSorter<>(unitModel);
         sorter.setComparator(MekTableModel.COL_CHASSIS, new NaturalOrderComparator());
         sorter.setComparator(MekTableModel.COL_MODEL, new NaturalOrderComparator());
@@ -285,10 +281,10 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         variableRulesLevelColumn = tableUnits.getColumnModel().getColumn(MekTableModel.COL_VTL);
         togglePV(false);
         toggleVtl(isVTL());
-        scrollTableUnits = new JScrollPane(tableUnits);
+        JScrollPane scrollTableUnits = new JScrollPane(tableUnits);
         scrollTableUnits.setName("scrollTableUnits");
 
-        panelFilterButtons = new JPanel(new GridBagLayout());
+        JPanel panelFilterButtons = new JPanel(new GridBagLayout());
 
         JLabel labelType = new JLabel(Messages.getString("MekSelectorDialog.m_labelType"));
         labelType.setToolTipText(Messages.getString("MekSelectorDialog.m_labelType.ToolTip"));
@@ -334,7 +330,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         DefaultComboBoxModel<String> unitTypeModel = new DefaultComboBoxModel<>();
         unitTypeModel.addElement(Messages.getString("MekSelectorDialog.All"));
         for (int i = 0; i < UnitType.SIZE; i++) {
-            // the AERO type does not match any units and there are no preconstructed life boats or escape pods
+            // the AERO type does not match any units and there are no preconstructed lifeboats or escape pods
             if (i != UnitType.AERO) {
                 unitTypeModel.addElement(UnitType.getTypeDisplayableName(i));
             }
@@ -572,7 +568,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         }
 
         int maxTech = switch (gameTechLevel) {
-            case TechConstants.T_SIMPLE_INTRO -> TechConstants.T_INTRO_BOXSET;
+            case TechConstants.T_SIMPLE_INTRO -> TechConstants.T_INTRO_BOX_SET;
             case TechConstants.T_SIMPLE_STANDARD -> TechConstants.T_TW_ALL;
             case TechConstants.T_SIMPLE_ADVANCED -> TechConstants.T_CLAN_ADVANCED;
             case TechConstants.T_SIMPLE_EXPERIMENTAL -> TechConstants.T_CLAN_EXPERIMENTAL;
@@ -622,13 +618,11 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     protected abstract JPanel createButtonsPanel();
 
     /**
-     * This is the function to add a unit to the current interface. That could be a
-     * purchase (MekHQ),
-     * addition (MekHQ), or unit selection (MegaMek/MegaMekLab)
+     * This is the function to add a unit to the current interface. That could be a purchase (MekHQ), addition (MekHQ),
+     * or unit selection (MegaMek/MegaMekLab)
      *
-     * @param modifier a boolean to modify how the function will work. In MegaMek
-     *                 this is used to
-     *                 close the dialog, in MekHQ to GM add.
+     * @param modifier a boolean to modify how the function will work. In MegaMek this is used to close the dialog, in
+     *                 MekHQ to GM add.
      */
     protected abstract void select(boolean modifier);
 
@@ -690,8 +684,8 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
             return;
         }
         sorter.setRowFilter(unitTypeFilter);
-        String msg_unitcount = Messages.getString("MekSelectorDialog.UnitCount");
-        lblCount.setText(String.format(" %s %d", msg_unitcount, sorter.getViewRowCount()));
+        String msgUnitCount = Messages.getString("MekSelectorDialog.UnitCount");
+        lblCount.setText(String.format(" %s %d", msgUnitCount, sorter.getViewRowCount()));
     }
 
     protected boolean matchesTextFilter(MekSummary unit) {
@@ -735,8 +729,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
             // print so this sets the source file to the full path.
             return new MekFileParser(ms.getSourceFile(), ms.getEntryName()).getEntity();
         } catch (Exception e) {
-            logger.error(e, "Unable to load mek: " + ms.getSourceFile() + ": " + ms.getEntryName()
-                  + ": " + e.getMessage());
+            logger.error(e, "Unable to load mek: {}: {}: {}", ms.getSourceFile(), ms.getEntryName(), e.getMessage());
             return null;
         }
     }
@@ -747,7 +740,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
                   try {
                       return new MekFileParser(ms.getSourceFile(), ms.getEntryName()).getEntity();
                   } catch (EntityLoadingException e) {
-                      logger.error(e, "Unable to load mek: " + ms.getSourceFile() + ": " + ms.getEntryName());
+                      logger.error(e, "Unable to load mek: {}: {}", ms.getSourceFile(), ms.getEntryName());
                       return null;
                   }
               }
@@ -760,7 +753,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         if (summaries.size() != 1) {
             return null;
         }
-        return summaries.get(0);
+        return summaries.getFirst();
     }
 
     public List<MekSummary> getSelectedMekSummaries() {
@@ -785,8 +778,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     }
 
     /**
-     *
-     * @param visible whether or not to make the GUI visible
+     * @param visible whether to make the GUI visible
      */
     @Override
     public void setVisible(boolean visible) {
@@ -814,8 +806,8 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
             GUIP.setMekSelectorUnitType(comboUnitType.getSelectedIndex());
             GUIP.setMekSelectorWeightClass(comboWeight.getSelectedIndex());
             GUIP.setMekSelectorRulesLevels(Arrays.toString(listTechLevel.getSelectedIndices()));
-            GUIP.setMekSelectorSortColumn(tableUnits.getRowSorter().getSortKeys().get(0).getColumn());
-            GUIP.setMekSelectorSortOrder(tableUnits.getRowSorter().getSortKeys().get(0).getSortOrder().name());
+            GUIP.setMekSelectorSortColumn(tableUnits.getRowSorter().getSortKeys().getFirst().getColumn());
+            GUIP.setMekSelectorSortOrder(tableUnits.getRowSorter().getSortKeys().getFirst().getSortOrder().name());
             GUIP.setMekSelectorSizeHeight(getSize().height);
             GUIP.setMekSelectorSizeWidth(getSize().width);
             GUIP.setMekSelectorPosX(getLocation().x);
@@ -840,7 +832,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
      */
     @Override
     public void keyPressed(KeyEvent ke) {
-        long curTime = System.currentTimeMillis();
+        long curTime = java.lang.System.currentTimeMillis();
         if ((curTime - lastSearch) > KEY_TIMEOUT) {
             searchBuffer = new StringBuffer();
         }
@@ -850,8 +842,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     }
 
     /**
-     * Searches the table for any entity with a name that starts with the search
-     * string
+     * Searches the table for any entity with a name that starts with the search string
      *
      * @param search the search parameters
      */
@@ -877,8 +868,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     }
 
     /**
-     * This handles the primary action events (any that can come from buttons in
-     * this class)
+     * This handles the primary action events (any that can come from buttons in this class)
      *
      * @param ev the event containing the performed action
      */
@@ -920,8 +910,7 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     }
 
     /**
-     * This handles list selection events, which are only thrown by
-     * MegaMek/MegaMekLab
+     * This handles list selection events, which are only thrown by MegaMek/MegaMekLab
      *
      * @param evt the event to process
      */
@@ -987,15 +976,15 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
         public String getColumnName(int column) {
             return switch (column) {
                 case COL_MODEL -> I18n.getTextAt("megamek.client.messages", "MekView.column.model");
-                case COL_CHASSIS -> I18n.getTextAt("megamek.client.messages","MekView.column.chassis");
-                case COL_WEIGHT -> I18n.getTextAt("megamek.client.messages","MekView.column.weight");
+                case COL_CHASSIS -> I18n.getTextAt("megamek.client.messages", "MekView.column.chassis");
+                case COL_WEIGHT -> I18n.getTextAt("megamek.client.messages", "MekView.column.weight");
                 case COL_BV -> I18n.getTextAt("megamek.client.messages", "MekView.column.bv");
                 case COL_PV -> I18n.getTextAt("megamek.client.messages", "MekView.column.pv");
                 case COL_YEAR -> I18n.getTextAt("megamek.client.messages", "MekView.column.year");
                 case COL_COST -> I18n.getTextAt("megamek.client.messages", "MekView.column.price");
                 case COL_LEVEL -> I18n.getTextAt("megamek.client.messages", "MekView.column.rulesLevel");
                 case COL_VTL -> I18n.getTextAt("megamek.client.messages", "MekView.column.variableTechLevel");
-                default -> "?" + column  + "?";
+                default -> "?" + column + "?";
             };
         }
 
@@ -1025,10 +1014,10 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
                 return ms.getFullChassis();
             } else if (col == COL_WEIGHT) {
                 if ((gameOptions != null) && ms.getUnitType().equals("BattleArmor")) {
-                    if (gameOptions.booleanOption(OptionsConstants.ADVANCED_TACOPS_BA_WEIGHT)) {
-                        return ms.getTOweight();
+                    if (gameOptions.booleanOption(OptionsConstants.ADVANCED_TAC_OPS_BA_WEIGHT)) {
+                        return ms.getTOWeight();
                     } else {
-                        return ms.getTWweight();
+                        return ms.getTWWeight();
                     }
                 }
                 return ms.getTons();
@@ -1104,42 +1093,44 @@ public abstract class AbstractUnitSelectorDialog extends JDialog implements Runn
     /** A specialized renderer for the mek table (formats the unit tonnage). */
     public static class TonnageRenderer extends DefaultTableCellRenderer {
 
+        public TonnageRenderer() {
+            setHorizontalAlignment(JLabel.RIGHT);
+        }
+
         @Override
         public Component getTableCellRendererComponent(final JTable table, final @Nullable Object value,
               final boolean isSelected, final boolean hasFocus, final int row, final int column) {
-            if (value instanceof Double) {
-                setHorizontalAlignment(JLabel.RIGHT);
-                double weight = (Double) value;
-                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+            String text = "?";
+            if (value instanceof Double weight) {
                 if (weight < 2) {
-                    setText(String.format(MegaMek.getMMOptions().getLocale(), "%,d kg ", (int) (weight * 1000)));
+                    text = String.format(MegaMek.getMMOptions().getLocale(), "%,d kg ", (int) (weight * 1000));
                 } else if (Math.round(weight) == weight) {
-                    setText(String.format(MegaMek.getMMOptions().getLocale(), "%,d t ", Math.round(weight)));
+                    text = String.format(MegaMek.getMMOptions().getLocale(), "%,d t ", Math.round(weight));
                 } else {
-                    setText(String.format(MegaMek.getMMOptions().getLocale(), "%.1f t ", weight));
+                    text = String.format(MegaMek.getMMOptions().getLocale(), "%.1f t ", weight);
                 }
-                return this;
-            } else {
-                return null;
             }
+            return super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column);
         }
     }
 
     /** A specialized renderer for the mek table (formats the unit price). */
     public static class PriceRenderer extends DefaultTableCellRenderer {
 
+        public PriceRenderer() {
+            setHorizontalAlignment(JLabel.RIGHT);
+        }
+
         @Override
-        public Component getTableCellRendererComponent(final JTable table, final @Nullable Object value,
-              final boolean isSelected, final boolean hasFocus,
-              final int row, final int column) {
-            if (value instanceof Long) {
-                setHorizontalAlignment(JLabel.RIGHT);
-                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                setText(String.format(MegaMek.getMMOptions().getLocale(), "%,d ", (Long) value));
-                return this;
-            } else {
-                return null;
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus,
+              int row, int column) {
+
+            String text = "?";
+            if (value instanceof Long price) {
+                text = String.format(MegaMek.getMMOptions().getLocale(), "%,d ", price);
             }
+            return super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column);
         }
     }
 }

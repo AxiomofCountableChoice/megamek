@@ -1,31 +1,51 @@
 /*
- * Copyright (c) 2022 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2022-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.cost;
 
 import megamek.client.ui.clientGUI.calculationReport.CalculationReport;
-import megamek.common.*;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.enums.MDAugmentationType;
 import megamek.common.equipment.ArmorType;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
+import megamek.common.units.EntityMovementMode;
+import megamek.common.units.EntityWeightClass;
 
 public class BattleArmorCostCalculator {
 
     public static double calculateCost(BattleArmor battleArmor, CalculationReport costReport, boolean ignoreAmmo,
-            boolean includeTrainingAndClan) {
+          boolean includeTrainingAndClan) {
         double[] costs = new double[15];
         int idx = 0;
 
@@ -64,7 +84,7 @@ public class BattleArmorCostCalculator {
         long manipulatorCost = 0;
         for (Mounted<?> mounted : battleArmor.getEquipment()) {
             if ((mounted.getType() instanceof MiscType)
-                    && mounted.getType().hasFlag(MiscType.F_BA_MANIPULATOR)) {
+                  && mounted.getType().hasFlag(MiscType.F_BA_MANIPULATOR)) {
                 long itemCost = (long) mounted.getCost();
                 manipulatorCost += itemCost;
             }
@@ -75,6 +95,9 @@ public class BattleArmorCostCalculator {
         double baseArmorCost = ArmorType.forEntity(battleArmor).getCost();
 
         costs[idx++] = (baseArmorCost * battleArmor.getOArmor(BattleArmor.LOC_TROOPER_1));
+
+        // MD Augmentation costs (per-trooper, IO rules) - will be multiplied by squad size later
+        costs[idx++] = calculateAugmentationCostPerTrooper(battleArmor);
 
         // For all additive costs - replace negatives with 0 to separate from multipliers
         CostCalculator.removeNegativeAdditiveCosts(costs);
@@ -97,9 +120,30 @@ public class BattleArmorCostCalculator {
 
         double cost = CostCalculator.calculateCost(costs);
         String[] systemNames = { "Chassis", "Jumping/VTOL/UMU", "Ground Movement", "Manipulators", "Armor",
-                "Clan Structure Multiplier", "Training", "Equipment", "Troopers" };
-        CostCalculator.fillInReport(costReport, battleArmor, ignoreAmmo, systemNames, 7, cost, costs);
+                                 "Augmentations", "Clan Structure Multiplier", "Training", "Equipment", "Troopers" };
+        CostCalculator.fillInReport(costReport, battleArmor, ignoreAmmo, systemNames, 8, cost, costs);
 
         return cost;
+    }
+
+    /**
+     * Calculates the per-trooper cost of MD augmentations for a Battle Armor unit. This cost will be multiplied by
+     * squad size in the main calculation.
+     *
+     * @param battleArmor The Battle Armor unit to calculate augmentation costs for
+     *
+     * @return Per-trooper augmentation cost
+     */
+    private static double calculateAugmentationCostPerTrooper(BattleArmor battleArmor) {
+        long perTrooperCost = 0;
+
+        // Check each known augmentation type using the Entity.hasAbility() pattern
+        for (MDAugmentationType augType : MDAugmentationType.values()) {
+            if (battleArmor.hasAbility(augType.getOptionName())) {
+                perTrooperCost += augType.getCost();
+            }
+        }
+
+        return perTrooperCost;
     }
 }

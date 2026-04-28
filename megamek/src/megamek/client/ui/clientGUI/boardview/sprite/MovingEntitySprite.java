@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2014-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI.boardview.sprite;
 
@@ -29,39 +43,37 @@ import java.awt.image.ImageObserver;
 
 import megamek.MMConstants;
 import megamek.client.ui.clientGUI.boardview.BoardView;
-import megamek.common.Coords;
-import megamek.common.Entity;
+import megamek.common.board.Coords;
+import megamek.common.units.Entity;
 import megamek.common.util.ImageUtil;
 
 public class MovingEntitySprite extends Sprite {
 
-    private int facing;
+    private final int facing;
 
-    private Entity entity;
+    private final Entity entity;
 
-    private Rectangle modelRect;
+    private final int elevation;
 
-    private int elevation;
-
-    public MovingEntitySprite(BoardView boardView1, final Entity entity, final Coords position, final int facing,
+    public MovingEntitySprite(BoardView boardView, final Entity entity, final Coords position, final int facing,
           final int elevation) {
-        super(boardView1);
+        super(boardView);
         this.entity = entity;
         this.facing = facing;
         this.elevation = elevation;
 
         String shortName = entity.getShortName();
         Font font = new Font(MMConstants.FONT_SANS_SERIF, Font.PLAIN, 10);
-        modelRect = new Rectangle(47,
+        Rectangle modelRect = new Rectangle(47,
               55,
               bv.getPanel().getFontMetrics(font).stringWidth(shortName) + 1,
               bv.getPanel().getFontMetrics(font).getAscent());
 
         int altAdjust = 0;
-        if (bv.useIsometric() && (entity.isAirborne() || entity.isAirborneVTOLorWIGE())) {
+        if (entity.isAirborne() || entity.isAirborneVTOLorWIGE()) {
             altAdjust = (int) (bv.DROP_SHADOW_DISTANCE * bv.getScale());
-        } else if (bv.useIsometric() && (elevation != 0)) {
-            altAdjust = (int) (elevation * BoardView.HEX_ELEV * bv.getScale());
+        } else if (elevation != 0) {
+            altAdjust = (int) (elevation * boardView.getVerticalOffset() * bv.getScale());
         }
 
         Dimension dim = new Dimension(bv.getHexSize().width, bv.getHexSize().height + altAdjust);
@@ -76,35 +88,35 @@ public class MovingEntitySprite extends Sprite {
     }
 
     @Override
-    public void drawOnto(Graphics g, int x, int y, ImageObserver observer) {
+    public void drawOnto(Graphics graphics, int x, int y, ImageObserver observer) {
         // If this is an airborne unit, render the shadow.
-        if (bv.useIsometric() && (entity.isAirborne() || entity.isAirborneVTOLorWIGE())) {
+        if (entity.isAirborne() || entity.isAirborneVTOLorWIGE()) {
             Image shadow = bv.createShadowMask(bv.getTileManager().imageFor(entity, facing, -1));
             shadow = bv.getScaledImage(shadow, true);
 
-            g.drawImage(shadow, x, y + (int) (bv.DROP_SHADOW_DISTANCE * bv.getScale()), observer);
+            graphics.drawImage(shadow, x, y + (int) (bv.DROP_SHADOW_DISTANCE * bv.getScale()), observer);
         } else if (elevation > 0) {
             Image shadow = bv.createShadowMask(bv.getTilesetManager().imageFor(entity, facing, -1));
             shadow = bv.getScaledImage(shadow, true);
 
-            g.drawImage(shadow, x, y + (int) (elevation * BoardView.HEX_ELEV * bv.getScale()), observer);
+            graphics.drawImage(shadow, x, y + (int) (elevation * bv.getVerticalOffset() * bv.getScale()), observer);
         }
         // submerged?
-        if (bv.useIsometric() && ((elevation + entity.getHeight()) < 0)) {
-            Graphics2D g2 = (Graphics2D) g;
+        if ((elevation + entity.getHeight()) < 0) {
+            Graphics2D g2 = (Graphics2D) graphics;
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.35f));
-            g2.drawImage(image, x, y - (int) (elevation * BoardView.HEX_ELEV * bv.getScale()), observer);
+            g2.drawImage(image, x, y - (int) (elevation * bv.getVerticalOffset() * bv.getScale()), observer);
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
         } else {
             // create final image
-            drawOnto(g, x, y, observer, false);
+            drawOnto(graphics, x, y, observer, false);
         }
         // If this is a submerged unit, render the shadow after the unit.
-        if (bv.useIsometric() && (elevation < 0)) {
+        if (elevation < 0) {
             Image shadow = bv.createShadowMask(bv.getTileManager().imageFor(entity, facing, -1));
             shadow = bv.getScaledImage(shadow, true);
 
-            g.drawImage(shadow, x, y, observer);
+            graphics.drawImage(shadow, x, y, observer);
         }
     }
 

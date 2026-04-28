@@ -1,15 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2003, 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2003, 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2006-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs;
 
@@ -20,15 +40,15 @@ import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
-
+import java.io.Serial;
 import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JToggleButton;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JToggleButton;
 
 import megamek.client.ui.Messages;
 import megamek.common.Configuration;
@@ -39,6 +59,7 @@ import megamek.common.util.fileUtils.MegaMekFile;
  * A dialog of which exits are connected for terrain.
  */
 public class ExitsDialog extends JDialog implements ActionListener {
+    @Serial
     private static final long serialVersionUID = -3126840102187553386L;
     JToggleButton cheExit0;
     JToggleButton cheExit1;
@@ -46,17 +67,11 @@ public class ExitsDialog extends JDialog implements ActionListener {
     JToggleButton cheExit3;
     JToggleButton cheExit4;
     JToggleButton cheExit5;
-    private JLabel labBlank = new JLabel("                            ");
-    private JPanel panNorth = new JPanel(new GridBagLayout());
-    private JPanel panSouth = new JPanel(new GridBagLayout());
-    private JPanel panWest = new JPanel(new BorderLayout());
-    private JPanel panEast = new JPanel(new BorderLayout());
-    private JPanel panExits = new JPanel(new BorderLayout());
-    private JButton butDone = new JButton(Messages.getString("BoardEditor.Done"));
 
     public ExitsDialog(JFrame frame) {
         super(frame, Messages.getString("BoardEditor.SetExits"), true);
         setResizable(false);
+        JButton butDone = new JButton(Messages.getString("BoardEditor.Done"));
         butDone.addActionListener(this);
         cheExit0 = setupTButton("ToggleEx", "0");
         cheExit1 = setupTButton("ToggleEx", "1");
@@ -64,14 +79,20 @@ public class ExitsDialog extends JDialog implements ActionListener {
         cheExit3 = setupTButton("ToggleEx", "3");
         cheExit4 = setupTButton("ToggleEx", "4");
         cheExit5 = setupTButton("ToggleEx", "5");
+        JPanel panNorth = new JPanel(new GridBagLayout());
         panNorth.add(cheExit0);
+        JPanel panSouth = new JPanel(new GridBagLayout());
         panSouth.add(cheExit3);
+        JPanel panWest = new JPanel(new BorderLayout());
         panWest.add(cheExit5, BorderLayout.NORTH);
         panWest.add(cheExit4, BorderLayout.SOUTH);
+        JPanel panEast = new JPanel(new BorderLayout());
         panEast.add(cheExit1, BorderLayout.NORTH);
         panEast.add(cheExit2, BorderLayout.SOUTH);
+        JPanel panExits = new JPanel(new BorderLayout());
         panExits.add(panNorth, BorderLayout.NORTH);
         panExits.add(panWest, BorderLayout.WEST);
+        JLabel labBlank = new JLabel("                            ");
         panExits.add(labBlank, BorderLayout.CENTER);
         panExits.add(panEast, BorderLayout.EAST);
         panExits.add(panSouth, BorderLayout.SOUTH);
@@ -80,8 +101,8 @@ public class ExitsDialog extends JDialog implements ActionListener {
         getContentPane().add(butDone, BorderLayout.SOUTH);
         pack();
         setLocation(frame.getLocation().x + frame.getSize().width / 2
-                - getSize().width / 2, frame.getLocation().y
-                + frame.getSize().height / 2 - getSize().height / 2);
+              - getSize().width / 2, frame.getLocation().y
+              + frame.getSize().height / 2 - getSize().height / 2);
     }
 
     public void setExits(int exits) {
@@ -116,7 +137,7 @@ public class ExitsDialog extends JDialog implements ActionListener {
         JToggleButton button = new JToggleButton(buttonName);
 
         // Get the normal icon
-        File file = new MegaMekFile(Configuration.widgetsDir(), "/MapEditor/"+iconName+".png").getFile();
+        File file = new MegaMekFile(Configuration.widgetsDir(), "/MapEditor/" + iconName + ".png").getFile();
         Image imageButton = ImageUtil.loadImageFromFile(file.getAbsolutePath());
         if (imageButton != null) {
             button.setIcon(new ImageIcon(imageButton));
@@ -140,7 +161,7 @@ public class ExitsDialog extends JDialog implements ActionListener {
 
         button.setMargin(new Insets(0, 0, 0, 0));
         button.setBorder(BorderFactory.createEmptyBorder());
-        
+
         return button;
     }
 }

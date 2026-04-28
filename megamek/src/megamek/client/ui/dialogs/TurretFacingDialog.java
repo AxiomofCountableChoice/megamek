@@ -1,15 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2010 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2010 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2010-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs;
 
@@ -36,10 +56,10 @@ import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.ClientGUI;
 import megamek.codeUtilities.MathUtility;
 import megamek.common.Hex;
-import megamek.common.Mek;
-import megamek.common.MiscType;
-import megamek.common.Mounted;
-import megamek.common.Tank;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
+import megamek.common.units.Mek;
+import megamek.common.units.Tank;
 
 /**
  * @author beerockxs
@@ -74,16 +94,16 @@ public class TurretFacingDialog extends JDialog implements ActionListener {
         }
         int turretFacing = 0;
         if (turret.getType().hasFlag(MiscType.F_SHOULDER_TURRET) || turret.getType().hasFlag(MiscType.F_QUAD_TURRET)) {
-            if (turret.getLocation() == Mek.LOC_LT) {
+            if (turret.getLocation() == Mek.LOC_LEFT_TORSO) {
                 for (Mounted<?> mount : mek.getEquipment()) {
-                    if ((mount.getLocation() == Mek.LOC_LT) && mount.isMekTurretMounted()) {
+                    if ((mount.getLocation() == Mek.LOC_LEFT_TORSO) && mount.isMekTurretMounted()) {
                         turretFacing = mount.getFacing();
                         break;
                     }
                 }
-            } else if (turret.getLocation() == Mek.LOC_RT) {
+            } else if (turret.getLocation() == Mek.LOC_RIGHT_TORSO) {
                 for (Mounted<?> mount : mek.getEquipment()) {
-                    if ((mount.getLocation() == Mek.LOC_RT) && mount.isMekTurretMounted()) {
+                    if ((mount.getLocation() == Mek.LOC_RIGHT_TORSO) && mount.isMekTurretMounted()) {
                         turretFacing = mount.getFacing();
                         break;
                     }
@@ -110,7 +130,7 @@ public class TurretFacingDialog extends JDialog implements ActionListener {
         JPanel panWest = new JPanel(new BorderLayout());
         JPanel panEast = new JPanel(new BorderLayout());
         JPanel panSouth = new JPanel(new GridBagLayout());
-        panNorth.add(facings.get(0));
+        panNorth.add(facings.getFirst());
         panSouth.add(facings.get(3));
         panWest.add(facings.get(5), BorderLayout.NORTH);
         panWest.add(facings.get(4), BorderLayout.SOUTH);
@@ -119,10 +139,10 @@ public class TurretFacingDialog extends JDialog implements ActionListener {
         // for shoulder turrets, we need to disable the appropriate facings
         // opposite of the shoulder the turret is mounted on
         if (turret.getType().hasFlag(MiscType.F_SHOULDER_TURRET)) {
-            if (turret.getLocation() == Mek.LOC_LT) {
+            if (turret.getLocation() == Mek.LOC_LEFT_TORSO) {
                 facings.get((frontFacing + 1) % 6).setEnabled(false);
                 facings.get((frontFacing + 2) % 6).setEnabled(false);
-            } else if (turret.getLocation() == Mek.LOC_RT) {
+            } else if (turret.getLocation() == Mek.LOC_RIGHT_TORSO) {
                 facings.get((frontFacing + 4) % 6).setEnabled(false);
                 facings.get((frontFacing + 5) % 6).setEnabled(false);
             }
@@ -188,7 +208,7 @@ public class TurretFacingDialog extends JDialog implements ActionListener {
         JPanel panWest = new JPanel(new BorderLayout());
         JPanel panEast = new JPanel(new BorderLayout());
         JPanel panSouth = new JPanel(new GridBagLayout());
-        panNorth.add(facings.get(0));
+        panNorth.add(facings.getFirst());
         panSouth.add(facings.get(3));
         panWest.add(facings.get(5), BorderLayout.NORTH);
         panWest.add(facings.get(4), BorderLayout.SOUTH);
@@ -242,7 +262,7 @@ public class TurretFacingDialog extends JDialog implements ActionListener {
                 facing = ((6 - mek.getFacing()) + facing) % 6;
                 turret.setFacing(facing);
                 clientgui.getClient().sendMountFacingChange(mek.getId(), mek.getEquipmentNum(turret), facing);
-                if (turret.getLocation() == Mek.LOC_CT) {
+                if (turret.getLocation() == Mek.LOC_CENTER_TORSO) {
                     locToChange = Mek.LOC_HEAD;
                 } else {
                     locToChange = turret.getLocation();

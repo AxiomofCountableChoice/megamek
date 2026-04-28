@@ -20,14 +20,13 @@ package megamek.client.bot.rl;
 
 import java.io.File;
 
-import megamek.common.commandline.AbstractCommandLineParser;
-import megamek.common.commandline.ClientServerCommandLineParser;
+import megamek.common.commandLine.AbstractCommandLineParser;
+import megamek.common.commandLine.ClientServerCommandLineParser;
 import megamek.client.HeadlessClient;
-import megamek.common.commandline.MegaMekCommandLineFlag;
 import megamek.common.preference.PreferenceManager;
 import megamek.logging.MMLogger;
 import megamek.server.Server;
-import megamek.server.totalwarfare.TWGameManager;
+import megamek.server.totalWarfare.TWGameManager;
 import megamek.client.bot.princess.Princess;
 
 public class PrincessOfflineTrainer {
@@ -56,7 +55,7 @@ public class PrincessOfflineTrainer {
         }
 
         ClientServerCommandLineParser parser = new ClientServerCommandLineParser(cleanArgs.toArray(new String[0]),
-                MegaMekCommandLineFlag.RLEXPORT.toString(),
+                "RLEXPORT",
                 true, false, false);
         try {
             parser.parse();
@@ -70,7 +69,7 @@ public class PrincessOfflineTrainer {
                 null, null);
 
         // kick off a RNG check
-        megamek.common.Compute.d6();
+        megamek.common.compute.Compute.d6();
 
         Server server;
 
@@ -105,6 +104,11 @@ public class PrincessOfflineTrainer {
             
             p1.connect();
             p2.connect();
+            
+            Thread.sleep(1000);
+            watcher.sendPlayerInfo();
+            p1.sendPlayerInfo();
+            p2.sendPlayerInfo();
         } catch (Exception e) {
             logger.error(e, "Error launching Princess offline bots");
         }
@@ -114,16 +118,16 @@ public class PrincessOfflineTrainer {
             try {
                 Thread.sleep(2500); // Give all clients time to establish Lobby connection and receive packet syncs
                 
-                megamek.common.Game game = (megamek.common.Game) server.getGame();
+                megamek.common.game.Game game = (megamek.common.game.Game) server.getGame();
                 
                 // Map setup
                 if (randomMap) {
                     System.out.println("Generating random map...");
                     logger.info("Generating random map...");
-                    megamek.common.MapSettings ms = megamek.common.MapSettings.getInstance();
+                    megamek.common.loaders.MapSettings ms = megamek.common.loaders.MapSettings.getInstance();
                     ms.setBoardSize(16, 16);
                     System.out.println("Calling generateRandom...");
-                    megamek.common.Board board = megamek.common.util.BoardUtilities.generateRandom(ms);
+                    megamek.common.board.Board board = megamek.common.util.BoardUtilities.generateRandom(ms);
                     System.out.println("Board generated!");
                     game.setBoard(board);
                     logger.info("Random map generated.");
@@ -167,34 +171,48 @@ public class PrincessOfflineTrainer {
                         for (String mekFile : p1Meks.split(",")) {
                             System.out.println("Parsing P1 mek: " + mekFile);
                             // Extract just the Mek.
-                            megamek.common.Entity ent = new megamek.common.MekFileParser(new File("data/mekfiles/meks/" + mekFile.trim().replace("\"", ""))).getEntity();
+                            megamek.common.units.Entity ent = null;
+                            try {
+                                ent = new megamek.common.loaders.MekFileParser(new File(mekFile.trim().replace("\"", ""))).getEntity();
+                            } catch (Exception e) {
+                                System.out.println("Exception parsing Mek: " + e.getMessage());
+                            }
                             if (ent != null) {
                                 ent.setOwner(player1);
                                 ent.setDeployed(true);
                                 // Set arbitrary starting coords on opposite sides
-                                int x = megamek.common.Compute.randomInt(4);
-                                int y = megamek.common.Compute.randomInt(game.getBoard().getHeight());
-                                ent.setPosition(new megamek.common.Coords(x, y));
+                                int x = megamek.common.compute.Compute.randomInt(4);
+                                int y = megamek.common.compute.Compute.randomInt(game.getBoard().getHeight());
+                                ent.setPosition(new megamek.common.board.Coords(x, y));
                                 ent.setId(game.getNextEntityId());
                                 game.addEntity(ent);
                                 game.getForces().addEntity(ent, f1Id);
+                            } else {
+                                System.out.println("WARNING: P1 Mek parsed as NULL: " + mekFile);
                             }
                         }
                     }
                     if (!p2Meks.isEmpty()) {
                         for (String mekFile : p2Meks.split(",")) {
                             System.out.println("Parsing P2 mek: " + mekFile);
-                            megamek.common.Entity ent = new megamek.common.MekFileParser(new File("data/mekfiles/meks/" + mekFile.trim().replace("\"", ""))).getEntity();
+                            megamek.common.units.Entity ent = null;
+                            try {
+                                ent = new megamek.common.loaders.MekFileParser(new File(mekFile.trim().replace("\"", ""))).getEntity();
+                            } catch (Exception e) {
+                                System.out.println("Exception parsing Mek: " + e.getMessage());
+                            }
                             if (ent != null) {
                                 ent.setOwner(player2);
                                 ent.setDeployed(true);
                                 // Set arbitrary starting coords on opposite sides
-                                int x = game.getBoard().getWidth() - 1 - megamek.common.Compute.randomInt(4);
-                                int y = megamek.common.Compute.randomInt(game.getBoard().getHeight());
-                                ent.setPosition(new megamek.common.Coords(x, y));
+                                int x = game.getBoard().getWidth() - 1 - megamek.common.compute.Compute.randomInt(4);
+                                int y = megamek.common.compute.Compute.randomInt(game.getBoard().getHeight());
+                                ent.setPosition(new megamek.common.board.Coords(x, y));
                                 ent.setId(game.getNextEntityId());
                                 game.addEntity(ent);
                                 game.getForces().addEntity(ent, f2Id);
+                            } else {
+                                System.out.println("WARNING: P2 Mek parsed as NULL: " + mekFile);
                             }
                         }
                     }
@@ -202,7 +220,7 @@ public class PrincessOfflineTrainer {
                     System.out.println("Broadcasting entities...");
                     // Broadcast the newly added entities to the clients.
                     try {
-                        megamek.server.totalwarfare.TWGameManager twm = (megamek.server.totalwarfare.TWGameManager) server.getGameManager();
+                        megamek.server.totalWarfare.TWGameManager twm = (megamek.server.totalWarfare.TWGameManager) server.getGameManager();
                         twm.send(twm.createFullEntitiesPacket());
                         
                         twm.send(new megamek.common.net.packets.Packet(megamek.common.net.enums.PacketCommand.SENDING_BOARD, new java.util.HashMap<>(game.getBoards())));
@@ -212,11 +230,15 @@ public class PrincessOfflineTrainer {
                     System.out.println("Sending done packets to push through phases...");
                     
                     while (!server.getGame().getPhase().isInitiative() && !server.getGame().getPhase().isMovement()) {
-                        if (server.getGame().getPhase().isLounge()) {
-                            if (p1 != null) p1.sendDone(true);
-                            if (p2 != null) p2.sendDone(true);
-                            watcher.sendDone(true);
+                        System.out.println("CURRENT PHASE: " + server.getGame().getPhase().name());
+                        System.out.println("isEmptyLobby? (Phase isLounge: " + server.getGame().getPhase().isLounge() + ", Objects: " + server.getGame().getInGameObjects().size() + ")");
+                        for (megamek.common.Player p : server.getGame().getPlayersList()) {
+                            System.out.println("Player " + p.getName() + " (Ghost: " + p.isGhost() + ", Observer: " + p.isObserver() + ") isDone: " + p.isDone());
                         }
+
+                        if (p1 != null) p1.sendDone(true);
+                        if (p2 != null) p2.sendDone(true);
+                        watcher.sendDone(true);
                         
                         Thread.sleep(1000);
                     }

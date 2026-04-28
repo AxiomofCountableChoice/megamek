@@ -35,11 +35,12 @@ package megamek.ai.dataset;
 import java.util.ArrayList;
 import java.util.List;
 
-import megamek.common.Board;
 import megamek.common.Hex;
+import megamek.common.board.Board;
 
 /**
  * Flexible container for board data using a map-based approach with enum keys.
+ *
  * @author Luana Coppio
  */
 public class BoardData extends EntityDataMap<BoardData.Field> {
@@ -51,7 +52,7 @@ public class BoardData extends EntityDataMap<BoardData.Field> {
         BOARD_NAME,
         WIDTH,
         HEIGHT,
-        HEX_DATA; // Special field that contains all hex data
+        HEX_DATA // Special field that contains all hex data
     }
 
     /**
@@ -78,7 +79,9 @@ public class BoardData extends EntityDataMap<BoardData.Field> {
 
     /**
      * Creates a BoardData from a Board.
+     *
      * @param board The board to extract data from
+     *
      * @return A populated BoardData
      */
     public static BoardData fromBoard(Board board) {
@@ -106,6 +109,7 @@ public class BoardData extends EntityDataMap<BoardData.Field> {
 
     /**
      * Gets the board's hex rows.
+     *
      * @return List of HexRow objects containing the board's hexes
      */
     @SuppressWarnings("unchecked")

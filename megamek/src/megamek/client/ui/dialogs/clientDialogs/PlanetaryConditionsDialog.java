@@ -1,17 +1,35 @@
 /*
- * MegaMek -
  * Copyright (C) 2000-2004 Ben Mazur (bmazur@sev.org)
- * Copyright (C) 2018, 2020 The MegaMek Team
+ * Copyright (C) 2008-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
 /*
@@ -30,7 +48,6 @@ import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
 import java.awt.event.KeyEvent;
 import java.io.File;
-import java.io.Serial;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
@@ -47,15 +64,15 @@ import megamek.client.ui.util.UIUtil.OptionPanel;
 import megamek.client.ui.util.UIUtil.TipLabel;
 import megamek.codeUtilities.MathUtility;
 import megamek.common.Configuration;
-import megamek.common.planetaryconditions.Atmosphere;
-import megamek.common.planetaryconditions.BlowingSand;
-import megamek.common.planetaryconditions.EMI;
-import megamek.common.planetaryconditions.Fog;
-import megamek.common.planetaryconditions.Light;
-import megamek.common.planetaryconditions.PlanetaryConditions;
-import megamek.common.planetaryconditions.Weather;
-import megamek.common.planetaryconditions.Wind;
-import megamek.common.planetaryconditions.WindDirection;
+import megamek.common.planetaryConditions.Atmosphere;
+import megamek.common.planetaryConditions.BlowingSand;
+import megamek.common.planetaryConditions.EMI;
+import megamek.common.planetaryConditions.Fog;
+import megamek.common.planetaryConditions.Light;
+import megamek.common.planetaryConditions.PlanetaryConditions;
+import megamek.common.planetaryConditions.Weather;
+import megamek.common.planetaryConditions.Wind;
+import megamek.common.planetaryConditions.WindDirection;
 import megamek.common.util.ImageUtil;
 import megamek.common.util.StringUtil;
 import megamek.common.util.fileUtils.MegaMekFile;
@@ -66,10 +83,7 @@ import megamek.common.util.fileUtils.MegaMekFile;
  * @author Jay Lawson
  * @author Simon
  */
-public class PlanetaryConditionsDialog extends ClientDialog {
-
-    @Serial
-    private static final long serialVersionUID = -4426594323169113468L;
+public class PlanetaryConditionsDialog extends ClientDialog implements FocusListener {
 
     /** Creates new PlanetaryConditionsDialog and takes the conditions from the client's Game. */
     public PlanetaryConditionsDialog(ClientGUI cl) {
@@ -110,22 +124,22 @@ public class PlanetaryConditionsDialog extends ClientDialog {
     private PlanetaryConditions conditions;
     private static final String PCD = "PlanetaryConditionsDialog.";
     private final JLabel labLight = new JLabel(Messages.getString(PCD + "labLight"), SwingConstants.RIGHT);
-    private final JComboBox<Light> comLight = new JComboBox<>();
+    private final JComboBox<Light> comLight = new JComboBox<>(Light.values());
     private final JLabel labWeather = new TipLabel(Messages.getString(PCD + "labWeather"), SwingConstants.RIGHT);
-    private final JComboBox<Weather> comWeather = new JComboBox<>();
+    private final JComboBox<Weather> comWeather = new JComboBox<>(Weather.values());
     private final JLabel labWind = new TipLabel(Messages.getString(PCD + "labWind"), SwingConstants.RIGHT);
-    private final JComboBox<Wind> comWind = new JComboBox<>();
+    private final JComboBox<Wind> comWind = new JComboBox<>(Wind.values());
     private final JLabel labMinWind = new JLabel(Messages.getString(PCD + "labMinWind"), SwingConstants.RIGHT);
-    private final JComboBox<Wind> comWindFrom = new JComboBox<>();
+    private final JComboBox<Wind> comWindFrom = new JComboBox<>(Wind.values());
     private final JLabel labMaxWind = new JLabel(Messages.getString(PCD + "labMaxWind"), SwingConstants.RIGHT);
-    private final JComboBox<Wind> comWindTo = new JComboBox<>();
+    private final JComboBox<Wind> comWindTo = new JComboBox<>(Wind.values());
     private final JLabel labWindDirection = new JLabel(Messages.getString(PCD + "labWindDirection"),
           SwingConstants.RIGHT);
-    private final JComboBox<WindDirection> comWindDirection = new JComboBox<>();
+    private final JComboBox<WindDirection> comWindDirection = new JComboBox<>(WindDirection.values());
     private final JLabel labAtmosphere = new TipLabel(Messages.getString(PCD + "labAtmosphere"), SwingConstants.RIGHT);
-    private final JComboBox<Atmosphere> comAtmosphere = new JComboBox<>();
+    private final JComboBox<Atmosphere> comAtmosphere = new JComboBox<>(Atmosphere.values());
     private final JLabel labFog = new TipLabel(Messages.getString(PCD + "labFog"), SwingConstants.RIGHT);
-    private final JComboBox<Fog> comFog = new JComboBox<>();
+    private final JComboBox<Fog> comFog = new JComboBox<>(Fog.values());
     private final JLabel labBlowingSands = new TipLabel(Messages.getString(PCD + "BlowingSands"), SwingConstants.RIGHT);
     private final JCheckBox chkBlowingSands = new JCheckBox();
     private final JLabel labShiftWindDir = new JLabel(Messages.getString(PCD + "shiftWindDir"), SwingConstants.RIGHT);
@@ -158,8 +172,6 @@ public class PlanetaryConditionsDialog extends ClientDialog {
         mainPanel.add(weatherSection());
         mainPanel.add(dynamicSection());
         mainPanel.add(Box.createVerticalGlue());
-
-        setupCombos();
 
         String closeAction = "closeAction";
         final KeyStroke escape = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
@@ -245,37 +257,13 @@ public class PlanetaryConditionsDialog extends ClientDialog {
         return result;
     }
 
-    /** Fills the dialog combo boxes. */
-    private void setupCombos() {
-        for (Light condition : Light.values()) {
-            comLight.addItem(condition);
-        }
-        for (Weather condition : Weather.values()) {
-            comWeather.addItem(condition);
-        }
-        for (Wind condition : Wind.values()) {
-            comWind.addItem(condition);
-            comWindFrom.addItem(condition);
-            comWindTo.addItem(condition);
-        }
-        for (WindDirection condition : WindDirection.values()) {
-            comWindDirection.addItem(condition);
-        }
-        for (Atmosphere condition : Atmosphere.values()) {
-            comAtmosphere.addItem(condition);
-        }
-        for (Fog condition : Fog.values()) {
-            comFog.addItem(condition);
-        }
-    }
-
     /** Adds all required listeners for the dialog fields. */
     private void addListeners() {
         comAtmosphere.addActionListener(listener);
-        fldTemp.addFocusListener(focusListener);
+        fldTemp.addFocusListener(this);
         comLight.addActionListener(listener);
         comAtmosphere.addActionListener(listener);
-        fldGrav.addFocusListener(focusListener);
+        fldGrav.addFocusListener(this);
         comWind.addActionListener(listener);
         comWeather.addActionListener(listener);
         comFog.addActionListener(listener);
@@ -288,10 +276,10 @@ public class PlanetaryConditionsDialog extends ClientDialog {
     /** Removes all listeners from the dialog fields. */
     private void removeListeners() {
         comAtmosphere.removeActionListener(listener);
-        fldTemp.removeFocusListener(focusListener);
+        fldTemp.removeFocusListener(this);
         comLight.removeActionListener(listener);
         comAtmosphere.removeActionListener(listener);
-        fldGrav.removeFocusListener(focusListener);
+        fldGrav.removeFocusListener(this);
         comWind.removeActionListener(listener);
         comWeather.removeActionListener(listener);
         comFog.removeActionListener(listener);
@@ -336,8 +324,8 @@ public class PlanetaryConditionsDialog extends ClientDialog {
         conditions.setAtmosphere(comAtmosphere.getItemAt(comAtmosphere.getSelectedIndex()));
         conditions.setFog(comFog.getItemAt(comFog.getSelectedIndex()));
         BlowingSand blowingSand = chkBlowingSands.isSelected() ?
-                                        BlowingSand.BLOWING_SAND :
-                                        BlowingSand.BLOWING_SAND_NONE;
+              BlowingSand.BLOWING_SAND :
+              BlowingSand.BLOWING_SAND_NONE;
         conditions.setBlowingSand(blowingSand);
         conditions.setShiftingWindDirection(chkShiftWindDir.isSelected());
         conditions.setShiftingWindStrength(chkShiftWindStr.isSelected());
@@ -375,7 +363,7 @@ public class PlanetaryConditionsDialog extends ClientDialog {
 
         boolean blowingSandsLessThanModerateGale = chkBlowingSands.isSelected() && wind.isWeakerThan(Wind.MOD_GALE);
         boolean shiftWindsLessThanModerateGale = chkShiftWindStr.isSelected() &&
-                                                       conditions.getWindMax().isWeakerThan(Wind.MOD_GALE);
+              conditions.getWindMax().isWeakerThan(Wind.MOD_GALE);
         if (blowingSandsLessThanModerateGale || shiftWindsLessThanModerateGale) {
             windTip.append(Messages.getString("PlanetaryConditionsDialog.invalid.sandsLost"));
             sandTip.append(Messages.getString("PlanetaryConditionsDialog.invalid.sandsLost"));
@@ -404,7 +392,7 @@ public class PlanetaryConditionsDialog extends ClientDialog {
 
         if (chkShiftWindStr.isSelected()) {
             if (comWind.getItemAt(comWind.getSelectedIndex()).isWeakerThan(conditions.getWindMin()) ||
-                      comWind.getItemAt(comWind.getSelectedIndex()).isStrongerThan(conditions.getWindMax())) {
+                  comWind.getItemAt(comWind.getSelectedIndex()).isStrongerThan(conditions.getWindMax())) {
                 windTip.append(Messages.getString("PlanetaryConditionsDialog.invalid.windRange"));
             }
         }
@@ -417,11 +405,11 @@ public class PlanetaryConditionsDialog extends ClientDialog {
         refreshWarning(labBlowingSands, sandTip);
 
         return (tempTip.isEmpty()) &&
-                     (weatherTip.isEmpty()) &&
-                     (atmosphereTip.isEmpty()) &&
-                     (sandTip.isEmpty()) &&
-                     (windTip.isEmpty()) &&
-                     (gravTip.isEmpty());
+              (weatherTip.isEmpty()) &&
+              (atmosphereTip.isEmpty()) &&
+              (sandTip.isEmpty()) &&
+              (windTip.isEmpty()) &&
+              (gravTip.isEmpty());
     }
 
     /**
@@ -508,7 +496,7 @@ public class PlanetaryConditionsDialog extends ClientDialog {
     /** Sets the wind to at least moderate gale if Blowing Sands is activated. */
     private void adaptWindToBlowingSands() {
         if (chkBlowingSands.isSelected()) {
-            setMinimumWind(Wind.MOD_GALE);
+            setMinimumWind();
         }
     }
 
@@ -521,10 +509,10 @@ public class PlanetaryConditionsDialog extends ClientDialog {
     }
 
     /** Sets wind strength to Moderate Gale if it is less than that. */
-    private void setMinimumWind(Wind minWind) {
-        if (comWind.getItemAt(comWind.getSelectedIndex()).isWeakerThan(minWind)) {
+    private void setMinimumWind() {
+        if (comWind.getItemAt(comWind.getSelectedIndex()).isWeakerThan(Wind.MOD_GALE)) {
             removeListeners();
-            comWind.setSelectedItem(minWind);
+            comWind.setSelectedItem(Wind.MOD_GALE);
             addListeners();
         }
     }
@@ -592,16 +580,11 @@ public class PlanetaryConditionsDialog extends ClientDialog {
         addListeners();
     }
 
-    /** validate the entries whenever something is selected or focus changes. */
-    FocusListener focusListener = new FocusListener() {
+    @Override
+    public void focusLost(FocusEvent e) {
+        butOkay.setEnabled(validateEntries());
+    }
 
-        @Override
-        public void focusLost(FocusEvent e) {
-            butOkay.setEnabled(validateEntries());
-        }
-
-        @Override
-        public void focusGained(FocusEvent e) {
-        }
-    };
+    @Override
+    public void focusGained(FocusEvent e) {}
 }

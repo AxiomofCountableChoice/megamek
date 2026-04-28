@@ -1,49 +1,74 @@
 /*
- * Copyright (c) 2023 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2023-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
 package megamek.client.ui.clientGUI.tooltip;
 
-import megamek.client.ui.Messages;
-import megamek.common.*;
-import megamek.common.actions.*;
-import megamek.common.equipment.AmmoMounted;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Vector;
 import java.util.stream.Stream;
 
+import jakarta.annotation.Nonnull;
+import megamek.client.ui.Messages;
+import megamek.common.ToHitData;
+import megamek.common.actions.EntityAction;
+import megamek.common.actions.WeaponAttackAction;
+import megamek.common.equipment.AmmoMounted;
+import megamek.common.game.Game;
+import megamek.common.units.Entity;
+
 /**
- * An ordered List-like collection of EntityActions with a cached description of each action,
- * created as the action is added.
+ * An ordered List-like collection of EntityActions with a cached description of each action, created as the action is
+ * added.
  */
 public class EntityActionLog implements Collection<EntityAction> {
     private final Game game;
-    private final ArrayList<EntityAction> actions = new ArrayList<EntityAction>();
+    private final ArrayList<EntityAction> actions = new ArrayList<>();
     // cache to prevent regeneration of info if action already processed
-    private final HashMap<EntityAction, String> infoCache = new HashMap<EntityAction, String>();
+    private final HashMap<EntityAction, String> infoCache = new HashMap<>();
     private final ArrayList<String> descriptions = new ArrayList<>();
 
     public EntityActionLog(Game game) {
         this.game = game;
     }
 
-    /** @return a list of description strings. Note that there may be fewer than the number of actions
-     * as similar actions are summarized in a single entry
+    /**
+     * @return a list of description strings. Note that there may be fewer than the number of actions as similar actions
+     *       are summarized in a single entry
      */
     public List<String> getDescriptions() {
         return descriptions;
@@ -102,13 +127,13 @@ public class EntityActionLog implements Collection<EntityAction> {
     }
 
     @Override
-    public boolean containsAll(Collection<?> c) {
-        return actions.containsAll(c);
+    public boolean containsAll(@Nonnull Collection<?> collection) {
+        return actions.containsAll(collection);
     }
 
     @Override
-    public boolean addAll(Collection<? extends EntityAction> c) {
-        if (!actions.addAll(c)) {
+    public boolean addAll(@Nonnull Collection<? extends EntityAction> entityActions) {
+        if (!actions.addAll(entityActions)) {
             return false;
         }
         rebuildDescriptions();
@@ -116,28 +141,30 @@ public class EntityActionLog implements Collection<EntityAction> {
     }
 
     @Override
-    public boolean removeAll(Collection<?> c) {
-        if (!actions.removeAll(c)) {
+    public boolean removeAll(@Nonnull Collection<?> collection) {
+        if (!actions.removeAll(collection)) {
             return false;
         }
-        for (var a : c) {
+
+        for (var a : collection) {
             infoCache.remove(a);
         }
+
         rebuildDescriptions();
         return true;
     }
 
     @Override
-    public boolean retainAll(Collection<?> c) {
+    public boolean retainAll(@Nonnull Collection<?> c) {
         return actions.retainAll(c);
     }
 
     public EntityAction firstElement() {
-        return actions.isEmpty() ? null : actions.get(0);
+        return actions.isEmpty() ? null : actions.getFirst();
     }
 
     public EntityAction lastElement() {
-        return actions.isEmpty() ? null : actions.get(actions.size()-1);
+        return actions.isEmpty() ? null : actions.getLast();
     }
 
     @Override
@@ -156,21 +183,25 @@ public class EntityActionLog implements Collection<EntityAction> {
     }
 
     @Override
+    @Nonnull
     public Iterator<EntityAction> iterator() {
         return actions.iterator();
     }
 
     @Override
+    @Nonnull
     public Object[] toArray() {
         return new Object[0];
     }
 
     @Override
-    public <T> T[] toArray(T[] a) {
+    @Nonnull
+    public <T> T[] toArray(@Nonnull T[] a) {
         return actions.toArray(a);
     }
 
     @Override
+    @Nonnull
     public Stream<EntityAction> stream() {
         return actions.stream();
     }
@@ -198,29 +229,34 @@ public class EntityActionLog implements Collection<EntityAction> {
         String tableDesc = toHit.getTableDesc();
         tableDesc = !tableDesc.isEmpty() ? ' ' + tableDesc : "";
         final String toHitDesc = toHit.getValueAsString() + tableDesc;
-        final Entity entity = game.getEntity(attack.getEntityId());
-        final String weaponName = (entity.getEquipment(attack.getWeaponId()).getType()).getName();
-        Entity ammoCarrier = game.getEntity(attack.getAmmoCarrier());
-        if (ammoCarrier == null) {
-            ammoCarrier = entity;
-        }
-        final AmmoMounted ammo = ammoCarrier.getAmmo(attack.getAmmoId());
-        final String ammoName = (ammo == null) ? "" : " [" + ammo.getType().getShortName() + "] ";
+        final Entity weaponEntity = game.getEntity(attack.getEntityId());
 
-        //add to an existing entry if possible
-        boolean found = false;
-        ListIterator<String> i = descriptions.listIterator();
-        while (i.hasNext()) {
-            String s = i.next();
-            if (s.startsWith(weaponName)) {
-                i.set(s + ", " + toHitDesc);
-                found = true;
-                break;
+        if (weaponEntity != null) {
+            final String weaponName = (weaponEntity.getEquipment(attack.getWeaponId()).getType()).getName();
+
+            Entity ammoCarrier = game.getEntity(attack.getAmmoCarrier());
+            if (ammoCarrier == null) {
+                ammoCarrier = weaponEntity;
             }
-        }
+            final AmmoMounted ammo = ammoCarrier.getAmmo(attack.getAmmoId());
+            final String ammoName = (ammo == null) ? "" : " [" + ammo.getType().getShortName() + "] ";
 
-        if (!found) {
-            descriptions.add( weaponName + ammoName + Messages.getString("BoardView1.needs") + ' ' + toHitDesc);
+            //add to an existing entry if possible
+            boolean found = false;
+            ListIterator<String> i = descriptions.listIterator();
+            while (i.hasNext()) {
+                String s = i.next();
+                if (s.startsWith(weaponName)) {
+                    i.set(s + ", " + toHitDesc);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                descriptions.add(weaponName + ammoName + Messages.getString("BoardView1.needs") + ' ' + toHitDesc);
+            }
+
         }
     }
 }

@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI.boardview;
 
@@ -45,13 +59,13 @@ import java.util.TreeSet;
 import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.tileset.HexTileset;
 import megamek.client.ui.util.ImageCache;
-import megamek.common.Board;
-import megamek.common.BoardType;
-import megamek.common.Coords;
 import megamek.common.Hex;
-import megamek.common.Terrains;
 import megamek.common.annotations.Nullable;
-import megamek.common.planetaryconditions.PlanetaryConditions;
+import megamek.common.board.Board;
+import megamek.common.board.BoardType;
+import megamek.common.board.Coords;
+import megamek.common.planetaryConditions.PlanetaryConditions;
+import megamek.common.units.Terrains;
 import megamek.common.util.ImageUtil;
 import megamek.logging.MMLogger;
 
@@ -134,8 +148,8 @@ class TerrainShadowHelper {
         int height = board.getHeight() * HexTileset.HEX_H + HexTileset.HEX_H / 2;
 
         GraphicsConfiguration config = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                                             .getDefaultScreenDevice()
-                                             .getDefaultConfiguration();
+              .getDefaultScreenDevice()
+              .getDefaultConfiguration();
 
         BufferedImage shadowMap = config.createCompatibleImage(width, height, Transparency.TRANSLUCENT);
 
@@ -309,7 +323,7 @@ class TerrainShadowHelper {
                     List<Image> supers = boardView.getTilesetManager().supersFor(hex);
 
                     if (!supers.isEmpty()) {
-                        Image lastSuper = createBlurredShadow(supers.get(supers.size() - 1));
+                        Image lastSuper = createBlurredShadow(supers.getLast());
                         if (lastSuper == null) {
                             return null;
                         }
@@ -341,13 +355,13 @@ class TerrainShadowHelper {
                     }
                     // Bridge Shadow
                     if (hex.containsTerrain(Terrains.BRIDGE)) {
-                        supers = boardView.getTilesetManager().orthoFor(hex);
+                        supers = boardView.getTilesetManager().orthographicFor(hex);
 
                         if (supers.isEmpty()) {
                             break;
                         }
 
-                        Image maskB = createBlurredShadow(supers.get(supers.size() - 1));
+                        Image maskB = createBlurredShadow(supers.getLast());
 
                         if (maskB == null) {
                             return null;
@@ -399,8 +413,8 @@ class TerrainShadowHelper {
         BufferedImage mask = shadowImageCache.get(orig.hashCode());
         if (mask == null) {
             GraphicsConfiguration config = GraphicsEnvironment.getLocalGraphicsEnvironment()
-                                                 .getDefaultScreenDevice()
-                                                 .getDefaultConfiguration();
+                  .getDefaultScreenDevice()
+                  .getDefaultConfiguration();
 
             // a slightly bigger image to give room for blurring
             mask = config.createCompatibleImage(orig.getWidth(null) + 4,

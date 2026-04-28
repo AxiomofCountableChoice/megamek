@@ -1,21 +1,41 @@
 /*
- * MegaMek - Copyright (C) 2005 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2005 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2016-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ratgenerator;
 
 import java.util.HashSet;
 
-import megamek.common.UnitType;
+import megamek.common.units.UnitType;
 
 /**
  * Base functionality for chassis and model records for RAT generator.
@@ -84,7 +104,7 @@ public class AbstractUnitRecord {
     public final String getChassisKey() {
         if (omni) {
             return clan ? chassis + "[" + UnitType.getTypeName(unitType) + "]ClanOmni" :
-                         chassis + "[" + UnitType.getTypeName(unitType) + "]ISOmni";
+                  chassis + "[" + UnitType.getTypeName(unitType) + "]ISOmni";
         }
         return chassis + "[" + UnitType.getTypeName(unitType) + "]";
     }
@@ -149,7 +169,7 @@ public class AbstractUnitRecord {
             case "Naval" -> UnitType.NAVAL;
             case "Gun Emplacement" -> UnitType.GUN_EMPLACEMENT;
             case "Conventional Fighter" -> UnitType.CONV_FIGHTER;
-            case "AeroSpaceFighter" -> UnitType.AEROSPACEFIGHTER;
+            case "AeroSpaceFighter" -> UnitType.AEROSPACE_FIGHTER;
             case "Aero" -> UnitType.AERO;
             case "Small Craft" -> UnitType.SMALL_CRAFT;
             case "Dropship" -> UnitType.DROPSHIP;
@@ -157,6 +177,8 @@ public class AbstractUnitRecord {
             case "Warship" -> UnitType.WARSHIP;
             case "Space Station" -> UnitType.SPACE_STATION;
             case "Handheld Weapon" -> UnitType.HANDHELD_WEAPON;
+            case "Mobile Structure" -> UnitType.MOBILE_STRUCTURE;
+            case "Advanced Building" -> UnitType.ADVANCED_BUILDING;
             default -> -1;
         };
     }

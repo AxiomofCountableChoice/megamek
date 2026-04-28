@@ -19,7 +19,7 @@
 package megamek.client.bot.rl;
 
 import megamek.client.bot.princess.Princess;
-import megamek.common.Entity;
+import megamek.common.units.Entity;
 import megamek.common.moves.MovePath;
 import megamek.logging.MMLogger;
 
@@ -53,11 +53,8 @@ public class RLDataCollectionPrincess extends Princess {
 
     @Override
     protected void calculateDeployment() {
-        megamek.common.GameTurn myTurn = getGame().getTurnForPlayer(getLocalPlayer().getId());
-        if (myTurn != null) {
-            int entityNum = getGame().getFirstDeployableEntityNum(myTurn);
-            // ...
-        } else {
+        megamek.common.game.GameTurn myTurn = getGame().getTurnForPlayer(getLocalPlayer().getId());
+        if (myTurn == null) {
             sendDone(true);
             return;
         }

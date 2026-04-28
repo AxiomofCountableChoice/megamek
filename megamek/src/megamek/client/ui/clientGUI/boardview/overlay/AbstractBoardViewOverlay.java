@@ -1,15 +1,34 @@
 /*
- * MegaMek - Copyright (C) 2023 - The MegaMek Team
+ * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI.boardview.overlay;
 
@@ -24,7 +43,6 @@ import java.awt.Image;
 import java.awt.Rectangle;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import megamek.client.ui.IDisplayable;
 import megamek.client.ui.clientGUI.ClientGUI;
@@ -32,7 +50,7 @@ import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.clientGUI.boardview.BoardView;
 import megamek.client.ui.util.StringDrawer;
 import megamek.client.ui.util.UIUtil;
-import megamek.common.Game;
+import megamek.common.game.Game;
 import megamek.common.KeyBindParser;
 import megamek.common.enums.GamePhase;
 import megamek.common.event.GameListener;
@@ -45,8 +63,7 @@ import megamek.common.util.ImageUtil;
 import megamek.logging.MMLogger;
 
 /**
- * This is a framework for boardview overlays that can show a list of data,
- * conditions etc.
+ * This is a framework for boardview overlays that can show a list of data, conditions etc.
  */
 public abstract class AbstractBoardViewOverlay implements IDisplayable, IPreferenceChangeListener {
     private static final MMLogger logger = MMLogger.create(AbstractBoardViewOverlay.class);
@@ -88,6 +105,21 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
         clientGui = boardView.getClientgui();
         currentGame = Objects.requireNonNull(boardView.game);
         currentPhase = currentGame.getPhase();
+        // Detects phase and turn changes to display
+        // The active player has changed
+        GameListener gameListener = new GameListenerAdapter() {
+            @Override
+            public void gamePhaseChange(GamePhaseChangeEvent e) {
+                currentPhase = e.getNewPhase();
+                gameTurnOrPhaseChange();
+            }
+
+            @Override
+            public void gameTurnChange(GameTurnChangeEvent e) {
+                // The active player has changed
+                gameTurnOrPhaseChange();
+            }
+        };
         currentGame.addGameListener(gameListener);
         GUIPreferences.getInstance().addPreferenceChangeListener(this);
         KeyBindParser.addPreferenceChangeListener(this);
@@ -101,8 +133,7 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
     }
 
     /**
-     * Override to return the localized header text, possibly including the current
-     * keyboard shortcut to toggle it.
+     * Override to return the localized header text, possibly including the current keyboard shortcut to toggle it.
      */
     protected abstract String getHeaderText();
 
@@ -136,7 +167,7 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
                 // draw a semi-transparent background rectangle
                 Color colorBG = GUIP.getPlanetaryConditionsColorBackground();
                 intGraph.setColor(new Color(colorBG.getRed(), colorBG.getGreen(), colorBG.getBlue(),
-                        GUIP.getPlanetaryConditionsBackgroundTransparency()));
+                      GUIP.getPlanetaryConditionsBackgroundTransparency()));
                 intGraph.fillRoundRect(0, 0, r.width, r.height, PADDING_X, PADDING_Y);
 
                 // The coordinates to write the texts to
@@ -145,7 +176,7 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
                 // write the strings
                 for (String line : allLines) {
                     new StringDrawer(cleanedLine(line)).at(PADDING_X, y).font(font).fontSize(fontSize)
-                            .color(lineColor(line)).draw(intGraph);
+                          .color(lineColor(line)).draw(intGraph);
                     y += fm.getHeight();
                 }
             }
@@ -172,21 +203,19 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
 
     /** Calculates the pixel size of the display from the necessary text lines. */
     private Rectangle getSize(List<String> lines, FontMetrics fm) {
-        List<String> cleanedLines = lines.stream().map(this::cleanedLine).collect(Collectors.toList());
+        List<String> cleanedLines = lines.stream().map(this::cleanedLine).toList();
         int width = cleanedLines.stream().mapToInt(fm::stringWidth).max().orElse(0);
         int height = fm.getHeight() * lines.size();
         return new Rectangle(width, height);
     }
 
     /**
-     * Override to return a List of all text lines to be shown. Use
-     * {@link #addHeader(List)}.
+     * Override to return a List of all text lines to be shown. Use {@link #addHeader(List)}.
      */
     protected abstract List<String> assembleTextLines();
 
     /**
-     * Returns the color encoded in the given line if there is one; the standard
-     * text color otherwise.
+     * Returns the color encoded in the given line if there is one; the standard text color otherwise.
      */
     private Color lineColor(String line) {
         Color textColor = getTextColor();
@@ -216,8 +245,7 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
     }
 
     /**
-     * Activates or deactivates the overlay, fading it in or out. Also saves the
-     * visibility to the GUIPreferences so
+     * Activates or deactivates the overlay, fading it in or out. Also saves the visibility to the GUIPreferences so
      * MegaMek remembers it.
      */
     public void setVisible(boolean vis) {
@@ -262,21 +290,6 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
         return false;
     }
 
-    /** Detects phase and turn changes to display */
-    private final GameListener gameListener = new GameListenerAdapter() {
-        @Override
-        public void gamePhaseChange(GamePhaseChangeEvent e) {
-            currentPhase = e.getNewPhase();
-            gameTurnOrPhaseChange();
-        }
-
-        @Override
-        public void gameTurnChange(GameTurnChangeEvent e) {
-            // The active player has changed
-            gameTurnOrPhaseChange();
-        }
-    };
-
     protected void setDirty() {
         dirty = true;
         scheduleBoardViewRepaint();
@@ -302,8 +315,8 @@ public abstract class AbstractBoardViewOverlay implements IDisplayable, IPrefere
 
     public static String colorToHex(Color color, float brightnessMultiplier) {
         return String.format("#%02X%02X%02X",
-                (int) (color.getRed() * brightnessMultiplier), (int) (color.getGreen() * brightnessMultiplier),
-                (int) (color.getBlue() * brightnessMultiplier));
+              (int) (color.getRed() * brightnessMultiplier), (int) (color.getGreen() * brightnessMultiplier),
+              (int) (color.getBlue() * brightnessMultiplier));
     }
 
     @Override

@@ -1,15 +1,34 @@
 /*
- * MegaMek - Copyright (C) 2020 - The MegaMek Team
+ * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI.boardview.overlay;
 
@@ -26,7 +45,7 @@ import megamek.client.ui.util.KeyCommandBind;
 import megamek.common.preference.PreferenceChangeEvent;
 
 /**
- * An overlay for the Boardview that displays a selection of keybinds for the current game situation
+ * An overlay for the BoardView that displays a selection of keybinds for the current game situation
  *
  * @author SJuliez
  */
@@ -38,7 +57,7 @@ public class KeyBindingsOverlay extends AbstractBoardViewOverlay {
           KeyCommandBind.UNDO_LAST_STEP,
           KeyCommandBind.NEXT_TARGET,
           KeyCommandBind.NEXT_TARGET_VALID,
-          KeyCommandBind.NEXT_TARGET_NOALLIES,
+          KeyCommandBind.NEXT_TARGET_NO_ALLIES,
           KeyCommandBind.NEXT_TARGET_VALID_NO_ALLIES,
           KeyCommandBind.PHYS_PUNCH,
           KeyCommandBind.PHYS_KICK,
@@ -46,16 +65,16 @@ public class KeyBindingsOverlay extends AbstractBoardViewOverlay {
           KeyCommandBind.DONE_NO_ACTION);
 
     /** The keybinds to be shown during the movement phase */
-    private static final List<KeyCommandBind> BINDS_MOVE = Arrays.asList(KeyCommandBind.MOVE_STEPFORWARD,
-          KeyCommandBind.MOVE_STEPBACKWARD,
+    private static final List<KeyCommandBind> BINDS_MOVE = Arrays.asList(KeyCommandBind.MOVE_STEP_FORWARD,
+          KeyCommandBind.MOVE_STEP_BACKWARD,
           KeyCommandBind.TURN_LEFT,
           KeyCommandBind.TURN_RIGHT,
-          KeyCommandBind.TOGGLE_MOVEMODE,
+          KeyCommandBind.TOGGLE_MOVE_MODE,
           KeyCommandBind.MOVE_BACKUP,
-          KeyCommandBind.MOVE_GOPRONE,
+          KeyCommandBind.MOVE_GO_PRONE,
           KeyCommandBind.MOVE_GETUP,
           KeyCommandBind.UNDO_LAST_STEP,
-          KeyCommandBind.TOGGLE_CONVERSIONMODE,
+          KeyCommandBind.TOGGLE_CONVERSION_MODE,
           KeyCommandBind.DONE_NO_ACTION);
 
     /** The keybinds to be shown in all phases during the local player's turn */
@@ -71,16 +90,17 @@ public class KeyBindingsOverlay extends AbstractBoardViewOverlay {
           KeyCommandBind.HEX_COORDS);
 
     /** The keybinds to be shown in the Board Editor */
-    private static final List<KeyCommandBind> BINDS_BOARD_EDITOR = Arrays.asList(KeyCommandBind.HEX_COORDS);
+    private static final List<KeyCommandBind> BINDS_BOARD_EDITOR = List.of(KeyCommandBind.HEX_COORDS);
 
-    private static final List<String> ADDTL_BINDS = Arrays.asList(Messages.getString("KeyBindingsDisplay.fixedBinds")
-                                                                        .split("\n"));
+    private static final List<String> ADDITIONAL_BINDS = Arrays.asList(Messages.getString(
+                "KeyBindingsDisplay.fixedBinds")
+          .split("\n"));
 
-    private static final List<String> ADDTL_BINDS_BOARD_EDITOR = Arrays.asList(Messages.getString(
+    private static final List<String> ADDITIONAL_BINDS_BOARD_EDITOR = Arrays.asList(Messages.getString(
           "KeyBindingsDisplay.fixedBindsBoardEd").split("\n"));
 
     /**
-     * An overlay for the Boardview that displays a selection of keybinds for the current game situation.
+     * An overlay for the BoardView that displays a selection of keybinds for the current game situation.
      */
     public KeyBindingsOverlay(BoardView boardView) {
         super(boardView, new Font("SansSerif", Font.PLAIN, 13));
@@ -119,20 +139,20 @@ public class KeyBindingsOverlay extends AbstractBoardViewOverlay {
                 result.addAll(convertToStrings(BINDS_MY_TURN));
             }
             result.addAll(convertToStrings(BINDS_ANY_TURN));
-            result.addAll(ADDTL_BINDS);
+            result.addAll(ADDITIONAL_BINDS);
         } else {
             // Board Editor
             result.addAll(convertToStrings(BINDS_BOARD_EDITOR));
-            result.addAll(ADDTL_BINDS_BOARD_EDITOR);
+            result.addAll(ADDITIONAL_BINDS_BOARD_EDITOR);
         }
 
         return result;
     }
 
     /** Converts a list of KeyCommandBinds to a list of formatted strings. */
-    private List<String> convertToStrings(List<KeyCommandBind> kcbs) {
+    private List<String> convertToStrings(List<KeyCommandBind> keyCommandBinds) {
         List<String> result = new ArrayList<>();
-        for (KeyCommandBind kcb : kcbs) {
+        for (KeyCommandBind kcb : keyCommandBinds) {
             String label = Messages.getString("KeyBinds.cmdNames." + kcb.cmd);
             String d = KeyCommandBind.getDesc(kcb);
             result.add(label + ": " + d);

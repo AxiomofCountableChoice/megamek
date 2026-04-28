@@ -1,15 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2004-2025 The MegaMek Team. All Rights Reserved.
  *
- *  This program is free software; you can redistribute it and/or modify it
- *  under the terms of the GNU General Public License as published by the Free
- *  Software Foundation; either version 2 of the License, or (at your option)
- *  any later version.
+ * This file is part of MegaMek.
  *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- *  or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- *  for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 
 package megamek.client.ui.dialogs.phaseDisplay;
@@ -23,10 +43,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.Vector;
-
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JDialog;
@@ -36,51 +56,41 @@ import javax.swing.JTextArea;
 
 import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.GUIPreferences;
-import megamek.common.Entity;
-import megamek.common.MiscType;
-import megamek.common.Mounted;
+import megamek.common.units.Entity;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
 import megamek.common.actions.TriggerAPPodAction;
 
 /**
- * A dialog displayed to the player when they have an opportunity to trigger an
- * Anti-Personell Pod on one of their units.
+ * A dialog displayed to the player when they have an opportunity to trigger an Anti-Personal Pod on one of their
+ * units.
  */
 public class TriggerAPPodDialog extends JDialog implements ActionListener {
+    @Serial
     private static final long serialVersionUID = -9009039614015364943L;
-    private JButton butOkay = new JButton(Messages.getString("Okay"));
-    private JTextArea labMessage;
 
     /**
      * The <code>FirePodTracker</code>s for the entity's active AP Pods.
      */
-    private ArrayList<TriggerPodTracker> trackers = new ArrayList<>();
+    private final ArrayList<TriggerPodTracker> trackers = new ArrayList<>();
 
     /**
      * The <code>int</code> ID of the entity that can fire AP Pods.
      */
-    private int entityId = Entity.NONE;
+    private final int entityId;
 
     /**
-     * A helper class to track when a AP Pod has been selected to be triggered.
+     * A helper class to track when an AP Pod has been selected to be triggered.
+     *
+     * @param podNum   The equipment number of the AP Pod that this is listening to.
+     * @param checkbox The <code>JCheckBox</code> being tracked.
      */
-    private class TriggerPodTracker {
-
-        /**
-         * The equipment number of the AP Pod that this is listening to.
-         */
-        private int podNum = Entity.NONE;
-
-        /**
-         * The <code>JCheckBox</code> being tracked.
-         */
-        private JCheckBox checkbox;
+    private record TriggerPodTracker(JCheckBox checkbox, int podNum) {
 
         /**
          * Create a tracker.
          */
-        public TriggerPodTracker(JCheckBox box, int pod) {
-            podNum = pod;
-            checkbox = box;
+        private TriggerPodTracker {
         }
 
         /**
@@ -103,8 +113,7 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
     }
 
     /**
-     * Display a dialog that shows the AP Pods on the entity, and allows the
-     * player to fire any active pods.
+     * Display a dialog that shows the AP Pods on the entity, and allows the player to fire any active pods.
      *
      * @param parent the <code>Frame</code> parent of this dialog
      * @param entity the <code>Entity</code> that can fire AP Pods.
@@ -113,8 +122,8 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
         super(parent, Messages.getString("TriggerAPPodDialog.title"), true);
         entityId = entity.getId();
 
-        labMessage = new JTextArea(Messages.getString("TriggerAPPodDialog.selectPodsToTrigger",
-                entity.getDisplayName()));
+        JTextArea labMessage = new JTextArea(Messages.getString("TriggerAPPodDialog.selectPodsToTrigger",
+              entity.getDisplayName()));
         labMessage.setEditable(false);
         labMessage.setOpaque(false);
 
@@ -128,18 +137,17 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
             if (mount.getType().hasFlag(MiscType.F_AP_POD)) {
 
                 // Create a checkbox for the pod, and add it to the panel.
-                StringBuffer message = new StringBuffer();
-                message.append(entity.getLocationName(mount.getLocation()))
-                        .append(' ')
-                        .append(mount.getName());
-                JCheckBox pod = new JCheckBox(message.toString());
+                String message = entity.getLocationName(mount.getLocation())
+                      + ' '
+                      + mount.getName();
+                JCheckBox pod = new JCheckBox(message);
                 panPods.add(pod);
 
                 // Can the entity fire the pod?
                 if (mount.canFire()) {
-                    // Yup. Add a traker for this pod.
+                    // Yup. Add a tracker for this pod.
                     TriggerPodTracker tracker = new TriggerPodTracker(pod,
-                            entity.getEquipmentNum(mount));
+                          entity.getEquipmentNum(mount));
                     trackers.add(tracker);
                 } else {
                     // Nope. Disable the checkbox.
@@ -151,22 +159,23 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
         } // Look at the next piece of equipment.
 
         // OK button.
+        JButton butOkay = new JButton(Messages.getString("Okay"));
         butOkay.addActionListener(this);
 
         // layout
-        GridBagLayout gridbag = new GridBagLayout();
+        GridBagLayout gridBagLayout = new GridBagLayout();
         GridBagConstraints c = new GridBagConstraints();
-        getContentPane().setLayout(gridbag);
+        getContentPane().setLayout(gridBagLayout);
 
         c.fill = GridBagConstraints.BOTH;
         c.insets = new Insets(10, 10, 10, 10);
         c.weightx = 1.0;
         c.weighty = 0.0;
         c.gridwidth = GridBagConstraints.REMAINDER;
-        gridbag.setConstraints(labMessage, c);
+        gridBagLayout.setConstraints(labMessage, c);
         getContentPane().add(labMessage);
 
-        gridbag.setConstraints(panPods, c);
+        gridBagLayout.setConstraints(panPods, c);
         getContentPane().add(panPods);
 
         c.weightx = 1.0;
@@ -174,7 +183,7 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
         c.fill = GridBagConstraints.VERTICAL;
         c.ipadx = 20;
         c.ipady = 5;
-        gridbag.setConstraints(butOkay, c);
+        gridBagLayout.setConstraints(butOkay, c);
         getContentPane().add(butOkay);
 
         addWindowListener(new WindowAdapter() {
@@ -186,22 +195,17 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
 
         pack();
         Dimension size = getSize();
-        boolean updateSize = false;
         if (size.width < GUIPreferences.getInstance().getMinimumSizeWidth()) {
             size.width = GUIPreferences.getInstance().getMinimumSizeWidth();
         }
         if (size.height < GUIPreferences.getInstance().getMinimumSizeHeight()) {
             size.height = GUIPreferences.getInstance().getMinimumSizeHeight();
         }
-        if (updateSize) {
-            setSize(size);
-            size = getSize();
-        }
         setResizable(false);
         setLocation(parent.getLocation().x + parent.getSize().width / 2
-                - size.width / 2,
-                parent.getLocation().y
-                        + parent.getSize().height / 2 - size.height / 2);
+                    - size.width / 2,
+              parent.getLocation().y
+                    + parent.getSize().height / 2 - size.height / 2);
     }
 
     @Override
@@ -212,8 +216,7 @@ public class TriggerAPPodDialog extends JDialog implements ActionListener {
     /**
      * Get the trigger actions that the user selected.
      *
-     * @return the <code>Enumeration</code> of <code>TriggerAPPodAction</code>
-     *         objects that match the user's selections.
+     * @return the <code>Enumeration</code> of <code>TriggerAPPodAction</code> objects that match the user's selections.
      */
     public Enumeration<TriggerAPPodAction> getActions() {
         Vector<TriggerAPPodAction> temp = new Vector<>();

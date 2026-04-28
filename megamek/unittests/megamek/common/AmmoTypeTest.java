@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2022 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2013-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.common;
 
@@ -27,12 +41,15 @@ import static org.mockito.Mockito.when;
 
 import java.util.EnumSet;
 
+import megamek.common.equipment.AmmoMounted;
+import megamek.common.equipment.AmmoType;
+import megamek.common.equipment.MiscMounted;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.WeaponMounted;
+import megamek.common.equipment.WeaponType;
+import megamek.common.options.OptionsConstants;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-
-import megamek.common.equipment.AmmoMounted;
-import megamek.common.equipment.MiscMounted;
-import megamek.common.equipment.WeaponMounted;
 
 /**
  * @author Deric "Netzilla" Page (deric dot page at usa dot net)
@@ -136,5 +153,47 @@ class AmmoTypeTest {
         assertTrue(AmmoType.canSwitchToAmmo(mockWeapon, mockInferno4AmmoType));
 
         assertFalse(AmmoType.canSwitchToAmmo(mockWeapon, mockSRM6AmmoType));
+    }
+
+    /**
+     * Tests that weapons with Static Ammo Feed quirk can only switch to ammo with matching munition type. Per CamOps
+     * p.235/BMM p.89, Static Ammo Feed locks a weapon to a specific ammo bin.
+     */
+    @Test
+    void testCanSwitchToAmmoWithStaticFeed() {
+        // Create a weapon with Static Ammo Feed quirk, linked to standard SRM4 ammo
+        WeaponMounted mockStaticFeedWeapon = mock(WeaponMounted.class);
+        when(mockStaticFeedWeapon.getLinkedAmmo()).thenReturn(mockAmmoSrm4);
+        when(mockStaticFeedWeapon.hasQuirk(OptionsConstants.QUIRK_WEAPON_NEG_STATIC_FEED)).thenReturn(true);
+
+        // Create a second standard SRM4 ammo type (same munition type as linked ammo)
+        AmmoType mockSRM4StandardAmmoType2 = mock(AmmoType.class);
+        when(mockSRM4StandardAmmoType2.getAmmoType()).thenReturn(AmmoType.AmmoTypeEnum.SRM);
+        when(mockSRM4StandardAmmoType2.getRackSize()).thenReturn(4);
+        when(mockSRM4StandardAmmoType2.getMunitionType()).thenReturn(EnumSet.of(AmmoType.Munitions.M_STANDARD));
+        doReturn(true).when(mockSRM4AmmoType).equalsAmmoTypeOnly(eq(mockSRM4StandardAmmoType2));
+
+        // Static Ammo Feed weapon CAN switch to ammo with same munition type (M_STANDARD)
+        assertTrue(AmmoType.canSwitchToAmmo(mockStaticFeedWeapon, mockSRM4StandardAmmoType2),
+              "Static Ammo Feed should allow switching to ammo with same munition type");
+
+        // Static Ammo Feed weapon CANNOT switch to ammo with different munition type (M_INFERNO)
+        assertFalse(AmmoType.canSwitchToAmmo(mockStaticFeedWeapon, mockInferno4AmmoType),
+              "Static Ammo Feed should prevent switching to ammo with different munition type");
+    }
+
+    /**
+     * Tests that weapons without Static Ammo Feed can switch between different munition types.
+     */
+    @Test
+    void testCanSwitchToAmmoWithoutStaticFeed() {
+        // Create a normal weapon (no Static Ammo Feed), linked to standard SRM4 ammo
+        WeaponMounted mockNormalWeapon = mock(WeaponMounted.class);
+        when(mockNormalWeapon.getLinkedAmmo()).thenReturn(mockAmmoSrm4);
+        when(mockNormalWeapon.hasQuirk(OptionsConstants.QUIRK_WEAPON_NEG_STATIC_FEED)).thenReturn(false);
+
+        // Normal weapon CAN switch to ammo with different munition type (M_INFERNO)
+        assertTrue(AmmoType.canSwitchToAmmo(mockNormalWeapon, mockInferno4AmmoType),
+              "Normal weapon should allow switching to ammo with different munition type");
     }
 }

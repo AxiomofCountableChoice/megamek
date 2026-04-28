@@ -1,14 +1,14 @@
 /*
  * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
  *
- * This file is part of <Package Name>.
+ * This file is part of MegaMek.
  *
- * <Package Name> is free software: you can redistribute it and/or modify
+ * MegaMek is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License (GPL),
  * version 3 or (at your option) any later version,
  * as published by the Free Software Foundation.
  *
- * <Package Name> is distributed in the hope that it will be useful,
+ * MegaMek is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty
  * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -25,14 +25,18 @@
  * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
  * InMediaRes Productions, LLC.
  *
- * MechWarrior Copyright Microsoft Corporation. <Package Name> was created under
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
  * Microsoft's "Game Content Usage Rules"
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI.boardview.overlay;
 
-import java.awt.*;
+import java.awt.AlphaComposite;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.Rectangle;
 
 import megamek.client.ui.IDisplayable;
 import megamek.client.ui.clientGUI.GUIPreferences;
@@ -77,20 +81,18 @@ public class TraceOverlay implements IDisplayable, IPreferenceChangeListener {
 
     @Override
     public void preferenceChange(PreferenceChangeEvent e) {
-        if (e.getName().equals(GUIPreferences.SHOW_TRACE_OVERLAY)) {
-            visible = GUIP.getShowTraceOverlay();
-            boardView.refreshDisplayables();
-        } else if (e.getName().equals(GUIPreferences.TRACE_OVERLAY_TRANSPARENCY)) {
-            boardView.refreshDisplayables();
-        } else if (e.getName().equals(GUIPreferences.TRACE_OVERLAY_SCALE)) {
-            boardView.refreshDisplayables();
-        } else if (e.getName().equals(GUIPreferences.TRACE_OVERLAY_ORIGIN_X)) {
-            boardView.refreshDisplayables();
-        } else if (e.getName().equals(GUIPreferences.TRACE_OVERLAY_ORIGIN_Y)) {
-            boardView.refreshDisplayables();
-        } else if (e.getName().equals(GUIPreferences.TRACE_OVERLAY_IMAGE_FILE)) {
-            traceImage = ImageUtil.loadImageFromFile(GUIP.getTraceOverlayImageFile());
-            boardView.refreshDisplayables();
+        switch (e.getName()) {
+            case GUIPreferences.SHOW_TRACE_OVERLAY -> {
+                visible = GUIP.getShowTraceOverlay();
+                boardView.refreshDisplayables();
+            }
+            case GUIPreferences.TRACE_OVERLAY_TRANSPARENCY, GUIPreferences.TRACE_OVERLAY_SCALE,
+                 GUIPreferences.TRACE_OVERLAY_ORIGIN_X, GUIPreferences.TRACE_OVERLAY_ORIGIN_Y ->
+                  boardView.refreshDisplayables();
+            case GUIPreferences.TRACE_OVERLAY_IMAGE_FILE -> {
+                traceImage = ImageUtil.loadImageFromFile(GUIP.getTraceOverlayImageFile());
+                boardView.refreshDisplayables();
+            }
         }
     }
 }

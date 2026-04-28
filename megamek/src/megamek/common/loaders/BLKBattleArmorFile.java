@@ -1,19 +1,49 @@
 /*
- * MegaMek - Copyright (C) 2000-2002 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2000-2002 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.loaders;
 
-import megamek.common.*;
+import megamek.common.TechConstants;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.equipment.AmmoType;
+import megamek.common.equipment.EquipmentType;
+import megamek.common.equipment.EquipmentTypeLookup;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
+import megamek.common.exceptions.LocationFullException;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityMovementMode;
 import megamek.common.util.BuildingBlock;
 
 /**
@@ -53,7 +83,7 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
             throw new EntityLoadingException("Could not find chassis block.");
         }
         String chassis = dataFile.getDataAsString("chassis")[0];
-        if (chassis.toLowerCase().equals("biped")) {
+        if (chassis.equalsIgnoreCase("biped")) {
             t.setChassisType(BattleArmor.CHASSIS_TYPE_BIPED);
         } else if (chassis.equalsIgnoreCase("quad")) {
             t.setChassisType(BattleArmor.CHASSIS_TYPE_QUAD);
@@ -66,25 +96,8 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
         }
         String sMotion = dataFile.getDataAsString("motion_type")[0];
         t.setMovementMode(EntityMovementMode.parseFromString(sMotion));
-        // Add equipment to calculate unit tech advancement correctly
-        try {
-            switch (t.getMovementMode()) {
-                case INF_JUMP:
-                    t.addEquipment(EquipmentType.get(EquipmentTypeLookup.BA_JUMP_JET), Entity.LOC_NONE);
-                    break;
-                case VTOL:
-                    t.addEquipment(EquipmentType.get(EquipmentTypeLookup.BA_VTOL), Entity.LOC_NONE);
-                    break;
-                case INF_UMU:
-                    t.addEquipment(EquipmentType.get(EquipmentTypeLookup.BA_UMU), Entity.LOC_NONE);
-                    break;
-                case NONE:
-                    throw new EntityLoadingException("Invalid movement type: " + sMotion);
-                default:
-                    break;
-            }
-        } catch (LocationFullException ignore) {
-            // Adding to LOC_NONE
+        if (t.getMovementMode() == EntityMovementMode.NONE) {
+            throw new EntityLoadingException("Invalid movement type: " + sMotion);
         }
 
         if (!dataFile.exists("cruiseMP")) {
@@ -128,16 +141,16 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
             if (index >= 0) {
                 t.setTurretSize(Integer.parseInt(field.substring(index + 1)));
                 if (field.toLowerCase().startsWith("modular")
-                        || field.toLowerCase().startsWith("configurable")) {
+                      || field.toLowerCase().startsWith("configurable")) {
                     t.setModularTurret(true);
                 }
             }
         }
         t.recalculateTechAdvancement();
 
-        String[] abbrs = t.getLocationAbbrs();
+        String[] abbreviations = t.getLocationAbbreviations();
         for (int loop = 0; loop < t.locations(); loop++) {
-            loadEquipment(t, abbrs[loop], loop);
+            loadEquipment(t, abbreviations[loop], loop);
         }
 
         if (dataFile.exists("cost")) {
@@ -145,6 +158,30 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
         }
         t.setArmorTonnage(t.getArmorWeight());
         loadQuirks(t);
+        loadSlotlessEquipment(t);
+
+        // Backward compatibility: add movement equipment if not already loaded from
+        // the slotless_equipment block (old files may not include it).
+        // This must happen after loadSlotlessEquipment so new files don't get duplicates.
+        String movementEquipName = switch (t.getMovementMode()) {
+            case INF_JUMP -> EquipmentTypeLookup.BA_JUMP_JET;
+            case VTOL -> EquipmentTypeLookup.BA_VTOL;
+            case INF_UMU -> EquipmentTypeLookup.BA_UMU;
+            default -> null;
+        };
+        if (movementEquipName != null) {
+            boolean alreadyPresent = t.getEquipment().stream()
+                  .anyMatch(m -> movementEquipName.equals(m.getType().getInternalName()));
+            if (!alreadyPresent) {
+                try {
+                    t.addEquipment(EquipmentType.get(movementEquipName), Entity.LOC_NONE);
+                } catch (LocationFullException ignore) {
+                    // Adding to LOC_NONE
+                }
+            }
+        }
+
+        t.recalculateTechAdvancement();
         return t;
     }
 
@@ -171,10 +208,10 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
                     mountLoc = BattleArmor.MOUNT_LOC_BODY;
                     saEquip[x] = saEquip[x].replace(":Body", "");
                 } else if (saEquip[x].contains(":LA")) {
-                    mountLoc = BattleArmor.MOUNT_LOC_LARM;
+                    mountLoc = BattleArmor.MOUNT_LOC_LEFT_ARM;
                     saEquip[x] = saEquip[x].replace(":LA", "");
                 } else if (saEquip[x].contains(":RA")) {
-                    mountLoc = BattleArmor.MOUNT_LOC_RARM;
+                    mountLoc = BattleArmor.MOUNT_LOC_RIGHT_ARM;
                     saEquip[x] = saEquip[x].replace(":RA", "");
                 } else if (saEquip[x].contains(":TU")) {
                     mountLoc = BattleArmor.MOUNT_LOC_TURRET;
@@ -193,10 +230,10 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
                 int numShots = 0;
                 if (saEquip[x].contains(":Shots")) {
                     String shotString = saEquip[x].substring(
-                            saEquip[x].indexOf(":Shots"),
-                            saEquip[x].indexOf("#") + 1);
+                          saEquip[x].indexOf(":Shots"),
+                          saEquip[x].indexOf("#") + 1);
                     numShots = Integer.parseInt(
-                            shotString.replace(":Shots", "").replace("#", ""));
+                          shotString.replace(":Shots", "").replace("#", ""));
                     saEquip[x] = saEquip[x].replace(shotString, "");
                 }
                 double size = 0.0;
@@ -217,14 +254,14 @@ public class BLKBattleArmorFile extends BLKFile implements IMekLoader {
                 if (etype != null) {
                     try {
                         Mounted<?> m = t.addEquipment(etype, nLoc, false,
-                                mountLoc, dwpMounted);
+                              mountLoc, dwpMounted);
                         if (numShots != 0 && (m.getType() instanceof AmmoType)) {
                             m.setShotsLeft(numShots);
                             m.setOriginalShots(numShots);
                             m.setSize(numShots * ((AmmoType) m.getType()).getKgPerShot() / 1000.0);
                         }
                         if ((etype instanceof MiscType)
-                                && (etype.hasFlag(MiscType.F_AP_MOUNT) || etype.hasFlag(MiscType.F_ARMORED_GLOVE))) {
+                              && (etype.hasFlag(MiscType.F_AP_MOUNT) || etype.hasFlag(MiscType.F_ARMORED_GLOVE))) {
                             lastAPM = m;
                         } else if (apmMounted) {
                             m.setAPMMounted(true);

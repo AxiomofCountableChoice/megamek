@@ -32,10 +32,11 @@
  */
 package megamek.ai.dataset;
 
-import megamek.common.MapSettings;
+import megamek.common.loaders.MapSettings;
 
 /**
  * Flexible container for map settings data using a map-based approach with enum keys.
+ *
  * @author Luana Coppio
  */
 public class MapSettingsData extends EntityDataMap<MapSettingsData.Field> {
@@ -60,7 +61,9 @@ public class MapSettingsData extends EntityDataMap<MapSettingsData.Field> {
 
     /**
      * Creates a MapSettingsData from MapSettings.
+     *
      * @param settings The map settings to extract data from
+     *
      * @return A populated MapSettingsData
      */
     public static MapSettingsData fromMapSettings(MapSettings settings) {

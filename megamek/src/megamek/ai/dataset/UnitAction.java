@@ -39,16 +39,16 @@ import java.util.stream.Collectors;
 
 import megamek.ai.utility.EntityFeatureUtils;
 import megamek.client.ui.SharedUtility;
-import megamek.common.Compute;
-import megamek.common.Entity;
-import megamek.common.IAero;
+import megamek.common.compute.Compute;
 import megamek.common.moves.MovePath;
 import megamek.common.moves.MoveStep;
-import megamek.common.UnitRole;
-import megamek.logging.MMLogger;
+import megamek.common.units.Entity;
+import megamek.common.units.IAero;
+import megamek.common.units.UnitRole;
 
 /**
  * Flexible container for unit action data using a map-based approach with enum keys.
+ *
  * @author Luana Coppio
  */
 public class UnitAction extends EntityDataMap<UnitAction.Field> {
@@ -92,7 +92,7 @@ public class UnitAction extends EntityDataMap<UnitAction.Field> {
         ARMOR_RIGHT_P,
         ARMOR_BACK_P,
         ROLE,
-        WEAPON_DMG_FACING_SHORT_MEDIUM_LONG_RANGE;
+        WEAPON_DMG_FACING_SHORT_MEDIUM_LONG_RANGE
     }
 
     /**
@@ -104,7 +104,9 @@ public class UnitAction extends EntityDataMap<UnitAction.Field> {
 
     /**
      * Creates a UnitActionMap from a MovePath.
+     *
      * @param movePath The MovePath to extract data from
+     *
      * @return A populated UnitActionMap
      */
     public static UnitAction fromMovePath(MovePath movePath) {

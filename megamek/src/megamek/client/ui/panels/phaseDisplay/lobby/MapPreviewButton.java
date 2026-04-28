@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2021 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2021-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay.lobby;
 
@@ -35,7 +49,7 @@ import java.awt.dnd.DnDConstants;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
-
+import java.io.Serial;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -43,7 +57,7 @@ import javax.swing.TransferHandler;
 
 import megamek.MMConstants;
 import megamek.client.ui.util.UIUtil;
-import megamek.common.MapSettings;
+import megamek.common.loaders.MapSettings;
 import megamek.common.util.ImageUtil;
 import megamek.logging.MMLogger;
 
@@ -51,14 +65,14 @@ import megamek.logging.MMLogger;
 public class MapPreviewButton extends JButton {
     private static final MMLogger logger = MMLogger.create(MapPreviewButton.class);
 
+    @Serial
     private static final long serialVersionUID = -80635203255671654L;
 
     private final static Color INDEX_COLOR = new Color(100, 100, 100, 180);
     private Dimension currentPreviewSize;
     private Image scaledImage;
     private Image baseImage;
-    private ChatLounge lobby;
-    private MapButtonTransferHandler dndHandler;
+    private final ChatLounge lobby;
     private int index;
     private boolean isExample = false;
     private String boardName = "";
@@ -67,7 +81,7 @@ public class MapPreviewButton extends JButton {
     public MapPreviewButton(ChatLounge cl, int nr) {
         super("");
         lobby = cl;
-        dndHandler = new MapButtonTransferHandler(lobby, this);
+        MapButtonTransferHandler dndHandler = new MapButtonTransferHandler(lobby, this);
         index = nr;
         setBorder(BorderFactory.createLineBorder(Color.GRAY, 2));
         setTransferHandler(dndHandler);
@@ -96,8 +110,7 @@ public class MapPreviewButton extends JButton {
     }
 
     /**
-     * Deletes the scaled minimap image for this button, making it rescale and
-     * redraw.
+     * Deletes the scaled minimap image for this button, making it rescale and redraw.
      */
     public void scheduleRescale() {
         scaledImage = null;
@@ -105,8 +118,7 @@ public class MapPreviewButton extends JButton {
     }
 
     /**
-     * Sets the minimap image of the button to the given base image and stores the
-     * name for DnD
+     * Sets the minimap image of the button to the given base image and stores the name for DnD
      */
     public void setImage(Image image, String name) {
         isExample = name.startsWith(MapSettings.BOARD_SURPRISE) || name.startsWith(MapSettings.BOARD_GENERATED);
@@ -127,8 +139,7 @@ public class MapPreviewButton extends JButton {
     }
 
     /**
-     * Returns true if this button has a base image stored, i.e. if a board file is
-     * set for it.
+     * Returns true if this button has a base image stored, i.e. if a board file is set for it.
      */
     public boolean hasBoard() {
         return baseImage != null;
@@ -158,14 +169,10 @@ public class MapPreviewButton extends JButton {
     }
 
     /**
-     * Scales the present baseImage so that it fits inside the maximum button size
-     * allowed by the dimensions of the preview panel while preserving the aspect
-     * ratio
-     * of the base image. Also, signals the lobby that all preview buttons should be
-     * redrawn
-     * with the same resulting size regardless of whether they have a board image or
-     * not.
-     * Adds the necessary labels to the image as well.
+     * Scales the present baseImage so that it fits inside the maximum button size allowed by the dimensions of the
+     * preview panel while preserving the aspect ratio of the base image. Also, signals the lobby that all preview
+     * buttons should be redrawn with the same resulting size regardless of whether they have a board image or not. Adds
+     * the necessary labels to the image as well.
      */
     private void scaleImage() {
         Dimension optSize = lobby.maxMapButtonSize();
@@ -174,27 +181,31 @@ public class MapPreviewButton extends JButton {
             double factorX = (double) optSize.width / baseImage.getWidth(null);
             double factorY = (double) optSize.height / baseImage.getHeight(null);
             double factor = Math.min(factorX, factorY);
-            int w = (int) (factor * baseImage.getWidth(null));
-            int h = (int) (factor * baseImage.getHeight(null));
-            scaledImage = baseImage.getScaledInstance(w, h, Image.SCALE_SMOOTH);
+            int width = (int) (factor * baseImage.getWidth(null));
+            int height = (int) (factor * baseImage.getHeight(null));
+            scaledImage = baseImage.getScaledInstance(width, height, Image.SCALE_SMOOTH);
             // Add the labels (index, name, example)
             BufferedImage drawableImage = ImageUtil.createAcceleratedImage(scaledImage);
-            Graphics g = drawableImage.getGraphics();
-            UIUtil.setHighQualityRendering(g);
-            if (lobby.isMultipleBoards()) {
-                drawIndex(g, w, h);
+
+            if (drawableImage != null) {
+                Graphics graphics = drawableImage.getGraphics();
+                UIUtil.setHighQualityRendering(graphics);
+                if (lobby.isMultipleBoards()) {
+                    drawIndex(graphics, width, height);
+                }
+                if (isExample && lobby.mapSettings.getMedium() != MapSettings.MEDIUM_SPACE) {
+                    drawExample(graphics, width, height);
+                }
+                if (lobby.mapSettings.getMedium() != MapSettings.MEDIUM_SPACE) {
+                    String text = cleanBoardName(getText(), lobby.mapSettings);
+                    drawMinimapLabel(text, width, height, graphics, lobby.hasInvalidBoard(getText()));
+                }
+                graphics.dispose();
+                // Store the image and notify other buttons to redraw with the calculated size
+                scaledImage = drawableImage;
             }
-            if (isExample && lobby.mapSettings.getMedium() != MapSettings.MEDIUM_SPACE) {
-                drawExample(g, w, h);
-            }
-            if (lobby.mapSettings.getMedium() != MapSettings.MEDIUM_SPACE) {
-                String text = cleanBoardName(getText(), lobby.mapSettings);
-                drawMinimapLabel(text, w, h, g, lobby.hasInvalidBoard(getText()));
-            }
-            g.dispose();
-            // Store the image and notify other buttons to redraw with the calculated size
-            scaledImage = drawableImage;
-            currentPreviewSize = new Dimension(w, h);
+
+            currentPreviewSize = new Dimension(width, height);
             revalidate();
             lobby.updateMapButtons(currentPreviewSize);
         }
@@ -234,17 +245,17 @@ public class MapPreviewButton extends JButton {
     }
 
     /**
-     * The TransferHandler manages drag-and-drop for the preview button.
-     * The preview buttons can import boards from other preview buttons and from
-     * the available bords list. They can also export boards (to other preview
+     * The TransferHandler manages drag-and-drop for the preview button. The preview buttons can import boards from
+     * other preview buttons and from the available boards list. They can also export boards (to other preview
      * buttons).
      */
     private static class MapButtonTransferHandler extends TransferHandler {
+        @Serial
         private static final long serialVersionUID = -1798418800717656572L;
 
         public final DataFlavor flavor = DataFlavor.stringFlavor;
-        private MapPreviewButton button;
-        private ChatLounge lobby;
+        private final MapPreviewButton button;
+        private final ChatLounge lobby;
 
         public MapButtonTransferHandler(ChatLounge cl, MapPreviewButton mpButton) {
             lobby = cl;

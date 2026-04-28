@@ -1,22 +1,48 @@
 /*
- * Copyright (c) 2020 - The MegaMek Team. All rights reserved.
+ * Copyright (C) 2020-2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek.  If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.unitSelectorDialogs;
+
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.io.Serial;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Map;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingConstants;
 
 import megamek.client.AbstractClient;
 import megamek.client.Client;
@@ -24,31 +50,26 @@ import megamek.client.generator.RandomGenderGenerator;
 import megamek.client.generator.RandomNameGenerator;
 import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.ClientGUI;
-import megamek.client.ui.dialogs.UnitFailureDialog;
 import megamek.client.ui.dialogs.UnitLoadingDialog;
-import megamek.common.Entity;
-import megamek.common.MekSummaryCache;
 import megamek.common.Player;
 import megamek.common.TechConstants;
+import megamek.common.annotations.Nullable;
 import megamek.common.enums.Gender;
+import megamek.common.loaders.MekSummaryCache;
 import megamek.common.options.OptionsConstants;
 import megamek.common.preference.ClientPreferences;
 import megamek.common.preference.PreferenceManager;
+import megamek.common.units.Entity;
 import megamek.logging.MMLogger;
-
-import javax.swing.*;
-import java.awt.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Map;
 
 public class MegaMekUnitSelectorDialog extends AbstractUnitSelectorDialog {
 
+    @Serial
     private static final long serialVersionUID = -5717009055093904636L;
     MMLogger LOGGER = MMLogger.create(MegaMekUnitSelectorDialog.class);
     //region Variable Declarations
-    private ClientGUI clientGUI;
-    private JComboBox<String> comboPlayer = new JComboBox<>();
+    private final ClientGUI clientGUI;
+    private final JComboBox<String> comboPlayer = new JComboBox<>();
     //endregion Variable Declarations
 
     public MegaMekUnitSelectorDialog(ClientGUI clientGUI, UnitLoadingDialog unitLoadingDialog) {
@@ -90,7 +111,7 @@ public class MegaMekUnitSelectorDialog extends AbstractUnitSelectorDialog {
         panelButtons.add(buttonClose, gbc);
 
         JLabel labelPlayer = new JLabel(Messages.getString("MekSelectorDialog.m_labelPlayer"),
-                SwingConstants.RIGHT);
+              SwingConstants.RIGHT);
         panelButtons.add(labelPlayer, gbc);
 
         panelButtons.add(comboPlayer, gbc);
@@ -124,7 +145,9 @@ public class MegaMekUnitSelectorDialog extends AbstractUnitSelectorDialog {
             }
             client.sendAddEntity(entities);
 
-            String msg = clientGUI.getClient().getLocalPlayer() + " selected " + (entities.size() == 1 ? "a unit" : entities.size() + " units") + " for player: " + name;
+            String msg = clientGUI.getClient().getLocalPlayer() + " selected " + (entities.size() == 1 ?
+                  "a unit" :
+                  entities.size() + " units") + " for player: " + name;
             clientGUI.getClient().sendServerChat(Player.PLAYER_NONE, msg);
         }
 
@@ -146,8 +169,8 @@ public class MegaMekUnitSelectorDialog extends AbstractUnitSelectorDialog {
                 Gender gender = RandomGenderGenerator.generate();
                 e.getCrew().setGender(gender, i);
                 e.getCrew().setName((player != null)
-                        ? RandomNameGenerator.getInstance().generate(gender, e.getCrew().isClanPilot(i), player.getName())
-                        : RandomNameGenerator.getInstance().generate(gender, e.getCrew().isClanPilot(i)), i);
+                      ? RandomNameGenerator.getInstance().generate(gender, e.getCrew().isClanPilot(i), player.getName())
+                      : RandomNameGenerator.getInstance().generate(gender, e.getCrew().isClanPilot(i)), i);
             }
         }
     }
@@ -185,8 +208,20 @@ public class MegaMekUnitSelectorDialog extends AbstractUnitSelectorDialog {
     //endregion Button Methods
 
     @Override
+    public @Nullable Entity getSelectedEntity() {
+        Entity entity = super.getSelectedEntity();
+        // Set game reference (without full restore) so option-dependent state like
+        // ProtoMek EI tech level can read game options for the preview display
+        if ((entity != null) && (entity.getGame() == null)) {
+            entity.setIGame(clientGUI.getClient().getGame());
+            entity.recalculateTechAdvancement();
+        }
+        return entity;
+    }
+
+    @Override
     protected Entity refreshUnitView() {
-        Entity selectedEntity = super.refreshUnitView(); //we first want it to run through the same code as its parent
+        Entity selectedEntity = super.refreshUnitView();
         if (selectedEntity != null) {
             clientGUI.loadPreviewImage(labelImage, selectedEntity);
         }
@@ -202,7 +237,7 @@ public class MegaMekUnitSelectorDialog extends AbstractUnitSelectorDialog {
         if (mscInstance.isInitialized()) {
             final Map<String, String> hFailedFiles = MekSummaryCache.getInstance().getFailedFiles();
             if ((hFailedFiles != null) && !hFailedFiles.isEmpty()) {
-                LOGGER.warn("Unit loading errors: " + hFailedFiles);
+                LOGGER.warn("Unit loading errors: {}", hFailedFiles);
             }
         }
     }

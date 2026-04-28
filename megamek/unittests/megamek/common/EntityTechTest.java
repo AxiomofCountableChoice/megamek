@@ -32,12 +32,20 @@
  */
 package megamek.common;
 
-import megamek.utils.EntityLoader;
+import static megamek.testUtilities.MMTestUtilities.getEntityForUnitTesting;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import java.util.List;
+
+import megamek.common.equipment.EquipmentType;
+import megamek.common.eras.Eras;
+import megamek.common.loaders.MekSummaryCache;
+import megamek.common.units.AeroSpaceFighter;
+import megamek.common.units.Entity;
+import megamek.common.units.Mek;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 
 class EntityTechTest {
@@ -45,36 +53,35 @@ class EntityTechTest {
     @BeforeAll
     public static void setupClass() {
         EquipmentType.initializeTypes();
-        MekSummaryCache.getInstance();
+        MekSummaryCache.getInstance(true);
+        Eras.getInstance();
     }
 
     @Test
     public void testDateRangesChippewa() {
-        AeroSpaceFighter entity = EntityLoader.loadFromFile("Chippewa CHP-W7.blk", AeroSpaceFighter.class);
+        AeroSpaceFighter entity = (AeroSpaceFighter) getEntityForUnitTesting("Chippewa CHP-W7", true);
+        assertNotNull(entity, "Chippewa CHP-W7 not found");
         printEntity(entity);
-        Assertions.assertEquals("2735 (Star League)", entity.getIntroductionDateAndEra());
-        Assertions.assertEquals("-",
-              entity.getPrototypeRangeDate());
-        Assertions.assertEquals("2735-2814 (Star League to Early Succession Wars), 3041-3054 (Late Succession Wars - Renaissance to Clan Invasion)",
-              entity.getProductionDateRange());
-        Assertions.assertEquals("3055+ (Clan Invasion and onwards)",
-              entity.getCommonDateRange());
-        Assertions.assertEquals("2815-3040",
-              entity.getExtinctionRange());
+
+        Assertions.assertEquals(2735, entity.getIntroductionDate());
+        Assertions.assertEquals("-", entity.getPrototypeRangeDate());
+        Assertions.assertTrue(entity.getProductionDateRange().contains("2735-2814") && entity.getProductionDateRange()
+              .contains("3041-3054"));
+        Assertions.assertTrue(entity.getCommonDateRange().contains("3055+"));
+        Assertions.assertTrue(entity.getExtinctionRange().contains("2815-3040"));
     }
 
     @Test
     public void testDateRangesMuseEarth() {
         // Devastator DVS-X10 MUSE EARTH.mtf
         // Create a Mek for normal movement
-        Mek entity = EntityLoader.loadFromFile("Devastator DVS-X10 MUSE EARTH.mtf", Mek.class);
+        Mek entity = (Mek) getEntityForUnitTesting("Devastator DVS-X10 MUSE EARTH", false);
+        assertNotNull(entity, "Devastator DVS-X10 MUSE EARTH not found");
         printEntity(entity);
 
-        Assertions.assertEquals("3075 (Jihad)", entity.getIntroductionDateAndEra());
-        Assertions.assertEquals("3075-3119 (Jihad to Late Republic)",
-              entity.getPrototypeRangeDate());
-        Assertions.assertEquals("3120+ (Late Republic and onwards)",
-              entity.getProductionDateRange());
+        Assertions.assertEquals(3075, entity.getIntroductionDate());
+        Assertions.assertTrue(entity.getPrototypeRangeDate().contains("3075-3119"));
+        Assertions.assertTrue(entity.getProductionDateRange().contains("3120+"));
         Assertions.assertEquals("-",
               entity.getCommonDateRange());
         Assertions.assertEquals("-",

@@ -33,15 +33,15 @@
  */
 package megamek.client.ui.dialogs.buttonDialogs;
 
-import static megamek.common.Terrains.BLDG_CF;
-import static megamek.common.Terrains.BLDG_ELEV;
-import static megamek.common.Terrains.BRIDGE;
-import static megamek.common.Terrains.BRIDGE_CF;
-import static megamek.common.Terrains.BRIDGE_ELEV;
-import static megamek.common.Terrains.BUILDING;
-import static megamek.common.Terrains.FUEL_TANK;
-import static megamek.common.Terrains.FUEL_TANK_CF;
-import static megamek.common.Terrains.FUEL_TANK_MAGN;
+import static megamek.common.units.Terrains.BLDG_CF;
+import static megamek.common.units.Terrains.BLDG_ELEV;
+import static megamek.common.units.Terrains.BRIDGE;
+import static megamek.common.units.Terrains.BRIDGE_CF;
+import static megamek.common.units.Terrains.BRIDGE_ELEV;
+import static megamek.common.units.Terrains.BUILDING;
+import static megamek.common.units.Terrains.FUEL_TANK;
+import static megamek.common.units.Terrains.FUEL_TANK_CF;
+import static megamek.common.units.Terrains.FUEL_TANK_MAGN;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -76,25 +76,25 @@ import megamek.client.bot.princess.Princess;
 import megamek.client.bot.princess.PrincessException;
 import megamek.client.generator.RandomCallsignGenerator;
 import megamek.client.ui.Messages;
+import megamek.client.ui.buttons.MMToggleButton;
+import megamek.client.ui.clientGUI.ClientGUI;
+import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.comboBoxes.MMComboBox;
 import megamek.client.ui.dialogs.helpDialogs.PrincessHelpDialog;
 import megamek.client.ui.enums.DialogResult;
-import megamek.client.ui.clientGUI.ClientGUI;
-import megamek.client.ui.clientGUI.GUIPreferences;
-import megamek.client.ui.buttons.MMToggleButton;
 import megamek.client.ui.util.ScalingPopup;
 import megamek.client.ui.util.UIUtil;
 import megamek.client.ui.util.UIUtil.*;
-import megamek.common.Board;
-import megamek.common.Building;
-import megamek.common.Coords;
-import megamek.common.Entity;
 import megamek.common.Hex;
 import megamek.common.Player;
 import megamek.common.annotations.Nullable;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
 import megamek.common.internationalization.I18n;
 import megamek.common.preference.ClientPreferences;
 import megamek.common.preference.PreferenceManager;
+import megamek.common.units.Entity;
+import megamek.common.units.IBuilding;
 import megamek.logging.MMLogger;
 import megamek.server.ServerBoardHelper;
 
@@ -120,18 +120,19 @@ public class BotConfigDialog extends AbstractButtonDialog
     private final MMToggleButton forcedWithdrawalCheck = new TipMMToggleButton(Messages.getString(
           "BotConfigDialog.forcedWithdrawalCheck"));
 
-    private final MMToggleButton iAmAPirateCheck = 
+    private final MMToggleButton iAmAPirateCheck =
           new TipMMToggleButton(Messages.getString("BotConfigDialog.iAmAPirateCheck"));
     private final MMToggleButton ignoreDamageOutputCheck =
           new TipMMToggleButton(Messages.getString("BotConfigDialog.ignoreDamageOutput"));
-    private final MMToggleButton exclusiveHerdingCheck = 
+    private final MMToggleButton exclusiveHerdingCheck =
           new TipMMToggleButton(Messages.getString("BotConfigDialog.exclusiveHerdingCheck"));
-    private final MMToggleButton experimentalCheck = 
+    private final MMToggleButton experimentalCheck =
           new TipMMToggleButton(Messages.getString("BotConfigDialog.experimentalCheck"));
 
     private final JLabel withdrawEdgeLabel = new JLabel(Messages.getString("BotConfigDialog.retreatEdgeLabel"));
     private final MMComboBox<CardinalEdge> withdrawEdgeCombo = new TipCombo<>("EdgeToWithdraw", CardinalEdge.values());
-    private final MMToggleButton autoFleeCheck = new TipMMToggleButton(Messages.getString("BotConfigDialog.autoFleeCheck"));
+    private final MMToggleButton autoFleeCheck = new TipMMToggleButton(Messages.getString(
+          "BotConfigDialog.autoFleeCheck"));
     private final JLabel fleeEdgeLabel = new JLabel(Messages.getString("BotConfigDialog.homeEdgeLabel"));
     private final MMComboBox<CardinalEdge> fleeEdgeCombo = new TipCombo<>("EdgeToFlee", CardinalEdge.values());
 
@@ -196,7 +197,6 @@ public class BotConfigDialog extends AbstractButtonDialog
     public BotConfigDialog(JFrame parent, @Nullable String botName, @Nullable BehaviorSettings behavior,
           @Nullable ClientGUI cg) {
         super(parent, "BotConfigDialog", "BotConfigDialog.title");
-        setAlwaysOnTop(true);
         fixedBotPlayerName = botName;
         isNewBot = botName == null;
         clientGui = cg;
@@ -289,15 +289,15 @@ public class BotConfigDialog extends AbstractButtonDialog
         if (client != null) {
             int counter = 0;
             Set<String> playerNames = client.getGame()
-                                            .getPlayersList()
-                                            .stream()
-                                            .map(Player::getName)
-                                            .collect(Collectors.toSet());
+                  .getPlayersList()
+                  .stream()
+                  .map(Player::getName)
+                  .collect(Collectors.toSet());
             while (playerNames.contains(name) && counter < 1000) {
                 counter++;
                 name = "Princess-" +
-                             I18n.normalizeTextToASCII(RandomCallsignGenerator.getInstance().generate(), true)
-                                   .replace(" ", "-");
+                      I18n.normalizeTextToASCII(RandomCallsignGenerator.getInstance().generate(), true)
+                            .replace(" ", "-");
 
             }
         }
@@ -408,7 +408,7 @@ public class BotConfigDialog extends AbstractButtonDialog
         iAmAPirateCheck.setToolTipText(Messages.getString("BotConfigDialog.iAmAPirateCheckToolTip"));
         iAmAPirateCheck.addActionListener(this);
         panContent.add(iAmAPirateCheck);
-        
+
         ignoreDamageOutputCheck.setToolTipText(Messages.getString("BotConfigDialog.ignoreDamageOutputToolTip"));
         ignoreDamageOutputCheck.addActionListener(this);
         panContent.add(ignoreDamageOutputCheck);
@@ -417,7 +417,7 @@ public class BotConfigDialog extends AbstractButtonDialog
         experimentalCheck.addActionListener(this);
 
         if (CLIENT_PREFERENCES.getEnableExperimentalBotFeatures()) {
-            
+
             panContent.add(experimentalCheck);
         }
 
@@ -588,22 +588,24 @@ public class BotConfigDialog extends AbstractButtonDialog
      */
     private boolean isChangedPreset() {
         return (chosenPreset != null) &&
-                     (chosenPreset.getSelfPreservationIndex() != selfPreservationSlidebar.getValue() ||
-                            chosenPreset.getHyperAggressionIndex() != aggressionSlidebar.getValue() ||
-                            chosenPreset.getFallShameIndex() != fallShameSlidebar.getValue() ||
-                            chosenPreset.getHerdMentalityIndex() != herdingSlidebar.getValue() ||
-                            chosenPreset.getBraveryIndex() != braverySlidebar.getValue() ||
-                            chosenPreset.getAntiCrowding() != antiCrowdingSlidebar.getValue() ||
-                            chosenPreset.getFavorHigherTMM() != favorHigherTMMSlidebar.getValue() ||
-                            chosenPreset.iAmAPirate() != iAmAPirateCheck.isSelected() ||
-                            chosenPreset.isExclusiveHerding() != exclusiveHerdingCheck.isSelected() ||
-                            chosenPreset.getNumberOfEnemiesToConsiderFacing() != numberOfEnemiesToConsiderFacingSlidebar.getValue() ||
-                            chosenPreset.getAllowFacingTolerance() != allowFacingToleranceSlidebar.getValue() ||
-                            chosenPreset.isIgnoreDamageOutput() != ignoreDamageOutputCheck.isSelected() ||
-                            chosenPreset.isExperimental() != experimentalCheck.isSelected());
+              (chosenPreset.getSelfPreservationIndex() != selfPreservationSlidebar.getValue() ||
+                    chosenPreset.getHyperAggressionIndex() != aggressionSlidebar.getValue() ||
+                    chosenPreset.getFallShameIndex() != fallShameSlidebar.getValue() ||
+                    chosenPreset.getHerdMentalityIndex() != herdingSlidebar.getValue() ||
+                    chosenPreset.getBraveryIndex() != braverySlidebar.getValue() ||
+                    chosenPreset.getAntiCrowding() != antiCrowdingSlidebar.getValue() ||
+                    chosenPreset.getFavorHigherTMM() != favorHigherTMMSlidebar.getValue() ||
+                    chosenPreset.iAmAPirate() != iAmAPirateCheck.isSelected() ||
+                    chosenPreset.isExclusiveHerding() != exclusiveHerdingCheck.isSelected() ||
+                    chosenPreset.getNumberOfEnemiesToConsiderFacing()
+                          != numberOfEnemiesToConsiderFacingSlidebar.getValue() ||
+                    chosenPreset.getAllowFacingTolerance() != allowFacingToleranceSlidebar.getValue() ||
+                    chosenPreset.isIgnoreDamageOutput() != ignoreDamageOutputCheck.isSelected() ||
+                    chosenPreset.isExperimental() != experimentalCheck.isSelected());
     }
+
     /**
-     * Setup the slider panel with a dynamic title that changes when the slider is moved.
+     * Set up the slider panel with a dynamic title that changes when the slider is moved.
      */
     private JPanel buildSliderWithDynamicTitle(JSlider thisSlider, String minMsgProperty, String maxMsgProperty,
           String toolTip, String titleKey) {
@@ -668,10 +670,10 @@ public class BotConfigDialog extends AbstractButtonDialog
         // the connection between the client.bots stored name and the server-given name
         // gets lost. It doesn't hurt to check against all players though.
         boolean playerNameTaken = (client != null) &&
-                                        client.getGame()
-                                              .getPlayersList()
-                                              .stream()
-                                              .anyMatch(p -> p.getName().equals(nameField.getText()));
+              client.getGame()
+                    .getPlayersList()
+                    .stream()
+                    .anyMatch(p -> p.getName().equals(nameField.getText()));
         if (isNewBot && playerNameTaken) {
             JOptionPane.showMessageDialog(getFrame(), Messages.getString("ChatLounge.AlertExistsBot.message"));
         } else {
@@ -693,7 +695,6 @@ public class BotConfigDialog extends AbstractButtonDialog
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == addTargetButton) {
             var dlg = new BotConfigTargetHexDialog(getFrame(), clientGui);
-            dlg.setAlwaysOnTop(true);
             dlg.setVisible(true);
             if (dlg.getResult() == DialogResult.CONFIRMED) {
                 dlg.getSelectedCoords()
@@ -704,7 +705,6 @@ public class BotConfigDialog extends AbstractButtonDialog
 
         } else if (e.getSource() == addUnitButton) {
             var dlg = new BotConfigTargetUnitDialog(getFrame());
-            dlg.setAlwaysOnTop(true);
             dlg.setVisible(true);
             if (dlg.getResult() == DialogResult.CONFIRMED) {
                 dlg.getSelectedIDs()
@@ -737,12 +737,10 @@ public class BotConfigDialog extends AbstractButtonDialog
 
     /** Asks for a name and adds the current Behavior as a new Behavior Preset. */
     private void saveAsNewPreset() {
-        getFrame().setAlwaysOnTop(true);
         while (true) {
 
             String name = JOptionPane.showInputDialog(getFrame(), Messages.getString("BotConfigDialog.saveNewPrompt"));
             if (name == null || name.isBlank()) {
-                getFrame().setAlwaysOnTop(false);
                 return;
             }
             if (!behaviorSettingsFactory.getBehaviorNameList().contains(name)) {
@@ -750,7 +748,6 @@ public class BotConfigDialog extends AbstractButtonDialog
                 writePreset(name);
                 updatePresets();
                 presetsList.setSelectedValue(name, true);
-                getFrame().setAlwaysOnTop(false);
                 return;
             }
             // Incorrect name: notify the player and ask again
@@ -935,7 +932,7 @@ public class BotConfigDialog extends AbstractButtonDialog
 
         // Add the Configuration from a save game, if any to the top of the list
         if (saveGameBehavior != null) {
-            presets.add(0, Messages.getString("BotConfigDialog.previousConfig"));
+            presets.addFirst(Messages.getString("BotConfigDialog.previousConfig"));
         }
 
         // Other local bot Configurations
@@ -1026,8 +1023,8 @@ public class BotConfigDialog extends AbstractButtonDialog
             } else {
                 int unitID = (int) value;
                 Optional<Entity> optEntity = Optional.ofNullable(client)
-                                                   .map(Client::getGame)
-                                                   .map(game -> game.getEntity(unitID));
+                      .map(Client::getGame)
+                      .map(game -> game.getEntity(unitID));
                 if (optEntity.isPresent()) {
                     Entity entity = optEntity.get();
                     content = Messages.getString("BotConfigDialog.unitListEntry", unitID, entity.getShortNameRaw());
@@ -1044,18 +1041,20 @@ public class BotConfigDialog extends AbstractButtonDialog
 
     /**
      * Returns a string with the building information if present.
+     *
      * @param coords Position on the board for possible building
-     * @param board The board to check for building information
+     * @param board  The board to check for building information
+     *
      * @return String with building information if there is any building there
      */
     static String buildingInfoIfPresent(Coords coords, Board board) {
         final Hex hex = board.getHex(coords);
-        final Building bldg = board.getBuildingAt(coords);
+        final IBuilding bldg = board.getBuildingAt(coords);
         String content = "";
         if (hex.containsTerrain(BUILDING)) {
             content += Messages.getString("BotConfigDialog.hexListBldg",
-                  bldg.getType().toString(),
-                  Building.className(bldg.getBldgClass()),
+                  bldg.getBuildingType().toString(),
+                  IBuilding.className(bldg.getBldgClass()),
                   hex.terrainLevel(BLDG_ELEV),
                   hex.terrainLevel(BLDG_CF));
         } else if (hex.containsTerrain(FUEL_TANK)) {
@@ -1064,7 +1063,7 @@ public class BotConfigDialog extends AbstractButtonDialog
                   hex.terrainLevel(FUEL_TANK_MAGN));
         } else {
             content += Messages.getString("BotConfigDialog.hexListBrdg",
-                  bldg.getType().toString(),
+                  bldg.getBuildingType().toString(),
                   hex.terrainLevel(BRIDGE_ELEV),
                   hex.terrainLevel(BRIDGE_CF));
         }

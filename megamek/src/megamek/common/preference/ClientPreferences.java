@@ -1,16 +1,37 @@
 /*
- * MegaMek - Copyright (C) 2005 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2005 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2005-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.preference;
 
 import static megamek.client.bot.princess.BehaviorSettingsFactory.DEFAULT_BEHAVIOR_DESCRIPTION;
@@ -48,15 +69,15 @@ public class ClientPreferences extends PreferenceStoreProxy {
     public static final String MEK_HIT_LOC_LOG = "MekHitLocLog";
     public static final String MEMORY_DUMP_ON = "MemoryDumpOn";
     public static final String DEBUG_OUTPUT_ON = "DebugOutputOn";
-    public static final String GAMELOG_KEEP = "KeepGameLog";
-    public static final String GAMELOG_FILENAME = "GameLogFilename";
-    public static final String AUTO_RESOLVE_GAMELOG_FILENAME = "AutoResolveGameLogFilename";
+    public static final String GAME_LOG_KEEP = "KeepGameLog";
+    public static final String GAME_LOG_FILENAME = "GameLogFilename";
+    public static final String AUTO_RESOLVE_GAME_LOG_FILENAME = "AutoResolveGameLogFilename";
     public static final String STAMP_FILENAMES = "StampFilenames";
     public static final String DATA_LOGGING = "GameDatasetLogging";
     public static final String STAMP_FORMAT = "StampFormat";
     public static final String SHOW_UNIT_ID = "ShowUnitId";
     public static final String UNIT_START_CHAR = "UnitStartChar";
-    public static final String DEFAULT_AUTOEJECT_DISABLED = "DefaultAutoejectDisabled";
+    public static final String DEFAULT_AUTO_EJECT_DISABLED = "DefaultAutoejectDisabled";
     public static final String USE_AVERAGE_SKILLS = "UseAverageSkills";
     public static final String USE_GP_IN_UNIT_SELECTION = "UseGPinUnitSelection";
     public static final String GENERATE_NAMES = "GenerateNames";
@@ -69,9 +90,22 @@ public class ClientPreferences extends PreferenceStoreProxy {
     public static final String MAP_WIDTH = "MapWidth";
     public static final String MAP_HEIGHT = "MapHeight";
     public static final String REPORT_KEYWORDS = "ReportKeywords";
-    private static final String REPORTKEYWORDSDEFAULTS = "Needs\nRolls\nTakes\nHit\nFalls\nSkill Roll\nPilot Skill\nPhase\nDestroyed\nDamage";
+    private static final String REPORT_KEYWORDS_DEFAULTS = """
+          Needs
+          Rolls
+          Takes
+          Hit
+          Falls
+          Skill Roll
+          Pilot \
+          Skill
+          Phase
+          Destroyed
+          Damage""";
+    public static final String REPORT_FILTER_KEYWORDS = "ReportFilterKeywords";
+    private static final String REPORT_FILTER_KEYWORDS_DEFAULTS = "Fire Hit Damage\nHit Damage";
     public static final String IP_ADDRESSES_IN_CHAT = "IPAddressesInChat";
-    public static final String START_SEARCHLIGHTS_ON = "StartSearchlightsOn";
+    public static final String SPRITES_ONLY = "SpritesOnly";
     public static final String ENABLE_EXPERIMENTAL_BOT_FEATURES = "EnableExperimentalBotFeatures";
     public static final String NAG_ASK_FOR_VICTORY_LIST = "AskForVictoryList";
     public static final String SHOW_AUTO_RESOLVE_PANEL = "ShowAutoResolvePanel";
@@ -79,8 +113,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
     public static final String LAST_SCENARIO = "LastScenario";
 
     /**
-     * A user-specified directory, typically outside the MM directory, where content
-     * may be loaded from.
+     * A user-specified directory, typically outside the MM directory, where content may be loaded from.
      */
     public static final String USER_DIR = "UserDir";
 
@@ -102,9 +135,9 @@ public class ClientPreferences extends PreferenceStoreProxy {
         store.setDefault(LOG_DIRECTORY, "logs");
         store.setDefault(MEK_DIRECTORY, store.getDefaultString(DATA_DIRECTORY) + File.separator + "mekfiles");
         store.setDefault(METASERVER_NAME, "https://api.megamek.org/servers/announce");
-        store.setDefault(GAMELOG_KEEP, true);
-        store.setDefault(GAMELOG_FILENAME, "gamelog.html");
-        store.setDefault(AUTO_RESOLVE_GAMELOG_FILENAME, "simulation.html");
+        store.setDefault(GAME_LOG_KEEP, true);
+        store.setDefault(GAME_LOG_FILENAME, "gamelog.html");
+        store.setDefault(AUTO_RESOLVE_GAME_LOG_FILENAME, "simulation.html");
         store.setDefault(STAMP_FORMAT, "_yyyy-MM-dd_HH-mm-ss");
         store.setDefault(UNIT_START_CHAR, 'A');
         store.setDefault(GUI_NAME, "swing");
@@ -118,15 +151,16 @@ public class ClientPreferences extends PreferenceStoreProxy {
         store.setDefault(MAP_HEIGHT, 1);
         store.setDefault(DEBUG_OUTPUT_ON, false);
         store.setDefault(MEMORY_DUMP_ON, false);
-        store.setDefault(REPORT_KEYWORDS, REPORTKEYWORDSDEFAULTS);
+        store.setDefault(REPORT_KEYWORDS, REPORT_KEYWORDS_DEFAULTS);
+        store.setDefault(REPORT_FILTER_KEYWORDS, REPORT_FILTER_KEYWORDS_DEFAULTS);
         store.setDefault(IP_ADDRESSES_IN_CHAT, false);
-        store.setDefault(START_SEARCHLIGHTS_ON, true);
+        store.setDefault(SPRITES_ONLY, false);
         store.setDefault(ENABLE_EXPERIMENTAL_BOT_FEATURES, false);
         store.setDefault(USER_DIR, "");
         store.setDefault(MML_PATH, "");
         store.setDefault(NAG_ASK_FOR_VICTORY_LIST, true);
         store.setDefault(DATA_LOGGING, true);
-        store.setDefault(SHOW_AUTO_RESOLVE_PANEL, true);
+        store.setDefault(SHOW_AUTO_RESOLVE_PANEL, false);
         store.setDefault(STAMP_FILENAMES, false);
         store.setDefault(FAVORITE_PRINCESS_BEHAVIOR_SETTING, DEFAULT_BEHAVIOR_DESCRIPTION);
         store.setDefault(LAST_SCENARIO, "");
@@ -145,8 +179,8 @@ public class ClientPreferences extends PreferenceStoreProxy {
         return store.getAdvancedProperties();
     }
 
-    public boolean defaultAutoejectDisabled() {
-        return store.getBoolean(DEFAULT_AUTOEJECT_DISABLED);
+    public boolean defaultAutoEjectDisabled() {
+        return store.getBoolean(DEFAULT_AUTO_EJECT_DISABLED);
     }
 
     public boolean useAverageSkills() {
@@ -189,6 +223,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
         return store.getInt(MAX_PATHFINDER_TIME);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public String getDataDirectory() {
         return store.getString(DATA_DIRECTORY);
     }
@@ -197,6 +232,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
         return store.getString(LOG_DIRECTORY);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public String getMekDirectory() {
         return store.getString(MEK_DIRECTORY);
     }
@@ -211,24 +247,27 @@ public class ClientPreferences extends PreferenceStoreProxy {
         return store.getString(METASERVER_NAME);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setMetaServerName(String name) {
         store.setValue(METASERVER_NAME, name);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public int getGoalPlayers() {
         return store.getInt(GOAL_PLAYERS);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setGoalPlayers(int n) {
         store.setValue(GOAL_PLAYERS, n);
     }
 
     public String getGameLogFilename() {
-        return store.getString(GAMELOG_FILENAME);
+        return store.getString(GAME_LOG_FILENAME);
     }
 
     public String getAutoResolveGameLogFilename() {
-        return store.getString(AUTO_RESOLVE_GAMELOG_FILENAME);
+        return store.getString(AUTO_RESOLVE_GAME_LOG_FILENAME);
     }
 
     public boolean dataLoggingEnabled() {
@@ -252,7 +291,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
     }
 
     public boolean keepGameLog() {
-        return store.getBoolean(GAMELOG_KEEP);
+        return store.getBoolean(GAME_LOG_KEEP);
     }
 
     public boolean memoryDumpOn() {
@@ -263,8 +302,8 @@ public class ClientPreferences extends PreferenceStoreProxy {
         return store.getBoolean(DEBUG_OUTPUT_ON);
     }
 
-    public void setDefaultAutoejectDisabled(boolean state) {
-        store.setValue(DEFAULT_AUTOEJECT_DISABLED, state);
+    public void setDefaultAutoEjectDisabled(boolean state) {
+        store.setValue(DEFAULT_AUTO_EJECT_DISABLED, state);
     }
 
     public void setUseAverageSkills(boolean state) {
@@ -280,7 +319,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
     }
 
     public void setKeepGameLog(boolean state) {
-        store.setValue(GAMELOG_KEEP, state);
+        store.setValue(GAME_LOG_KEEP, state);
     }
 
     public void setLastConnectAddr(String serverAddr) {
@@ -299,6 +338,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
         store.setValue(LAST_SERVER_PASS, serverPass);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setLastServerPort(int port) {
         store.setValue(LAST_SERVER_PORT, port);
     }
@@ -312,13 +352,14 @@ public class ClientPreferences extends PreferenceStoreProxy {
     }
 
     public void setGameLogFilename(String name) {
-        store.setValue(GAMELOG_FILENAME, name);
+        store.setValue(GAME_LOG_FILENAME, name);
     }
 
     public void setAutoResolveGameLogFilename(String name) {
-        store.setValue(AUTO_RESOLVE_GAMELOG_FILENAME, name);
+        store.setValue(AUTO_RESOLVE_GAME_LOG_FILENAME, name);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setPrintEntityChange(boolean print) {
         store.setValue(PRINT_ENTITY_CHANGE, print);
     }
@@ -343,10 +384,12 @@ public class ClientPreferences extends PreferenceStoreProxy {
         store.setValue(UNIT_START_CHAR, c);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public String getGUIName() {
         return store.getString(GUI_NAME);
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setGUIName(String guiName) {
         store.setValue(GUI_NAME, guiName);
     }
@@ -359,6 +402,14 @@ public class ClientPreferences extends PreferenceStoreProxy {
         store.setValue(REPORT_KEYWORDS, s);
     }
 
+    public String getReportFilterKeywords() {
+        return store.getString(REPORT_FILTER_KEYWORDS);
+    }
+
+    public void setReportFilterKeywords(String s) {
+        store.setValue(REPORT_FILTER_KEYWORDS, s);
+    }
+
     public boolean getShowIPAddressesInChat() {
         return store.getBoolean(IP_ADDRESSES_IN_CHAT);
     }
@@ -367,12 +418,12 @@ public class ClientPreferences extends PreferenceStoreProxy {
         store.setValue(IP_ADDRESSES_IN_CHAT, value);
     }
 
-    public boolean getStartSearchlightsOn() {
-        return store.getBoolean(START_SEARCHLIGHTS_ON);
+    public boolean getSpritesOnly() {
+        return store.getBoolean(SPRITES_ONLY);
     }
 
-    public void setStartSearchlightsOn(boolean value) {
-        store.setValue(START_SEARCHLIGHTS_ON, value);
+    public void setSpritesOnly(boolean value) {
+        store.setValue(SPRITES_ONLY, value);
     }
 
     public void setEnableExperimentalBotFeatures(boolean value) {
@@ -463,8 +514,7 @@ public class ClientPreferences extends PreferenceStoreProxy {
     }
 
     /**
-     * @return The absolute user directory path (usually outside of MM). Does not
-     *         end in a slash or backslash.
+     * @return The absolute user directory path (usually outside of MM). Does not end in a slash or backslash.
      */
     public String getUserDir() {
         return store.getString(USER_DIR);

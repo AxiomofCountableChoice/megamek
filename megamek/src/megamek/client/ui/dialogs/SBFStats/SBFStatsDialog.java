@@ -51,15 +51,15 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import megamek.client.ui.Messages;
-import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.buttons.MMToggleButton;
+import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.dialogs.abstractDialogs.AbstractDialog;
 import megamek.client.ui.util.FontHandler;
 import megamek.client.ui.util.UIUtil;
 import megamek.codeUtilities.StringUtility;
-import megamek.common.Game;
 import megamek.common.force.Force;
-import megamek.common.jacksonadapters.MMUWriter;
+import megamek.common.game.Game;
+import megamek.common.jacksonAdapters.MMUWriter;
 import megamek.common.strategicBattleSystems.SBFFormation;
 import megamek.common.strategicBattleSystems.SBFFormationConverter;
 import megamek.common.strategicBattleSystems.SBFRecordSheetBook;
@@ -90,7 +90,7 @@ public class SBFStatsDialog extends AbstractDialog {
 
     /**
      * Creates a non-modal dialog that shows SBF Formation stats for the given forces. In the collection of Forces, each
-     * entry should be an company-sized force to convert to Strategic Battle Force. In other words, for a single
+     * entry should be a company-sized force to convert to Strategic Battle Force. In other words, for a single
      * formation, the force Collection should only contain a single force. That force might, for example, have three
      * sub-forces with 4 units each.
      *
@@ -158,9 +158,9 @@ public class SBFStatsDialog extends AbstractDialog {
 
     private void setupTable() {
         formations = forceList.stream()
-                           .map(f -> new SBFFormationConverter(f, game).convert())
-                           .filter(Objects::nonNull)
-                           .collect(Collectors.toList());
+              .map(f -> new SBFFormationConverter(f, game).convert())
+              .filter(Objects::nonNull)
+              .collect(Collectors.toList());
         SBFStatsTablePanel statsPanel = new SBFStatsTablePanel(getFrame(), formations, elementsToggle.isSelected());
         scrollPane.setViewportView(statsPanel.getPanel());
     }
@@ -208,7 +208,7 @@ public class SBFStatsDialog extends AbstractDialog {
         var fileChooser = new JFileChooser(".");
         fileChooser.setDialogTitle(Messages.getString("Save.text"));
         fileChooser.setFileFilter(new FileNameExtensionFilter("MUL files", "mmu"));
-        fileChooser.setSelectedFile(new File(formations.get(0).generalName() + ".mmu"));
+        fileChooser.setSelectedFile(new File(formations.getFirst().generalName() + ".mmu"));
         int returnVal = fileChooser.showSaveDialog(getParent());
         if ((returnVal != JFileChooser.APPROVE_OPTION) || (fileChooser.getSelectedFile() == null)) {
             return;

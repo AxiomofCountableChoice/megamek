@@ -24,6 +24,11 @@
  *
  * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
  * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.models;
 
@@ -32,7 +37,7 @@ import java.util.List;
 import javax.swing.table.AbstractTableModel;
 
 import megamek.client.ui.Messages;
-import megamek.common.MekSummary;
+import megamek.common.loaders.MekSummary;
 
 /**
  * A table model for displaying units

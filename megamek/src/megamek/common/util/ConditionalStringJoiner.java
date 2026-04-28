@@ -36,6 +36,7 @@ import java.util.function.Supplier;
 
 /**
  * A utility class for conditionally joining strings with a delimiter.
+ *
  * @author Luana Coppio
  */
 public class ConditionalStringJoiner {
@@ -54,24 +55,29 @@ public class ConditionalStringJoiner {
 
     /**
      * Creates a ConditionalStringJoiner with the specified delimiter.
+     *
      * @param delimiter the delimiter to use when joining strings
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public ConditionalStringJoiner(String delimiter) {
         this(delimiter, DEFAULT_CAPACITY);
     }
 
     /**
      * Creates a ConditionalStringJoiner with the specified initial capacity.
+     *
      * @param capacity the initial capacity of the ConditionalStringJoiner
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public ConditionalStringJoiner(int capacity) {
         this(DEFAULT_DELIMITER, capacity);
     }
 
     /**
      * Creates a ConditionalStringJoiner with the specified delimiter and initial capacity.
+     *
      * @param delimiter the delimiter to use when joining strings
-     * @param capacity the initial capacity of the ConditionalStringJoiner
+     * @param capacity  the initial capacity of the ConditionalStringJoiner
      */
     public ConditionalStringJoiner(String delimiter, int capacity) {
         this.stringBuilder = new StringBuilder(capacity);
@@ -80,8 +86,8 @@ public class ConditionalStringJoiner {
     }
 
     /**
-     * Adds a string to the joiner if the condition is true. Uses a supplier to get the string value, this way it is
-     * not evaluated unless the condition is true.
+     * Adds a string to the joiner if the condition is true. Uses a supplier to get the string value, this way it is not
+     * evaluated unless the condition is true.
      * <pre>
      *     {@code
      *     ConditionalStringJoiner conditionalStringJoiner = new ConditionalStringJoiner();
@@ -100,8 +106,10 @@ public class ConditionalStringJoiner {
      *     //  >> "Risk of taking 75 damage if you fail PSR, this unit has a critical hit"
      *     }
      * </pre>
-     * @param condition the condition to check
+     *
+     * @param condition       the condition to check
      * @param messageSupplier the supplier that provides the string to add if the condition is true
+     *
      * @return this instance for method chaining
      */
     public ConditionalStringJoiner add(boolean condition, Supplier<String> messageSupplier) {
@@ -129,8 +137,10 @@ public class ConditionalStringJoiner {
      *     //  >> "Risk of taking 75 damage if you fail PSR, this unit has a critical hit"
      *     }
      * </pre>
+     *
      * @param condition the condition to check
-     * @param message the string to add if the condition is true
+     * @param message   the string to add if the condition is true
+     *
      * @return this instance for method chaining
      */
     public ConditionalStringJoiner add(boolean condition, String message) {
@@ -155,7 +165,9 @@ public class ConditionalStringJoiner {
      *     //  >> "Risk of taking 75 damage if you fail PSR, this unit has a critical hit"
      *     }
      * </pre>
+     *
      * @param message the string to add
+     *
      * @return this instance for method chaining
      */
     public ConditionalStringJoiner add(String message) {

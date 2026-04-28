@@ -1,15 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2000-2003 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2000-2003 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
  *
- *  This program is free software; you can redistribute it and/or modify it
- *  under the terms of the GNU General Public License as published by the Free
- *  Software Foundation; either version 2 of the License, or (at your option)
- *  any later version.
+ * This file is part of MegaMek.
  *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- *  or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- *  for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.randomMap;
 
@@ -31,8 +51,8 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.Serial;
 import java.util.Set;
-
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
@@ -42,10 +62,10 @@ import javax.swing.filechooser.FileFilter;
 import megamek.client.Client;
 import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.IMapSettingsObserver;
-import megamek.client.ui.util.VerifyInRange;
+import megamek.client.ui.util.verifier.VerifyInRange;
 import megamek.client.ui.widget.VerifiableTextField;
 import megamek.codeUtilities.StringUtility;
-import megamek.common.MapSettings;
+import megamek.common.loaders.MapSettings;
 import megamek.logging.MMLogger;
 
 /**
@@ -55,10 +75,9 @@ import megamek.logging.MMLogger;
 public class ResizeMapDialog extends JDialog implements ActionListener, KeyListener {
     private static final MMLogger logger = MMLogger.create(ResizeMapDialog.class);
 
+    @Serial
     private static final long serialVersionUID = 7758433698878123806L;
 
-    // External helpers.
-    private final JFrame PARENT;
     private final IMapSettingsObserver MAP_SETTINGS_OBSERVER;
     private final Client CLIENT;
 
@@ -99,20 +118,17 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
      * Constructor for this dialog.
      *
      * @param parent              The parent {@link JFrame} invoking this dialog.
-     * @param mapSettingsObserver The {@link IMapSettingsObserver} objects to which
-     *                            the map setting will be passed if
+     * @param mapSettingsObserver The {@link IMapSettingsObserver} objects to which the map setting will be passed if
      *                            this is a local only game.
-     * @param client              The {@link Client} that will send the map settings
-     *                            to the server if this is a
+     * @param client              The {@link Client} that will send the map settings to the server if this is a
      *                            server-based game.
-     * @param mapSettings         The {@link MapSettings} describing the map to be
-     *                            generated.
+     * @param mapSettings         The {@link MapSettings} describing the map to be generated.
      */
     public ResizeMapDialog(JFrame parent, IMapSettingsObserver mapSettingsObserver, Client client,
-            MapSettings mapSettings) {
+          MapSettings mapSettings) {
         super(parent, Messages.getString("ExpandMapDialog.title"), true);
         this.mapSettings = mapSettings;
-        PARENT = parent;
+        // External helpers.
         MAP_SETTINGS_OBSERVER = mapSettingsObserver;
         CLIENT = client;
         basicPanel = new RandomMapPanelBasicPanel(mapSettings);
@@ -145,7 +161,7 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
         pack();
         validate();
         setSize(new Dimension(600, 600));
-        setLocationRelativeTo(PARENT);
+        setLocationRelativeTo(parent);
     }
 
     private void initGUI() {
@@ -335,7 +351,7 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
     }
 
     private File fileBrowser(String title, String targetDir, String fileName, final String extension,
-            final String description, boolean isSave) {
+          final String description, boolean isSave) {
         // Create a new instance of the file chooser.
         JFileChooser fileChooser = new JFileChooser(targetDir);
 
@@ -374,7 +390,7 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
             option = fileChooser.showOpenDialog(null);
         }
 
-        // If the user did chose to open...
+        // If the user did choose to open...
         if (JFileChooser.APPROVE_OPTION == option) {
             // Get the file that was selected and return it.
             return fileChooser.getSelectedFile();
@@ -385,7 +401,7 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
     private void doLoad() {
         // Get the user-selected file.
         File selectedFile = fileBrowser(Messages.getString("RandomMapDialog.FileLoadDialog"),
-                "data" + File.separator + "mapgen", null, ".xml", "(*.xml)", false);
+              "data" + File.separator + "mapgen", null, ".xml", "(*.xml)", false);
 
         // If we don't have a file, there's nothing to load.
         if (selectedFile == null) {
@@ -413,7 +429,7 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
 
         // Have the user choose a file to save the new settings to.
         File selectedFile = fileBrowser(Messages.getString("RandomMapDialog.FileLoadDialog"),
-                "data" + File.separator + "mapgen", null, ".xml", "(*.xml)", false);
+              "data" + File.separator + "mapgen", null, ".xml", "(*.xml)", false);
 
         // If no file was selected, we're done.
         if (selectedFile == null) {
@@ -447,7 +463,7 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
 
         // Get the general settings from this panel.
         newMapSettings.setBoardSize(mapWestField.getAsInt() + mapEastField.getAsInt() + mapSettings.getBoardWidth(),
-                mapNorthField.getAsInt() + mapSouthField.getAsInt() + mapSettings.getBoardHeight());
+              mapNorthField.getAsInt() + mapSouthField.getAsInt() + mapSettings.getBoardHeight());
         newMapSettings.setTheme((String) choTheme.getSelectedItem());
         this.mapSettings = newMapSettings;
 
@@ -507,16 +523,16 @@ public class ResizeMapDialog extends JDialog implements ActionListener, KeyListe
 
     private boolean isExpandValid() {
         return mapNorthField.verifyText() &&
-                mapEastField.verifyText() &&
-                mapSouthField.verifyText() &&
-                mapWestField.verifyText();
+              mapEastField.verifyText() &&
+              mapSouthField.verifyText() &&
+              mapWestField.verifyText();
     }
 
     private boolean isExpandWestProblem() {
         return mapSouthField.verifyText() &&
-                mapWestField.verifyText() &&
-                ((getExpandWest() & 1) == 1) &&
-                (getExpandSouth() < 1);
+              mapWestField.verifyText() &&
+              ((getExpandWest() & 1) == 1) &&
+              (getExpandSouth() < 1);
     }
 
     @Override

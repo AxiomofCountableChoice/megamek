@@ -2,18 +2,17 @@ package megamek.server.rl;
 
 import java.io.File;
 
-import megamek.common.commandline.AbstractCommandLineParser;
-import megamek.common.commandline.ClientServerCommandLineParser;
-import megamek.common.commandline.MegaMekCommandLineFlag;
+import megamek.common.commandLine.AbstractCommandLineParser;
+import megamek.common.commandLine.ClientServerCommandLineParser;
 import megamek.common.preference.PreferenceManager;
 import megamek.logging.MMLogger;
 import megamek.server.Server;
-import megamek.server.totalwarfare.TWGameManager;
+import megamek.server.totalWarfare.TWGameManager;
 import megamek.client.bot.rl.RLBotClient;
-import megamek.common.MULParser;
-import megamek.common.Board;
-import megamek.common.Coords;
-import megamek.common.Entity;
+import megamek.common.loaders.MULParser;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
+import megamek.common.units.Entity;
 import megamek.common.Player;
 
 public class RLServerManager {
@@ -21,7 +20,7 @@ public class RLServerManager {
 
     public static void start(String[] args) {
         ClientServerCommandLineParser parser = new ClientServerCommandLineParser(args,
-                MegaMekCommandLineFlag.RLSERVER.toString(),
+                "RLSERVER",
                 true, false, false);
         try {
             parser.parse();
@@ -35,7 +34,7 @@ public class RLServerManager {
                 null, null);
 
         // kick off a RNG check
-        megamek.common.Compute.d6();
+        megamek.common.compute.Compute.d6();
 
         Server server;
 
@@ -71,7 +70,7 @@ public class RLServerManager {
 
         logger.info("MegaMek Server started on port " + resolver.port);
         
-        megamek.common.Game game = (megamek.common.Game) server.getGame();
+        megamek.common.game.Game game = (megamek.common.game.Game) server.getGame();
         if (game == null) {
             logger.error("No scenario/game loaded! Please pass a save file or MUL file.");
             return;
@@ -128,7 +127,7 @@ public class RLServerManager {
             // Broadcast the newly added entities to the clients.
             // Since they connected before the entities were parsed, they have empty unit lists!
             try {
-                megamek.server.totalwarfare.TWGameManager twm = (megamek.server.totalwarfare.TWGameManager) server.getGameManager();
+                megamek.server.totalWarfare.TWGameManager twm = (megamek.server.totalWarfare.TWGameManager) server.getGameManager();
                 twm.send(twm.createFullEntitiesPacket());
             } catch (Exception ex) {
                 logger.error("Failed to broadcast entities to clients", ex);

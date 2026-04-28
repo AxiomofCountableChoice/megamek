@@ -36,14 +36,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import megamek.client.ui.SharedUtility;
-import megamek.common.BattleArmor;
-import megamek.common.EntityMovementMode;
 import megamek.common.GameBoardTestCase;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.enums.MoveStepType;
+import megamek.common.units.EntityMovementMode;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
  * Test class for BattleArmor.
+ *
  * @author Luana Coppio
  */
 public class BattleArmorTest extends GameBoardTestCase {
@@ -52,33 +54,33 @@ public class BattleArmorTest extends GameBoardTestCase {
     class AntiMekSkillRollNag {
         static {
             initializeBoard("ROLL_ANTI_MEK_TO_ENTER", """
-size 1 6
-hex 0101 0 "" ""
-hex 0102 0 "bldg_elev:6;building:2:8;bldg_cf:100" ""
-hex 0103 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
-hex 0104 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
-hex 0105 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
-hex 0106 0 "bldg_elev:6;building:2:1;bldg_cf:100" ""
-end""");
+                  size 1 6
+                  hex 0101 0 "" ""
+                  hex 0102 0 "bldg_elev:6;building:2:8;bldg_cf:100" ""
+                  hex 0103 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
+                  hex 0104 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
+                  hex 0105 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
+                  hex 0106 0 "bldg_elev:6;building:2:1;bldg_cf:100" ""
+                  end""");
             initializeBoard("ROLL_ANTI_MEK_TO_ENTER_TALL_BUILDINGS", """
-size 1 6
-hex 0101 0 "" ""
-hex 0102 0 "bldg_elev:60;building:2:8;bldg_cf:100" ""
-hex 0103 0 "bldg_elev:60;building:2:9;bldg_cf:100" ""
-hex 0104 0 "bldg_elev:60;building:2:9;bldg_cf:100" ""
-hex 0105 0 "bldg_elev:60;building:2:9;bldg_cf:100" ""
-hex 0106 0 "bldg_elev:60;building:2:1;bldg_cf:100" ""
-end""");
+                  size 1 6
+                  hex 0101 0 "" ""
+                  hex 0102 0 "bldg_elev:60;building:2:8;bldg_cf:100" ""
+                  hex 0103 0 "bldg_elev:60;building:2:9;bldg_cf:100" ""
+                  hex 0104 0 "bldg_elev:60;building:2:9;bldg_cf:100" ""
+                  hex 0105 0 "bldg_elev:60;building:2:9;bldg_cf:100" ""
+                  hex 0106 0 "bldg_elev:60;building:2:1;bldg_cf:100" ""
+                  end""");
 
             initializeBoard("ROLL_ANTI_MEK_TO_ENTER_LOWER_BUILDINGS", """
-size 1 6
-hex 0101 10 "" ""
-hex 0102 0 "" ""
-hex 0103 0 "bldg_elev:6;building:2:8;bldg_cf:100" ""
-hex 0104 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
-hex 0105 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
-hex 0106 0 "bldg_elev:6;building:2:1;bldg_cf:100" ""
-end""");
+                  size 1 6
+                  hex 0101 10 "" ""
+                  hex 0102 0 "" ""
+                  hex 0103 0 "bldg_elev:6;building:2:8;bldg_cf:100" ""
+                  hex 0104 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
+                  hex 0105 0 "bldg_elev:6;building:2:9;bldg_cf:100" ""
+                  hex 0106 0 "bldg_elev:6;building:2:1;bldg_cf:100" ""
+                  end""");
         }
 
         @Test
@@ -86,16 +88,16 @@ end""");
             setBoard("ROLL_ANTI_MEK_TO_ENTER");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN
             );
 
             assertTrue(movePath.isMoveLegal(),
                   "A BA or infantry can only jump from inside a building to outside of it, or from out to in");
-            assertMovePathElevations(movePath,0, 6, 5, 4, 3);
+            assertMovePathElevations(movePath, 0, 6, 5, 4, 3);
 
             String check = SharedUtility.doPSRCheck(movePath);
             assertFalse(check.isBlank(), "it should require a roll to jump into the building through the window");
@@ -106,8 +108,8 @@ end""");
             setBoard("ROLL_ANTI_MEK_TO_ENTER_TALL_BUILDINGS");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS
             );
 
             assertTrue(movePath.isMoveLegal(),
@@ -123,10 +125,10 @@ end""");
             setBoard("ROLL_ANTI_MEK_TO_ENTER_LOWER_BUILDINGS");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN
             );
 
             assertTrue(movePath.isMoveLegal(),

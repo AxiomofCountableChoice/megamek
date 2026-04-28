@@ -1,19 +1,38 @@
 /*
-* MegaMek -
-* Copyright (C) 2000-2004, 2006 Ben Mazur (bmazur@sev.org)
-* Copyright (C) 2015 Nicholas Walczak (walczak@cs.umn.edu)
-* Copyright (C) 2018 The MegaMek Team
-*
-* This program is free software; you can redistribute it and/or modify it under
-* the terms of the GNU General Public License as published by the Free Software
-* Foundation; either version 2 of the License, or (at your option) any later
-* version.
-*
-* This program is distributed in the hope that it will be useful, but WITHOUT
-* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-* FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
-* details.
-*/
+ * Copyright (C) 2000-2004, 2006 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2015 Nicholas Walczak (walczak@cs.umn.edu)
+ * Copyright (C) 2014-2025 The MegaMek Team. All Rights Reserved.
+ *
+ * This file is part of MegaMek.
+ *
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
+ */
+
 package megamek.client.ui.widget;
 
 import java.awt.Color;
@@ -27,12 +46,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-
 import javax.xml.parsers.DocumentBuilder;
-
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
 import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.widget.SkinSpecification.UIComponents;
@@ -41,10 +55,12 @@ import megamek.common.annotations.Nullable;
 import megamek.common.util.fileUtils.MegaMekFile;
 import megamek.logging.MMLogger;
 import megamek.utilities.xml.MMXMLUtility;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 /**
- * This class reads in an XML file that specifies different aspects of the
- * visual skin for MegaMek.
+ * This class reads in an XML file that specifies different aspects of the visual skin for MegaMek.
  *
  * @author arlith
  */
@@ -55,25 +71,25 @@ public class SkinXMLHandler {
     public static String SKIN_HEADER;
 
     static {
-        StringBuffer sb = new StringBuffer();
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        sb.append("<!--\n");
-        sb.append("  This is the a skin for Megamek\n");
-        sb.append("\n");
-        sb.append("  New skins can be created by specifying UI_Element tags\n");
-        sb.append("\n");
-        sb.append("  The defaultElement UI_Element specifies the default border to be used by UI\n");
-        sb.append("    components\n");
-        sb.append("\n");
-        sb.append("  The defaultButton UI_Element specifies the default border and background\n");
-        sb.append("   images to use for Megamek buttons.  The first image is the base default\n");
-        sb.append("   image and the second image is the pressed image\n");
-        sb.append("\n");
-        sb.append("  NOTE: All locations should be in data/images/widgets\n");
-        sb.append("-->\n");
-        sb.append("<skin xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
-        sb.append("    xsi:noNamespaceSchemaLocation=\"skinSchema.xsd\">\n");
-        SKIN_HEADER = sb.toString();
+        SKIN_HEADER = """
+              <?xml version="1.0" encoding="UTF-8"?>
+              <!--
+                This is the a skin for Megamek
+              
+                New skins can be created by specifying UI_Element tags
+              
+                The defaultElement UI_Element specifies the default border to be used by UI
+                  components
+              
+                The defaultButton UI_Element specifies the default border and background
+                 images to use for Megamek buttons.  The first image is the base default
+                 image and the second image is the pressed image
+              
+                NOTE: All locations should be in data/images/widgets
+              -->
+              <skin xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:noNamespaceSchemaLocation="skinSchema.xsd">
+              """;
     }
 
     /**
@@ -143,11 +159,8 @@ public class SkinXMLHandler {
     private static UnitDisplaySkinSpecification udSpec = null;
 
     /**
-     * Checks whether the given path points to a file that is a valid skin
-     * specification.
+     * Checks whether the given path points to a file that is a valid skin specification.
      *
-     * @param fileName
-     * @return
      */
     public static boolean validSkinSpecFile(String fileName) {
         File file = new MegaMekFile(fileName).getFile();
@@ -161,11 +174,7 @@ public class SkinXMLHandler {
             // Until that's done, just assume anything with UI_ELEMENT tags is
             // valid
             NodeList listOfComponents = doc.getElementsByTagName(UI_ELEMENT);
-            if (listOfComponents.getLength() > 0) {
-                return true;
-            } else {
-                return false;
-            }
+            return listOfComponents.getLength() > 0;
         } catch (Exception e) {
             return false;
         }
@@ -196,9 +205,10 @@ public class SkinXMLHandler {
             // relative path
             file = new MegaMekFile(Configuration.skinsDir(), filename).getFile();
             if (!file.exists() || !file.isFile()) {
-                file = new MegaMekFile(Configuration.skinsDir(), GUIPreferences.getInstance().getDefaultSkinFile()).getFile();
+                file = new MegaMekFile(Configuration.skinsDir(),
+                      GUIPreferences.getInstance().getDefaultSkinFile()).getFile();
                 if (!file.exists() || !file.isFile()) {
-                    logger.error("Cannot initialize skin based on a non-existent file with filename " + filename);
+                    logger.error("Cannot initialize skin based on a non-existent file with filename {}", filename);
                     return false;
                 }
             }
@@ -207,7 +217,7 @@ public class SkinXMLHandler {
         // Build the XML document.
         try {
             DocumentBuilder builder = MMXMLUtility.newSafeDocumentBuilder();
-            logger.debug("Parsing " + file.getName());
+            logger.debug("Parsing {}", file.getName());
             Document doc = builder.parse(file);
 
             // Get the list of units.
@@ -241,7 +251,7 @@ public class SkinXMLHandler {
                     // Get the border specs
                     Element border = (Element) borderList.getElementsByTagName(BORDER).item(0);
                     if (border == null) {
-                        logger.error(String.format("Missing <%s> tag in element %s", BORDER, comp));
+                        logger.error("Missing <{}> tag in element {}", BORDER, comp);
                         continue;
                     }
 
@@ -303,16 +313,17 @@ public class SkinXMLHandler {
                 }
 
                 if (UIComponents.getUIComponent(name) == null) {
-                    logger.error("Unable to add unrecognized UI component: " + name);
+                    logger.error("Unable to add unrecognized UI component: {}", name);
                 } else {
                     skinSpecs.put(name, skinSpec);
                 }
             }
 
             if (!skinSpecs.containsKey(UIComponents.DefaultUIElement.getComp())
-                    || !skinSpecs.containsKey(UIComponents.DefaultButton.getComp())) {
-                logger.error(String.format("Skin specification file doesn't specify %s or %s",
-                        UIComponents.DefaultUIElement, UIComponents.DefaultButton));
+                  || !skinSpecs.containsKey(UIComponents.DefaultButton.getComp())) {
+                logger.error("Skin specification file doesn't specify {} or {}",
+                      UIComponents.DefaultUIElement,
+                      UIComponents.DefaultButton);
                 return false;
             }
         } catch (Exception ex) {
@@ -351,9 +362,9 @@ public class SkinXMLHandler {
             // Iterate through each icon/tiled pair
             for (int j = 0; j < edgeIcons.getLength(); j++) {
                 String icon = ((Element) edgeIcons.item(j))
-                        .getElementsByTagName(ICON).item(0).getTextContent();
+                      .getElementsByTagName(ICON).item(0).getTextContent();
                 String tiled = ((Element) edgeIcons.item(j))
-                        .getElementsByTagName(TILED).item(0).getTextContent();
+                      .getElementsByTagName(TILED).item(0).getTextContent();
 
                 if (icon == null) {
                     logger.error("Missing <" + ICON + "> tag");
@@ -369,7 +380,7 @@ public class SkinXMLHandler {
             }
 
             String edgeName = ((Element) edgeNodes.item(i))
-                    .getElementsByTagName(EDGE_NAME).item(0).getTextContent();
+                  .getElementsByTagName(EDGE_NAME).item(0).getTextContent();
 
             if (edgeName == null) {
                 logger.error("Missing <" + EDGE_NAME + "> tag");
@@ -399,140 +410,137 @@ public class SkinXMLHandler {
     }
 
     /**
-     * Given a UI_Component component with a UnitDisplay name, parse it into
-     * a new UnitDisplaySkinSpecification. This tupe of UI_Element has a
-     * different structure than other UI_Elements.
+     * Given a UI_Component component with a UnitDisplay name, parse it into a new UnitDisplaySkinSpecification. This
+     * type of UI_Element has a different structure than other UI_Elements.
      *
-     * @param border
      */
     private static void parseUnitDisplaySkinSpec(Element border) {
         udSpec = new UnitDisplaySkinSpecification();
 
         if (border.getElementsByTagName(GeneralTabIdle).getLength() > 0) {
             udSpec.setGeneralTabIdle(border
-                    .getElementsByTagName(GeneralTabIdle).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(GeneralTabIdle).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(PilotTabIdle).getLength() > 0) {
             udSpec.setPilotTabIdle(border.getElementsByTagName(PilotTabIdle)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(ArmorTabIdle).getLength() > 0) {
             udSpec.setArmorTabIdle(border.getElementsByTagName(ArmorTabIdle)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(SystemsTabIdle).getLength() > 0) {
             udSpec.setSystemsTabIdle(border
-                    .getElementsByTagName(SystemsTabIdle).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(SystemsTabIdle).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(WeaponsTabIdle).getLength() > 0) {
             udSpec.setWeaponsTabIdle(border
-                    .getElementsByTagName(WeaponsTabIdle).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(WeaponsTabIdle).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(ExtrasTabIdle).getLength() > 0) {
             udSpec.setExtrasTabIdle(border.getElementsByTagName(ExtrasTabIdle)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(GeneralTabActive).getLength() > 0) {
             udSpec.setGeneralTabActive(border
-                    .getElementsByTagName(GeneralTabActive).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(GeneralTabActive).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(PilotTabActive).getLength() > 0) {
             udSpec.setPilotTabActive(border
-                    .getElementsByTagName(PilotTabActive).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(PilotTabActive).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(ArmorTabActive).getLength() > 0) {
             udSpec.setArmorTabActive(border
-                    .getElementsByTagName(ArmorTabActive).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(ArmorTabActive).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(SystemsTabActive).getLength() > 0) {
             udSpec.setSystemsTabActive(border
-                    .getElementsByTagName(SystemsTabActive).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(SystemsTabActive).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(WeaponsTabActive).getLength() > 0) {
             udSpec.setWeaponsTabActive(border
-                    .getElementsByTagName(WeaponsTabActive).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(WeaponsTabActive).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(ExtraTabActive).getLength() > 0) {
             udSpec.setExtraTabActive(border
-                    .getElementsByTagName(ExtraTabActive).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(ExtraTabActive).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(CornerIdle).getLength() > 0) {
             udSpec.setCornerIdle(border.getElementsByTagName(CornerIdle)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(CornerActive).getLength() > 0) {
             udSpec.setCornerActive(border.getElementsByTagName(CornerActive)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
 
         if (border.getElementsByTagName(BackgroundTile).getLength() > 0) {
             udSpec.setBackgroundTile(border
-                    .getElementsByTagName(BackgroundTile).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(BackgroundTile).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(TopLine).getLength() > 0) {
             udSpec.setTopLine(border
-                    .getElementsByTagName(TopLine).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(TopLine).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(BottomLine).getLength() > 0) {
             udSpec.setBottomLine(border
-                    .getElementsByTagName(BottomLine).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(BottomLine).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(LeftLine).getLength() > 0) {
             udSpec.setLeftLine(border.getElementsByTagName(LeftLine)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(RightLine).getLength() > 0) {
             udSpec.setRightLine(border.getElementsByTagName(RightLine)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(TopLeftCorner).getLength() > 0) {
             udSpec.setTopLeftCorner(border.getElementsByTagName(TopLeftCorner)
-                    .item(0).getTextContent());
+                  .item(0).getTextContent());
         }
         if (border.getElementsByTagName(BottomLeftCorner).getLength() > 0) {
             udSpec.setBottomLeftCorner(border
-                    .getElementsByTagName(BottomLeftCorner).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(BottomLeftCorner).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(TopRightCorner).getLength() > 0) {
             udSpec.setTopRightCorner(border
-                    .getElementsByTagName(TopRightCorner).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(TopRightCorner).item(0)
+                  .getTextContent());
         }
         if (border.getElementsByTagName(BottomRightCorner).getLength() > 0) {
             udSpec.setBottomRightCorner(border
-                    .getElementsByTagName(BottomRightCorner).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(BottomRightCorner).item(0)
+                  .getTextContent());
         }
 
         if (border.getElementsByTagName(MekOutline).getLength() > 0) {
             udSpec.setMekOutline(border
-                    .getElementsByTagName(MekOutline).item(0)
-                    .getTextContent());
+                  .getElementsByTagName(MekOutline).item(0)
+                  .getTextContent());
         }
     }
 
     /**
      * Writes the current skin to the specified XML file.
      *
-     * @param filename
      */
     public static void writeSkinToFile(String filename) {
         try (FileOutputStream fos = new FileOutputStream(new MegaMekFile(filename).getFile());
-                OutputStreamWriter osw = new OutputStreamWriter(fos);
-                Writer output = new BufferedWriter(osw)) {
+              OutputStreamWriter osw = new OutputStreamWriter(fos);
+              Writer output = new BufferedWriter(osw)) {
             output.write(SKIN_HEADER);
             for (String component : skinSpecs.keySet()) {
                 writeSkinComponent(component, output);
@@ -548,11 +556,8 @@ public class SkinXMLHandler {
     }
 
     /**
-     * Helper method for writing the UI_Element tag related to a
-     * UnitDisplaySkinSpecification.
+     * Helper method for writing the UI_Element tag related to a UnitDisplaySkinSpecification.
      *
-     * @param out
-     * @throws IOException
      */
     private static void writeUnitDisplaySkinSpec(Writer out) throws IOException {
         // If the spec is null, nothing to do
@@ -670,12 +675,9 @@ public class SkinXMLHandler {
     /**
      * Convenience method for writing out the UI_ELEMENT tag.
      *
-     * @param component
-     * @param out
-     * @throws IOException
      */
     private static void writeSkinComponent(String component, Writer out)
-            throws IOException {
+          throws IOException {
         out.write("\t<" + UI_ELEMENT + ">\n");
 
         // Write Component name
@@ -713,7 +715,7 @@ public class SkinXMLHandler {
         for (Color fontColor : skinSpec.fontColors) {
             out.write("\t\t<" + FONT_COLOR + ">");
             out.write("#"
-                    + Integer.toHexString(fontColor.getRGB()).substring(2));
+                  + Integer.toHexString(fontColor.getRGB()).substring(2));
             out.write("</" + FONT_COLOR + ">\n");
         }
 
@@ -748,12 +750,9 @@ public class SkinXMLHandler {
     /**
      * Convenience method for writing out the BORDER element.
      *
-     * @param skinSpec
-     * @param out
-     * @throws IOException
      */
     private static void writeBorder(SkinSpecification skinSpec, Writer out)
-            throws IOException {
+          throws IOException {
         out.write("\t\t<!-- Specification of border images -->\n");
         out.write("\t\t<" + BORDER + ">\n");
 
@@ -872,7 +871,6 @@ public class SkinXMLHandler {
     /**
      * Returns the list of components that have SkinSpecifications.
      *
-     * @return
      */
     public synchronized static Set<String> getSkinnedComponents() {
         return skinSpecs.keySet();
@@ -881,16 +879,12 @@ public class SkinXMLHandler {
     /**
      * Get a <code>SkinSpecification</code> for a given component.
      *
-     * @param component
-     *                       The name of the component to get skin info for.
-     * @param defaultToPlain
-     *                       Determines if a default component should be used if no
-     *                       match,
-     *                       or a plain component
-     * @return
+     * @param component      The name of the component to get skin info for.
+     * @param defaultToPlain Determines if a default component should be used if no match, or a plain component
+     *
      */
     public synchronized static SkinSpecification getSkin(String component,
-            boolean defaultToPlain, boolean isBtn) {
+          boolean defaultToPlain, boolean isBtn) {
         if (skinSpecs == null) {
             boolean rv = initSkinXMLHandler();
             if (!rv) {
@@ -928,7 +922,6 @@ public class SkinXMLHandler {
     /**
      * Adds a new component to the SkinSpecs map.
      *
-     * @param component
      */
     public synchronized static void addNewComp(String component) {
         if (skinSpecs == null) {
@@ -944,7 +937,6 @@ public class SkinXMLHandler {
     /**
      * Remove the specified component from the SkinSpecs map.
      *
-     * @param component
      */
     public synchronized static void removeComp(String component) {
         skinSpecs.remove(component);

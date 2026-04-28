@@ -1,28 +1,50 @@
 /*
- * MegaMek - Copyright (C) 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2004-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.loaders;
 
-import megamek.common.Engine;
-import megamek.common.Entity;
-import megamek.common.EntityMovementMode;
-import megamek.common.EquipmentType;
-import megamek.common.LocationFullException;
-import megamek.common.Mounted;
-import megamek.common.ProtoMek;
 import megamek.common.TechConstants;
-import megamek.common.WeaponType;
 import megamek.common.equipment.ArmorType;
+import megamek.common.equipment.Engine;
+import megamek.common.equipment.EquipmentType;
+import megamek.common.equipment.MiscType;
+import megamek.common.equipment.Mounted;
+import megamek.common.equipment.WeaponType;
+import megamek.common.exceptions.LocationFullException;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityMovementMode;
+import megamek.common.units.ProtoMek;
 import megamek.common.util.BuildingBlock;
 import megamek.common.verifier.TestProtoMek;
 
@@ -68,11 +90,9 @@ public class BLKProtoMekFile extends BLKFile implements IMekLoader {
         }
         t.setOriginalWalkMP(dataFile.getDataAsInt("cruiseMP")[0]);
 
-        int engineCode = BLKFile.FUSION;
         int engineFlags = Engine.NORMAL_ENGINE;
-        engineFlags |= Engine.CLAN_ENGINE;
         int engineRating = TestProtoMek.calcEngineRating(t);
-        t.setEngine(new Engine(engineRating, BLKFile.translateEngineCode(engineCode), engineFlags));
+        t.setEngine(new Engine(engineRating, BLKFile.translateEngineCode(BLKFile.FUSION), engineFlags));
 
         if (dataFile.exists("jumpingMP")) {
             t.setOriginalJumpMP(dataFile.getDataAsInt("jumpingMP")[0]);
@@ -88,7 +108,7 @@ public class BLKProtoMekFile extends BLKFile implements IMekLoader {
 
         int[] armor = dataFile.getDataAsInt("armor");
 
-        boolean hasMainGun = false;
+        boolean hasMainGun;
         int armorLocs = armor.length + t.firstArmorIndex();
         if (ProtoMek.NUM_PROTOMEK_LOCATIONS == armorLocs) {
             hasMainGun = true;
@@ -120,12 +140,28 @@ public class BLKProtoMekFile extends BLKFile implements IMekLoader {
         t.autoSetInternal();
         t.recalculateTechAdvancement();
 
-        String[] abbrs = t.getLocationNames();
+        String[] abbreviations = t.getLocationNames();
         for (int loop = 0; loop < t.locations(); loop++) {
-            loadEquipment(t, abbrs[loop], loop);
+            loadEquipment(t, abbreviations[loop], loop);
         }
         t.setArmorTonnage(t.getArmorWeight());
+
         loadQuirks(t);
+
+        // ProtoMeks have EI built-in per IO:AE p.69. At BLK load time, game context is not
+        // available so default to Off (mode 0). The mode will be set correctly when the unit
+        // joins a game via setGameOptions().
+        for (Mounted<?> m : t.getEquipment()) {
+            if ((m.getType() instanceof MiscType) && m.getType().hasFlag(MiscType.F_EI_INTERFACE)) {
+                m.setMode(0);
+                break;
+            }
+        }
+
+        // Recalculate tech advancement after all equipment is loaded so that ProtoMek EI
+        // is properly skipped when no game context is present (defaults to non-Full Tracking)
+        t.recalculateTechAdvancement();
+
         return t;
     }
 
@@ -194,7 +230,7 @@ public class BLKProtoMekFile extends BLKFile implements IMekLoader {
                         mount = t.addEquipment(etype, nLoc);
                         // Need to set facing for VGLs
                         if ((etype instanceof WeaponType)
-                                && etype.hasFlag(WeaponType.F_VGL)) {
+                              && etype.hasFlag(WeaponType.F_VGL)) {
                             mount.setFacing(defaultVGLFacing(nLoc, rearMount));
                         }
                     } else {

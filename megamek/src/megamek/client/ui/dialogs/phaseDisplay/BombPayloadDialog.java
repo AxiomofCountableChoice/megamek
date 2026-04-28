@@ -1,17 +1,35 @@
 /*
- * MegaMek -
  * Copyright (C) 2002-2004 Ben Mazur (bmazur@sev.org)
- * Copyright (C) 2018 The MegaMek Team
+ * Copyright (C) 2008-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.phaseDisplay;
 
@@ -28,7 +46,6 @@ import java.awt.event.WindowEvent;
 import java.io.Serial;
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.StringTokenizer;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -38,9 +55,8 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 
 import megamek.client.ui.Messages;
-import megamek.common.BombLoadout;
-import megamek.common.BombType;
-import megamek.common.BombType.BombTypeEnum;
+import megamek.common.equipment.BombLoadout;
+import megamek.common.equipment.enums.BombType.BombTypeEnum;
 
 /**
  * A dialog to determine bomb payload.
@@ -62,37 +78,33 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
     private final JButton butCancel = new JButton(Messages.getString("Cancel"));
 
 
-    private EnumMap<BombTypeEnum, JComboBox<String>> b_choices = new EnumMap<>(BombTypeEnum.class);
-    private EnumMap<BombTypeEnum, JLabel> b_labels = new EnumMap<>(BombTypeEnum.class);
-    private JLabel description;
+    private final EnumMap<BombTypeEnum, JComboBox<String>> b_choices = new EnumMap<>(BombTypeEnum.class);
+    private final EnumMap<BombTypeEnum, JLabel> b_labels = new EnumMap<>(BombTypeEnum.class);
 
     /**
-     * Keeps track of the number of fighters in the squadron, 0 implies a single fighter not in a squadron squadron.
+     * Keeps track of the number of fighters in the squadron, 0 implies a single fighter not in a squadron.
      */
     private double numFighters;
 
     /**
      * Create and initialize the dialog.
      *
-     * @param parent      - the <code>Frame</code> that is locked by this dialog.
-     * @param title       - the title <code>String</code> for this dialog.
+     * @param parent         - the <code>Frame</code> that is locked by this dialog.
+     * @param title          - the title <code>String</code> for this dialog.
      * @param availableBombs The bomb choice list
-     * @param spaceBomb   Flag for whether this is space bombing
-     * @param bombDump
-     * @param lim
-     * @param numFighters The number of fighters in a squadron, 0 implies a single fighter not in a squadron.
+     * @param spaceBomb      Flag for whether this is space bombing
+     * @param numFighters    The number of fighters in a squadron, 0 implies a single fighter not in a squadron.
      */
-    @SuppressWarnings("unchecked")
-    private void initialize(JFrame parent, String title, BombLoadout availableBombs, boolean spaceBomb, boolean bombDump, int lim,
-                            int numFighters) {
-        // super.setResizable(false);
+    private void initialize(JFrame parent, String title, BombLoadout availableBombs, boolean spaceBomb,
+          boolean bombDump, int lim,
+          int numFighters) {
 
         this.numFighters = numFighters;
         this.availableBombs = new BombLoadout(availableBombs);
         this.limit = lim;
 
-        GridBagLayout gridbag = new GridBagLayout();
-        setLayout(gridbag);
+        GridBagLayout gridBagLayout = new GridBagLayout();
+        setLayout(gridBagLayout);
 
         GridBagConstraints c = new GridBagConstraints();
 
@@ -102,7 +114,7 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
         //c.gridy = 0;
         c.insets = new Insets(5, 5, 5, 5);
 
-        description = new JLabel();
+        JLabel description = new JLabel();
         if (numFighters != 0) {
             description.setText(Messages.getString("BombPayloadDialog.SquadronBombDesc"));
         } else {
@@ -118,16 +130,16 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
         //initialize the bomb choices
         int currentRow = 1;
         for (BombTypeEnum bombType : BombTypeEnum.values()) {
-            if (bombType == BombTypeEnum.NONE) continue;
+            if (bombType == BombTypeEnum.NONE) {continue;}
 
             int availableCount = availableBombs.getCount(bombType);
-            if (availableCount == 0) continue;
-            if (spaceBomb && !bombType.canSpaceBomb()) continue;
-            if (!spaceBomb && !bombDump && !bombType.canGroundBomb()) continue;
+            if (availableCount == 0) {continue;}
+            if (spaceBomb && !bombType.canSpaceBomb()) {continue;}
+            if (!spaceBomb && !bombDump && !bombType.canGroundBomb()) {continue;}
 
             JComboBox<String> comboBox = new JComboBox<>();
             JLabel label = new JLabel(bombType.getDisplayName());
-            
+
             b_choices.put(bombType, comboBox);
             b_labels.put(bombType, label);
 
@@ -145,7 +157,7 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
                 int maxNumSalvos = (int) Math.ceil(availableCount / this.numFighters);
                 // Add the full-squadron salvos
                 for (int j = 1; j < maxNumSalvos; j++) {
-                    int numBombs = (int) (j * numFighters);
+                    int numBombs = j * numFighters;
                     comboBox.addItem(j + " (" + numBombs + ")");
                 }
                 // Add the maximum number of salvos
@@ -162,12 +174,12 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
             c.gridy = currentRow + 1;
             c.anchor = GridBagConstraints.EAST;
             add(label, c);
-            gridbag.setConstraints(label, c);
+            gridBagLayout.setConstraints(label, c);
             c.gridx = 2;
             c.gridy = currentRow + 1;
             c.anchor = GridBagConstraints.WEST;
             add(comboBox, c);
-            gridbag.setConstraints(comboBox, c);
+            gridBagLayout.setConstraints(comboBox, c);
             currentRow++;
         }
 
@@ -221,16 +233,13 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
      * Create a choice dialog. The player can choose any or all of the choices. If no choices are passed in, this will
      * be a very boring dialog, but it will not suffer an exception.
      *
-     * @param parent      - the <code>Frame</code> that is locked by this dialog.
-     * @param title       - the title <code>String</code> for this dialog.
-     * @param bombs       - an array of <code>String</code>s the number of bombs of each type
-     * @param spaceBomb
-     * @param bombDump
-     * @param limit
-     * @param numFighters
+     * @param parent - the <code>Frame</code> that is locked by this dialog.
+     * @param title  - the title <code>String</code> for this dialog.
+     * @param bombs  - an array of <code>String</code>s the number of bombs of each type
      */
-    public BombPayloadDialog(JFrame parent, String title, BombLoadout bombs, boolean spaceBomb, boolean bombDump, int limit,
-                             int numFighters) {
+    public BombPayloadDialog(JFrame parent, String title, BombLoadout bombs, boolean spaceBomb, boolean bombDump,
+          int limit,
+          int numFighters) {
         super(parent, title, true);
         initialize(parent, title, bombs, spaceBomb, bombDump, limit, numFighters);
     }
@@ -247,7 +256,6 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public void itemStateChanged(ItemEvent ie) {
         if (limit < 0) {
             return;
@@ -257,33 +265,33 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
         for (Map.Entry<BombTypeEnum, JComboBox<String>> entry : b_choices.entrySet()) {
             BombTypeEnum bombType = entry.getKey();
             JComboBox<String> comboBox = entry.getValue();
-            
+
             int selectedCount = getSelectedCount(comboBox);
             if (selectedCount > 0) {
                 currentSelections.put(bombType, selectedCount);
             }
         }
-        
+
         // Calculate remaining capacity for each bomb type
         // don't factor in your own choice when determining how much is left
         int totalSelected = currentSelections.getTotalBombs();
         for (Map.Entry<BombTypeEnum, JComboBox<String>> entry : b_choices.entrySet()) {
             BombTypeEnum bombType = entry.getKey();
             JComboBox<String> comboBox = entry.getValue();
-            
+
             comboBox.removeItemListener(this);
             comboBox.removeAllItems();
-            
+
             int currentSelected = currentSelections.getCount(bombType);
             int remainingCapacity = limit - (totalSelected - currentSelected);
             int available = availableBombs.getCount(bombType);
             int maxSelectable = Math.min(available, remainingCapacity);
-            
+
             if (numFighters != 0) {
                 // Squadron logic
                 comboBox.addItem("0");
                 int maxNumSalvos = (int) Math.ceil(maxSelectable / this.numFighters);
-                
+
                 for (int j = 1; j <= maxNumSalvos; j++) {
                     int numBombs = (int) Math.min(j * numFighters, available);
                     if (numBombs <= maxSelectable) {
@@ -295,14 +303,14 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
                     comboBox.addItem(Integer.toString(x));
                 }
             }
-            
+
             // Restore selection if possible
             if (currentSelected <= maxSelectable) {
                 setSelectedCount(comboBox, currentSelected);
             } else {
                 comboBox.setSelectedIndex(0);
             }
-            
+
             comboBox.addItemListener(this);
         }
     }
@@ -315,11 +323,11 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
         // Squadrons have to parse values differently
         if (numFighters != 0) {
             // Parse squadron format: "# (#)"
-            StringTokenizer toks = new StringTokenizer(selected, "() ");
-            toks.nextToken(); // Skip salvo count
-            if (toks.hasMoreTokens()) {
+            StringTokenizer tokens = new StringTokenizer(selected, "() ");
+            tokens.nextToken(); // Skip salvo count
+            if (tokens.hasMoreTokens()) {
                 try {
-                    return Integer.parseInt(toks.nextToken());
+                    return Integer.parseInt(tokens.nextToken());
                 } catch (NumberFormatException ignored) {
                     // Will return 0
                 }
@@ -339,16 +347,16 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
             comboBox.setSelectedIndex(0);
             return;
         }
-        
+
         for (int i = 0; i < comboBox.getItemCount(); i++) {
             String item = comboBox.getItemAt(i);
             if (numFighters != 0) {
                 // Squadron format
                 if (item.contains("(") && item.contains(")")) {
-                    StringTokenizer toks = new StringTokenizer(item, "() ");
-                    toks.nextToken(); // Skip salvo count
+                    StringTokenizer tokens = new StringTokenizer(item, "() ");
+                    tokens.nextToken(); // Skip salvo count
                     try {
-                        if (toks.hasMoreTokens() && (Integer.parseInt(toks.nextToken()) == count)) {
+                        if (tokens.hasMoreTokens() && (Integer.parseInt(tokens.nextToken()) == count)) {
                             comboBox.setSelectedIndex(i);
                             return;
                         }
@@ -392,28 +400,32 @@ public class BombPayloadDialog extends JDialog implements ActionListener, ItemLi
         for (Map.Entry<BombTypeEnum, JComboBox<String>> entry : b_choices.entrySet()) {
             BombTypeEnum bombType = entry.getKey();
             JComboBox<String> comboBox = entry.getValue();
-            
+
             int selectedCount = getSelectedCount(comboBox);
             if (selectedCount > 0) {
                 choices.put(bombType, selectedCount);
             }
         }
-        
+
         return choices.isEmpty() ? null : choices;
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public int getInternalBombLimit() {
         return internalBombLimit;
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setInternalBombLimit(int internalBombLimit) {
         this.internalBombLimit = internalBombLimit;
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public int getInternalBombCount() {
         return internalBombCount;
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void setInternalBombCount(int internalBombCount) {
         this.internalBombCount = internalBombCount;
     }

@@ -38,140 +38,147 @@ import java.awt.GridLayout;
 import java.awt.Insets;
 
 /**
- * A layout manager that arranges components in a vertical grid pattern.
- * Components are placed column by column, filling vertically before moving to the next column.
- * This is in contrast to the standard GridLayout which fills horizontally first.
- * 
+ * A layout manager that arranges components in a vertical grid pattern. Components are placed column by column, filling
+ * vertically before moving to the next column. This is in contrast to the standard GridLayout which fills horizontally
+ * first.
+ *
  * @author MegaMek Team
  */
+@Deprecated(since = "0.51.0", forRemoval = true)
 public class VerticalGridLayout extends GridLayout {
 
     /**
      * Creates a vertical grid layout with a default of one column per component.
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public VerticalGridLayout() {
         super();
     }
 
     /**
      * Creates a vertical grid layout with the specified number of rows and columns.
-     * 
+     *
      * @param rows the number of rows in the grid
      * @param cols the number of columns in the grid
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public VerticalGridLayout(int rows, int cols) {
         super(rows, cols);
     }
 
     /**
-     * Creates a vertical grid layout with the specified number of rows and columns,
-     * and the specified horizontal and vertical gaps.
-     * 
-     * @param rows the number of rows in the grid
-     * @param cols the number of columns in the grid
-     * @param hgap the horizontal gap between components
-     * @param vgap the vertical gap between components
+     * Creates a vertical grid layout with the specified number of rows and columns, and the specified horizontal and
+     * vertical gaps.
+     *
+     * @param rows          the number of rows in the grid
+     * @param cols          the number of columns in the grid
+     * @param horizontalGap the horizontal gap between components
+     * @param verticalGap   the vertical gap between components
      */
-    public VerticalGridLayout(int rows, int cols, int hgap, int vgap) {
-        super(rows, cols, hgap, vgap);
+    @Deprecated(since = "0.51.0", forRemoval = true)
+    public VerticalGridLayout(int rows, int cols, int horizontalGap, int verticalGap) {
+        super(rows, cols, horizontalGap, verticalGap);
     }
 
     /**
-     * Lays out the specified container using this layout.
-     * Components are arranged in a vertical grid pattern, filling columns before rows.
-     * 
+     * Lays out the specified container using this layout. Components are arranged in a vertical grid pattern, filling
+     * columns before rows.
+     *
      * @param parent the container to be laid out
      */
     @Override
     public void layoutContainer(Container parent) {
         synchronized (parent.getTreeLock()) {
-            final int ncomponents = parent.getComponentCount();
-            if (ncomponents == 0) {
+            final int numComponents = parent.getComponentCount();
+            if (numComponents == 0) {
                 return;
             }
 
             final Insets insets = parent.getInsets();
-            final GridDimensions gridDims = calculateGridDimensions(ncomponents);
+            final GridDimensions gridDims = calculateGridDimensions(numComponents);
             final ComponentDimensions compDims = calculateComponentDimensions(parent, insets, gridDims);
-            
-            positionComponents(parent, insets, gridDims, compDims, ncomponents);
+
+            positionComponents(parent, insets, gridDims, compDims, numComponents);
         }
     }
 
     /**
      * Calculates the optimal grid dimensions based on the number of components.
-     * 
-     * @param ncomponents the number of components to arrange
+     *
+     * @param numComponents the number of components to arrange
+     *
      * @return the calculated grid dimensions
      */
-    private GridDimensions calculateGridDimensions(int ncomponents) {
-        int nrows = getRows();
-        int ncols = getColumns();
-        
-        if (nrows > 0) {
-            ncols = (ncomponents + nrows - 1) / nrows;
+    private GridDimensions calculateGridDimensions(int numComponents) {
+        int numRows = getRows();
+        int numCols = getColumns();
+
+        if (numRows > 0) {
+            numCols = (numComponents + numRows - 1) / numRows;
         } else {
-            nrows = (ncomponents + ncols - 1) / ncols;
+            numRows = (numComponents + numCols - 1) / numCols;
         }
-        
-        return new GridDimensions(nrows, ncols);
+
+        return new GridDimensions(numRows, numCols);
     }
 
     /**
      * Calculates the component dimensions and positioning information.
-     * 
-     * @param parent the parent container
-     * @param insets the container insets
+     *
+     * @param parent   the parent container
+     * @param insets   the container insets
      * @param gridDims the grid dimensions
+     *
      * @return the calculated component dimensions
      */
     private ComponentDimensions calculateComponentDimensions(Container parent, Insets insets, GridDimensions gridDims) {
-        final int totalGapsWidth = (gridDims.ncols - 1) * getHgap();
+        final int totalGapsWidth = (gridDims.numCols - 1) * getHgap();
         final int widthWOInsets = parent.getWidth() - insets.left - insets.right;
-        final int widthOnComponent = (widthWOInsets - totalGapsWidth) / gridDims.ncols;
-        final int extraWidthAvailable = (widthWOInsets - (widthOnComponent * gridDims.ncols + totalGapsWidth)) / 2;
+        final int widthOnComponent = (widthWOInsets - totalGapsWidth) / gridDims.numCols;
+        final int extraWidthAvailable = (widthWOInsets - (widthOnComponent * gridDims.numCols + totalGapsWidth)) / 2;
 
-        final int totalGapsHeight = (gridDims.nrows - 1) * getVgap();
+        final int totalGapsHeight = (gridDims.numRows - 1) * getVgap();
         final int heightWOInsets = parent.getHeight() - insets.top - insets.bottom;
-        final int heightOnComponent = (heightWOInsets - totalGapsHeight) / gridDims.nrows;
-        final int extraHeightAvailable = (heightWOInsets - (heightOnComponent * gridDims.nrows + totalGapsHeight)) / 2;
+        final int heightOnComponent = (heightWOInsets - totalGapsHeight) / gridDims.numRows;
+        final int extraHeightAvailable = (heightWOInsets - (heightOnComponent * gridDims.numRows + totalGapsHeight))
+              / 2;
 
         return new ComponentDimensions(widthOnComponent, heightOnComponent, extraWidthAvailable, extraHeightAvailable);
     }
 
     /**
      * Positions all components in the container according to the grid layout.
-     * 
-     * @param parent the parent container
-     * @param insets the container insets
-     * @param gridDims the grid dimensions
-     * @param compDims the component dimensions
-     * @param ncomponents the number of components
+     *
+     * @param parent        the parent container
+     * @param insets        the container insets
+     * @param gridDims      the grid dimensions
+     * @param compDims      the component dimensions
+     * @param numComponents the number of components
      */
-    private void positionComponents(Container parent, Insets insets, GridDimensions gridDims, 
-                                  ComponentDimensions compDims, int ncomponents) {
+    private void positionComponents(Container parent, Insets insets, GridDimensions gridDims,
+          ComponentDimensions compDims, int numComponents) {
         final boolean ltr = parent.getComponentOrientation().isLeftToRight();
-        
+
         if (ltr) {
-            positionComponentsLTR(parent, insets, gridDims, compDims, ncomponents);
+            positionComponentsLTR(parent, insets, gridDims, compDims, numComponents);
         } else {
-            positionComponentsRTL(parent, insets, gridDims, compDims, ncomponents);
+            positionComponentsRTL(parent, insets, gridDims, compDims, numComponents);
         }
     }
 
     /**
      * Positions components for left-to-right orientation.
      */
-    private void positionComponentsLTR(Container parent, Insets insets, GridDimensions gridDims, 
-                                     ComponentDimensions compDims, int ncomponents) {
+    private void positionComponentsLTR(Container parent, Insets insets, GridDimensions gridDims,
+          ComponentDimensions compDims, int numComponents) {
         int x = insets.left + compDims.extraWidthAvailable;
-        
-        for (int c = 0; c < gridDims.ncols; c++) {
+
+        for (int c = 0; c < gridDims.numCols; c++) {
             int y = insets.top + compDims.extraHeightAvailable;
-            
-            for (int r = 0; r < gridDims.nrows; r++) {
-                final int componentIndex = c * gridDims.nrows + r;
-                if (componentIndex < ncomponents) {
+
+            for (int r = 0; r < gridDims.numRows; r++) {
+                final int componentIndex = c * gridDims.numRows + r;
+                if (componentIndex < numComponents) {
                     final Component component = parent.getComponent(componentIndex);
                     component.setBounds(x, y, compDims.width, compDims.height);
                 }
@@ -184,16 +191,16 @@ public class VerticalGridLayout extends GridLayout {
     /**
      * Positions components for right-to-left orientation.
      */
-    private void positionComponentsRTL(Container parent, Insets insets, GridDimensions gridDims, 
-                                     ComponentDimensions compDims, int ncomponents) {
+    private void positionComponentsRTL(Container parent, Insets insets, GridDimensions gridDims,
+          ComponentDimensions compDims, int numComponents) {
         int x = parent.getWidth() - insets.right - compDims.width - compDims.extraWidthAvailable;
-        
-        for (int c = 0; c < gridDims.ncols; c++) {
+
+        for (int c = 0; c < gridDims.numCols; c++) {
             int y = insets.top + compDims.extraHeightAvailable;
-            
-            for (int r = 0; r < gridDims.nrows; r++) {
-                final int componentIndex = c * gridDims.nrows + r;
-                if (componentIndex < ncomponents) {
+
+            for (int r = 0; r < gridDims.numRows; r++) {
+                final int componentIndex = c * gridDims.numRows + r;
+                if (componentIndex < numComponents) {
                     final Component component = parent.getComponent(componentIndex);
                     component.setBounds(x, y, compDims.width, compDims.height);
                 }
@@ -206,30 +213,12 @@ public class VerticalGridLayout extends GridLayout {
     /**
      * Immutable record to hold grid dimensions.
      */
-    private static final class GridDimensions {
-        final int nrows;
-        final int ncols;
-
-        GridDimensions(int nrows, int ncols) {
-            this.nrows = nrows;
-            this.ncols = ncols;
-        }
+    private record GridDimensions(int numRows, int numCols) {
     }
 
     /**
      * Immutable record to hold component dimensions and positioning.
      */
-    private static final class ComponentDimensions {
-        final int width;
-        final int height;
-        final int extraWidthAvailable;
-        final int extraHeightAvailable;
-
-        ComponentDimensions(int width, int height, int extraWidthAvailable, int extraHeightAvailable) {
-            this.width = width;
-            this.height = height;
-            this.extraWidthAvailable = extraWidthAvailable;
-            this.extraHeightAvailable = extraHeightAvailable;
-        }
+    private record ComponentDimensions(int width, int height, int extraWidthAvailable, int extraHeightAvailable) {
     }
 }

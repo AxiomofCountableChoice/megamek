@@ -1,22 +1,36 @@
 /*
  * Copyright (C) 2000-2006 Ben Mazur (bmazur@sev.org)
- * Copyright © 2013 Edward Cullen (eddy@obsessedcomputers.co.uk)
- * Copyright (c) 2021-2025 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2013 Edward Cullen (eddy@obsessedcomputers.co.uk)
+ * Copyright (C) 2002-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay.lobby;
 
@@ -29,9 +43,6 @@ import static megamek.client.ui.panels.phaseDisplay.lobby.LobbyUtility.haveSingl
 import static megamek.client.ui.panels.phaseDisplay.lobby.LobbyUtility.invalidBoardTip;
 import static megamek.client.ui.panels.phaseDisplay.lobby.LobbyUtility.isBoardFile;
 import static megamek.client.ui.panels.phaseDisplay.lobby.LobbyUtility.isValidStartPos;
-import static megamek.client.ui.panels.phaseDisplay.lobby.LobbyUtility.mekReadoutAction;
-import static megamek.client.ui.util.UIUtil.FixedXPanel;
-import static megamek.client.ui.util.UIUtil.FixedYPanel;
 import static megamek.client.ui.util.UIUtil.scaleForGUI;
 import static megamek.client.ui.util.UIUtil.setHighQualityRendering;
 import static megamek.client.ui.util.UIUtil.uiGray;
@@ -56,6 +67,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.text.NumberFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -90,56 +103,72 @@ import megamek.client.bot.ui.swing.BotGUI;
 import megamek.client.generator.RandomCallsignGenerator;
 import megamek.client.generator.RandomNameGenerator;
 import megamek.client.ui.Messages;
+import megamek.client.ui.buttons.DialogButton;
 import megamek.client.ui.buttons.MMToggleButton;
-import megamek.client.ui.dialogs.clientDialogs.ClientDialog;
-import megamek.client.ui.dialogs.clientDialogs.PlanetaryConditionsDialog;
-import megamek.client.ui.dialogs.iconChooser.CamoChooserDialog;
+import megamek.client.ui.clientGUI.ClientGUI;
+import megamek.client.ui.clientGUI.CloseAction;
+import megamek.client.ui.clientGUI.GUIPreferences;
+import megamek.client.ui.clientGUI.IMapSettingsObserver;
+import megamek.client.ui.clientGUI.boardview.BoardView;
+import megamek.client.ui.clientGUI.boardview.RulerDialog;
+import megamek.client.ui.clientGUI.boardview.toolTip.TWBoardViewTooltip;
+import megamek.client.ui.dialogs.InformDialog;
 import megamek.client.ui.dialogs.MMDialogs.MMConfirmDialog;
 import megamek.client.ui.dialogs.abstractDialogs.AutoResolveChanceDialog;
 import megamek.client.ui.dialogs.abstractDialogs.AutoResolveProgressDialog;
+import megamek.client.ui.dialogs.advancedSearchMap.AdvancedSearchMapDialog;
 import megamek.client.ui.dialogs.buttonDialogs.BotConfigDialog;
 import megamek.client.ui.dialogs.buttonDialogs.SkillGenerationDialog;
+import megamek.client.ui.dialogs.clientDialogs.ClientDialog;
+import megamek.client.ui.dialogs.clientDialogs.PlanetaryConditionsDialog;
 import megamek.client.ui.dialogs.helpDialogs.AutoResolveSimulationLogDialog;
-import megamek.client.ui.dialogs.randomMap.RandomMapDialog;
-import megamek.client.ui.panels.phaseDisplay.lobby.sorters.*;
-import megamek.client.ui.dialogs.*;
-import megamek.client.ui.dialogs.advancedSearchMap.AdvancedSearchMapDialog;
-import megamek.client.ui.enums.DialogResult;
-import megamek.client.ui.clientGUI.*;
-import megamek.client.ui.clientGUI.boardview.BoardView;
-import megamek.client.ui.clientGUI.boardview.toolTip.TWBoardViewTooltip;
-import megamek.client.ui.buttons.DialogButton;
-import megamek.client.ui.panels.phaseDisplay.lobby.PlayerTable.PlayerTableModel;
+import megamek.client.ui.dialogs.iconChooser.CamoChooserDialog;
 import megamek.client.ui.dialogs.minimap.MinimapPanel;
+import megamek.client.ui.dialogs.randomMap.RandomMapDialog;
+import megamek.client.ui.enums.DialogResult;
 import megamek.client.ui.panels.phaseDisplay.AbstractPhaseDisplay;
-import megamek.client.ui.tileset.MMStaticDirectoryManager;
-import megamek.client.ui.tileset.TilesetManager;
+import megamek.client.ui.panels.phaseDisplay.lobby.PlayerTable.PlayerTableModel;
+import megamek.client.ui.panels.phaseDisplay.lobby.sorters.*;
 import megamek.client.ui.util.ScalingPopup;
 import megamek.client.ui.util.UIUtil;
 import megamek.client.ui.util.UIUtil.FixedXPanel;
 import megamek.client.ui.util.UIUtil.FixedYPanel;
 import megamek.client.ui.widget.SkinSpecification;
-import megamek.common.*;
+import megamek.common.Configuration;
+import megamek.common.Player;
+import megamek.common.TechConstants;
 import megamek.common.annotations.Nullable;
-import megamek.common.autoresolve.converter.MMSetupForces;
+import megamek.common.autoResolve.converter.MMSetupForces;
+import megamek.common.board.Board;
+import megamek.common.board.BoardDimensions;
 import megamek.common.board.postprocess.TWBoardTransformer;
 import megamek.common.enums.GamePhase;
+import megamek.common.equipment.BombLoadout;
 import megamek.common.event.GameCFREvent;
-import megamek.common.event.GameEntityNewEvent;
 import megamek.common.event.GamePhaseChangeEvent;
-import megamek.common.event.GamePlayerChangeEvent;
 import megamek.common.event.GameSettingsChangeEvent;
+import megamek.common.event.entity.GameEntityNewEvent;
+import megamek.common.event.player.GamePlayerChangeEvent;
 import megamek.common.force.Force;
 import megamek.common.force.Forces;
+import megamek.common.game.Game;
+import megamek.common.game.InGameObject;
 import megamek.common.internationalization.I18n;
+import megamek.common.loaders.MapSettings;
+import megamek.common.loaders.MapSetup;
+import megamek.common.loaders.MekSummary;
+import megamek.common.loaders.MekSummaryCache;
 import megamek.common.options.IOption;
 import megamek.common.options.OptionsConstants;
 import megamek.common.options.PilotOptions;
-import megamek.common.planetaryconditions.PlanetaryConditions;
+import megamek.common.planetaryConditions.PlanetaryConditions;
 import megamek.common.preference.ClientPreferences;
 import megamek.common.preference.IPreferenceChangeListener;
 import megamek.common.preference.PreferenceChangeEvent;
 import megamek.common.preference.PreferenceManager;
+import megamek.common.units.Entity;
+import megamek.common.units.FighterSquadron;
+import megamek.common.units.IBomber;
 import megamek.common.util.BoardUtilities;
 import megamek.common.util.CollectionUtil;
 import megamek.common.util.CrewSkillSummaryUtil;
@@ -228,7 +257,7 @@ public class ChatLounge extends AbstractPhaseDisplay
     private final JButton butRunAutoResolve = new JButton(Messages.getString("ChatLounge.butRunAutoResolve"));
     private final JSpinner spnSimulationRuns = new JSpinner(new SpinnerNumberModel(10, 1, 1000, 1));
     private final JSpinner spnThreadNumber = new JSpinner(new SpinnerNumberModel(Runtime.getRuntime()
-                                                                                       .availableProcessors(),
+          .availableProcessors(),
           1,
           Math.max(2, Runtime.getRuntime().availableProcessors() * 2),
           1));
@@ -330,6 +359,7 @@ public class ChatLounge extends AbstractPhaseDisplay
     private static final GUIPreferences GUIP = GUIPreferences.getInstance();
     private static final ClientPreferences CLIENT_PREFERENCES = PreferenceManager.getClientPreferences();
     private transient ClientGUI clientgui;
+    private boolean lobbySavePerformed = false;
 
     /** Creates a new chat lounge for the clientGUI.getClient(). */
     public ChatLounge(ClientGUI clientGUI) {
@@ -439,12 +469,12 @@ public class ChatLounge extends AbstractPhaseDisplay
 
         fldMapWidth.addActionListener(lobbyListener);
         fldMapHeight.addActionListener(lobbyListener);
-        fldMapWidth.addFocusListener(focusListener);
-        fldMapHeight.addFocusListener(focusListener);
+        fldMapWidth.addFocusListener(lobbyFocusListener);
+        fldMapHeight.addFocusListener(lobbyFocusListener);
         fldSpaceBoardWidth.addActionListener(lobbyListener);
         fldSpaceBoardHeight.addActionListener(lobbyListener);
-        fldSpaceBoardWidth.addFocusListener(focusListener);
-        fldSpaceBoardHeight.addFocusListener(focusListener);
+        fldSpaceBoardWidth.addFocusListener(lobbyFocusListener);
+        fldSpaceBoardHeight.addFocusListener(lobbyFocusListener);
 
         comboTeam.addActionListener(lobbyListener);
 
@@ -453,7 +483,7 @@ public class ChatLounge extends AbstractPhaseDisplay
     }
 
     /** Applies changes to the board and map size when the text fields lose focus. */
-    FocusListener focusListener = new FocusAdapter() {
+    FocusListener lobbyFocusListener = new FocusAdapter() {
 
         @Override
         public void focusLost(FocusEvent e) {
@@ -549,7 +579,7 @@ public class ChatLounge extends AbstractPhaseDisplay
         bvSorters.add(new PlayerBVSorter(clientgui, Sorting.DESCENDING));
         bvSorters.add(new BVSorter(Sorting.ASCENDING));
         bvSorters.add(new BVSorter(Sorting.DESCENDING));
-        activeSorter = unitSorters.get(0);
+        activeSorter = unitSorters.getFirst();
     }
 
     /** Enables buttons to allow adding units when the MSC has finished loading. */
@@ -928,11 +958,7 @@ public class ChatLounge extends AbstractPhaseDisplay
 
             RulerDialog.color1 = GUIP.getRulerColor1();
             RulerDialog.color2 = GUIP.getRulerColor2();
-            RulerDialog ruler = new RulerDialog(clientgui.getFrame(), client(), previewBV, boardPreviewGame);
-            ruler.setLocation(GUIP.getRulerPosX(), GUIP.getRulerPosY());
-            ruler.setSize(GUIP.getRulerSizeHeight(), GUIP.getRulerSizeWidth());
-            ruler.setAlwaysOnTop(true);
-            UIUtil.updateWindowBounds(ruler);
+            RulerDialog ruler = new RulerDialog(clientgui.getFrame(), previewBV, boardPreviewGame);
 
             // Most boards will be far too large on the standard zoom
             previewBV.zoomOut();
@@ -1006,14 +1032,14 @@ public class ChatLounge extends AbstractPhaseDisplay
         java.util.List<String> result = mapSettings.getBoardsAvailableVector();
         for (String token : searchStrings) {
             java.util.List<String> byFilename = mapSettings.getBoardsAvailableVector()
-                                                      .stream()
-                                                      .filter(b -> b.toLowerCase().contains(token) && isBoardFile(b))
-                                                      .collect(Collectors.toList());
+                  .stream()
+                  .filter(b -> b.toLowerCase().contains(token) && isBoardFile(b))
+                  .collect(Collectors.toList());
             java.util.List<String> byTags = boardTags.entrySet()
-                                                  .stream()
-                                                  .filter(e -> e.getValue().contains(token))
-                                                  .map(Map.Entry::getKey)
-                                                  .collect(Collectors.toList());
+                  .stream()
+                  .filter(e -> e.getValue().contains(token))
+                  .map(Map.Entry::getKey)
+                  .collect(Collectors.toList());
             java.util.List<String> tokenResult = CollectionUtil.union(byFilename, byTags);
             result = result.stream().filter(tokenResult::contains).collect(toList());
         }
@@ -1050,15 +1076,32 @@ public class ChatLounge extends AbstractPhaseDisplay
         }
     }
 
-    /** Updates the list of available map sizes. */
+    /**
+     * Refreshes the map size selection combo box with all available map sizes, sorted by width and then by height.
+     *
+     * <p>This method obtains the set of available map sizes from the client, sorts them first by width (ascending)
+     * and then by height (ascending), and populates the combo box with these sorted sizes. An additional "Custom Map
+     * Size" entry is added at the end of the list. The previously selected index is preserved if possible.</p>
+     *
+     * <p>The combo box's action listener is temporarily removed during the update to prevent unwanted event
+     * firing.</p>
+     */
     private void refreshMapSizes() {
         int oldSelection = comMapSizes.getSelectedIndex();
         Set<BoardDimensions> mapSizes = clientgui.getClient().getAvailableMapSizes();
+
+        // Sort the map sizes by width (w()) and then by height (h())
+        List<BoardDimensions> sortedSizes = new ArrayList<>(mapSizes);
+        sortedSizes.sort(Comparator.comparingInt(BoardDimensions::w)
+              .thenComparingInt(BoardDimensions::h));
+
         comMapSizes.removeActionListener(lobbyListener);
         comMapSizes.removeAllItems();
-        for (BoardDimensions size : mapSizes) {
+
+        for (BoardDimensions size : sortedSizes) {
             comMapSizes.addItem(size);
         }
+
         comMapSizes.addItem(Messages.getString("ChatLounge.CustomMapSize"));
         comMapSizes.setSelectedIndex(oldSelection != -1 ? oldSelection : 0);
         comMapSizes.addActionListener(lobbyListener);
@@ -1089,8 +1132,8 @@ public class ChatLounge extends AbstractPhaseDisplay
         butMapShrinkW.setEnabled(mapSettings.getMapWidth() > 1);
         butMapShrinkH.setEnabled(mapSettings.getMapHeight() > 1);
         butAdvancedSearchMap.setEnabled(!inSpace &&
-                                              (mapSettings.getMapWidth() == 1) &&
-                                              (mapSettings.getMapHeight() == 1));
+              (mapSettings.getMapWidth() == 1) &&
+              (mapSettings.getMapHeight() == 1));
 
         butGroundMap.removeActionListener(lobbyListener);
         butLowAtmosphereMap.removeActionListener(lobbyListener);
@@ -1143,7 +1186,7 @@ public class ChatLounge extends AbstractPhaseDisplay
         boardTags.clear();
         for (String boardName : mapSettings.getBoardsAvailableVector()) {
             File boardFile = new MegaMekFile(Configuration.boardsDir(),
-                  boardName + MMConstants.CL_KEY_FILEEXTENTION_BOARD).getFile();
+                  boardName + MMConstants.CL_KEY_FILE_EXTENSION_BOARD).getFile();
             Set<String> tags = Board.getTags(boardFile);
             boardTags.put(boardName, String.join("||", tags).toLowerCase());
         }
@@ -1211,22 +1254,22 @@ public class ChatLounge extends AbstractPhaseDisplay
                     continue;
                 }
                 if (!button.getBoard().equals(boardName) ||
-                          oldMapSettings.getMedium() != mapSettings.getMedium() ||
-                          (!mapSettings.equalMapGenParameters(oldMapSettings) &&
-                                 mapSettings.getMapWidth() == oldMapSettings.getMapWidth() &&
-                                 mapSettings.getMapHeight() == oldMapSettings.getMapHeight())) {
+                      oldMapSettings.getMedium() != mapSettings.getMedium() ||
+                      (!mapSettings.equalMapGenParameters(oldMapSettings) &&
+                            mapSettings.getMapWidth() == oldMapSettings.getMapWidth() &&
+                            mapSettings.getMapHeight() == oldMapSettings.getMapHeight())) {
                     Board buttonBoard;
                     Image image;
                     // Generated and space boards use a generated example
                     if (boardName.startsWith(MapSettings.BOARD_GENERATED) ||
-                              (mapSettings.getMedium() == MapSettings.MEDIUM_SPACE)) {
+                          (mapSettings.getMedium() == MapSettings.MEDIUM_SPACE)) {
                         buttonBoard = BoardUtilities.generateRandom(mapSettings);
                         image = MinimapPanel.getMinimapImageMaxZoom(buttonBoard);
                     } else {
                         String boardForImage = boardName;
                         // For a surprise board, just use the first board as example
                         if (boardName.startsWith(MapSettings.BOARD_SURPRISE)) {
-                            boardForImage = extractSurpriseMaps(boardName).get(0);
+                            boardForImage = extractSurpriseMaps(boardName).getFirst();
                         }
 
                         boolean rotateBoard = false;
@@ -1241,13 +1284,13 @@ public class ChatLounge extends AbstractPhaseDisplay
                         }
 
                         File boardFile = new MegaMekFile(Configuration.boardsDir(),
-                              boardForImage + MMConstants.CL_KEY_FILEEXTENTION_BOARD).getFile();
+                              boardForImage + MMConstants.CL_KEY_FILE_EXTENSION_BOARD).getFile();
                         if (boardFile.exists()) {
                             buttonBoard = new Board(16, 17);
                             buttonBoard.load(new MegaMekFile(Configuration.boardsDir(),
-                                  boardForImage + MMConstants.CL_KEY_FILEEXTENTION_BOARD).getFile());
+                                  boardForImage + MMConstants.CL_KEY_FILE_EXTENSION_BOARD).getFile());
                             try (InputStream is = new FileInputStream(new MegaMekFile(Configuration.boardsDir(),
-                                  boardForImage + MMConstants.CL_KEY_FILEEXTENTION_BOARD).getFile())) {
+                                  boardForImage + MMConstants.CL_KEY_FILE_EXTENSION_BOARD).getFile())) {
                                 buttonBoard.load(is, null, true);
                                 BoardUtilities.flip(buttonBoard, rotateBoard, rotateBoard);
                             } catch (IOException ex) {
@@ -1282,10 +1325,10 @@ public class ChatLounge extends AbstractPhaseDisplay
         panMapButtons.setVisible(true);
 
         lblBoardsAvailable.setText(mapSettings.getBoardWidth() +
-                                         "x" +
-                                         mapSettings.getBoardHeight() +
-                                         " " +
-                                         Messages.getString("BoardSelectionDialog.mapsAvailable"));
+              "x" +
+              mapSettings.getBoardHeight() +
+              " " +
+              Messages.getString("BoardSelectionDialog.mapsAvailable"));
         comMapSizes.removeActionListener(lobbyListener);
         int items = comMapSizes.getItemCount();
 
@@ -1390,7 +1433,7 @@ public class ChatLounge extends AbstractPhaseDisplay
                 entity.getCrew().clearOptions(PilotOptions.MD_ADVANTAGES);
             }
 
-            if (!opts.booleanOption(OptionsConstants.ADVANCED_STRATOPS_PARTIALREPAIRS)) {
+            if (!opts.booleanOption(OptionsConstants.ADVANCED_STRATOPS_PARTIAL_REPAIRS)) {
                 entity.clearPartialRepairs();
             }
 
@@ -1676,8 +1719,8 @@ public class ChatLounge extends AbstractPhaseDisplay
     boolean isEditable(Entity entity) {
         boolean localGM = clientgui.getClient().getLocalPlayer().isGameMaster();
         return localGM ||
-                     (clientgui.getLocalBots().containsKey(entity.getOwner().getName()) ||
-                            (entity.getOwnerId() == localPlayer().getId()));
+              (clientgui.getLocalBots().containsKey(entity.getOwner().getName()) ||
+                    (entity.getOwnerId() == localPlayer().getId()));
     }
 
     /**
@@ -1686,6 +1729,7 @@ public class ChatLounge extends AbstractPhaseDisplay
      *
      * @see #isEditable(Entity)
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     boolean isNotEditable(Entity entity) {
         return !isEditable(entity);
     }
@@ -1723,7 +1767,6 @@ public class ChatLounge extends AbstractPhaseDisplay
 
         psd = new PlayerSettingsDialog(clientgui, c, previewBV);
         psd.setModal(false);
-        psd.setAlwaysOnTop(true);
         psd.showDialog();
     }
 
@@ -1786,6 +1829,10 @@ public class ChatLounge extends AbstractPhaseDisplay
         }
 
         if (clientgui.getClient().getGame().getPhase().isLounge()) {
+            // Only reset the save flag when entering lounge from a different phase
+            if (!e.getOldPhase().isLounge()) {
+                lobbySavePerformed = false;
+            }
             refreshDoneButton();
             refreshGameSettings();
             refreshPlayerTable();
@@ -2177,7 +2224,7 @@ public class ChatLounge extends AbstractPhaseDisplay
               client().getPort(),
               bcd.getBehaviorSettings());
         botClient.setClientGUI(clientgui);
-        botClient.getGame().addGameListener(new BotGUI(getClientgui().getFrame(), botClient));
+        botClient.getGame().addGameListener(new BotGUI(getClientGUI().getFrame(), botClient));
         try {
             botClient.connect();
             clientgui.getLocalBots().put(bcd.getBotName(), botClient);
@@ -2375,7 +2422,7 @@ public class ChatLounge extends AbstractPhaseDisplay
         lblGameYear.setToolTipText(Messages.getString("ChatLounge.tooltip.techYear"));
 
         String tlString = TechConstants.getLevelDisplayableName(TechConstants.T_TECH_UNKNOWN);
-        IOption tlOpt = opts.getOption(OptionsConstants.ALLOWED_TECHLEVEL);
+        IOption tlOpt = opts.getOption(OptionsConstants.ALLOWED_TECH_LEVEL);
         if (tlOpt != null) {
             tlString = tlOpt.stringValue();
         }
@@ -2384,8 +2431,8 @@ public class ChatLounge extends AbstractPhaseDisplay
 
         txt = Messages.getString("ChatLounge.MapSummary");
         txt += (mapSettings.getBoardWidth() * mapSettings.getMapWidth()) +
-                     " x " +
-                     (mapSettings.getBoardHeight() * mapSettings.getMapHeight());
+              " x " +
+              (mapSettings.getBoardHeight() * mapSettings.getMapHeight());
         if (butGroundMap.isSelected()) {
             txt += Messages.getString("ChatLounge.name.groundMap");
         } else if (butLowAtmosphereMap.isSelected()) {
@@ -2433,7 +2480,7 @@ public class ChatLounge extends AbstractPhaseDisplay
 
             for (AbstractClient bc : clientgui.getLocalBots().values()) {
                 if ((game.getLiveCommandersOwnedBy(bc.getLocalPlayer()) < 1) &&
-                          (game.getEntitiesOwnedBy(bc.getLocalPlayer()) > 0)) {
+                      (game.getEntitiesOwnedBy(bc.getLocalPlayer()) > 0)) {
                     players.add(bc.getLocalPlayer().getName());
                 }
             }
@@ -2459,6 +2506,16 @@ public class ChatLounge extends AbstractPhaseDisplay
         }
 
         boolean done = !localPlayer().isDone();
+
+        // Save lobby state if setting is enabled, player is marking as done, and we haven't saved yet
+        if (done && GUIP.getSaveLobbyOnStart() && !lobbySavePerformed) {
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss"));
+            String filename = "Lobby_Save_" + timestamp;
+            String path = "./" + MMConstants.SAVEGAME_DIR;
+            client.sendChat(ClientGUI.CG_CHAT_COMMAND_LOCAL_SAVE + " " + filename + " " + path);
+            lobbySavePerformed = true;
+        }
+
         client.sendDone(done);
         refreshDoneButton(done);
         for (AbstractClient botClient : clientgui.getLocalBots().values()) {
@@ -2584,7 +2641,7 @@ public class ChatLounge extends AbstractPhaseDisplay
      */
     boolean canSeeAll(Collection<Entity> entities) {
         if (!game().getOptions().booleanOption(OptionsConstants.BASE_BLIND_DROP) &&
-                  !game().getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) {
+              !game().getOptions().booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP)) {
             return true;
         }
         for (Entity entity : entities) {
@@ -2651,7 +2708,7 @@ public class ChatLounge extends AbstractPhaseDisplay
     private boolean unitsVisible(Player player) {
         var opts = clientgui.getClient().getGame().getOptions();
         boolean isBlindDrop = opts.booleanOption(OptionsConstants.BASE_BLIND_DROP) ||
-                                    opts.booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP);
+              opts.booleanOption(OptionsConstants.BASE_REAL_BLIND_DROP);
         return !player.isEnemyOf(localPlayer()) || !isBlindDrop;
     }
 
@@ -2713,10 +2770,10 @@ public class ChatLounge extends AbstractPhaseDisplay
                 int newTeam = Integer.parseInt(st.nextToken());
                 lobbyActions.changeTeam(getSelectedPlayers(), newTeam);
                 break;
-            case PlayerTablePopup.PTP_BOTREMOVE:
+            case PlayerTablePopup.PTP_BOT_REMOVE:
                 removeBot();
                 break;
-            case PlayerTablePopup.PTP_BOTSETTINGS:
+            case PlayerTablePopup.PTP_BOT_SETTINGS:
                 doBotSettings();
                 break;
             case PlayerTablePopup.PTP_DEPLOY:
@@ -2768,11 +2825,13 @@ public class ChatLounge extends AbstractPhaseDisplay
                 lobbyActions.delete(new ArrayList<>(), entities, true);
             } else if (code == KeyEvent.VK_SPACE) {
                 evt.consume();
-                LobbyUtility.mekReadoutAction(entities, canSeeAll(entities), false, getClientgui().getFrame());
+                List<Integer> entityIds = entities.stream().map(Entity::getId).toList();
+                LobbyUtility.liveEntityReadoutAction(entityIds, canSeeAll(entities), getClientGUI().getFrame(), game());
+
             } else if (code == KeyEvent.VK_ENTER) {
                 evt.consume();
                 if (entities.size() == 1) {
-                    lobbyActions.customizeMek(entities.get(0));
+                    lobbyActions.customizeMek(entities.getFirst());
                 } else if (canConfigureMultipleDeployment(entities)) {
                     lobbyActions.customizeMeks(entities);
                 }
@@ -2824,11 +2883,11 @@ public class ChatLounge extends AbstractPhaseDisplay
             if (!newEntities.isEmpty()) {
                 client().sendAddEntity(newEntities);
                 String msg = client().getLocalPlayer() +
-                                   " loaded units from Clipboard for player: " +
-                                   localPlayer().getName() +
-                                   " [" +
-                                   newEntities.size() +
-                                   " units]";
+                      " loaded units from Clipboard for player: " +
+                      localPlayer().getName() +
+                      " [" +
+                      newEntities.size() +
+                      " units]";
                 client().sendServerChat(Player.PLAYER_NONE, msg);
             }
         }
@@ -2912,11 +2971,15 @@ public class ChatLounge extends AbstractPhaseDisplay
 
             if (code == KeyEvent.VK_SPACE) {
                 e.consume();
-                mekReadoutAction(selEntities, canSeeAll(selEntities), false, getClientgui().getFrame());
+                List<Integer> entityIds = selEntities.stream().map(Entity::getId).toList();
+                LobbyUtility.liveEntityReadoutAction(entityIds,
+                      canSeeAll(selEntities),
+                      getClientGUI().getFrame(),
+                      game());
 
             } else if (code == KeyEvent.VK_ENTER && onlyOneEntity) {
                 e.consume();
-                lobbyActions.customizeMek(selEntities.get(0));
+                lobbyActions.customizeMek(selEntities.getFirst());
 
             } else if (code == KeyEvent.VK_UP && e.getModifiersEx() == InputEvent.CTRL_DOWN_MASK) {
                 e.consume();
@@ -3304,20 +3367,20 @@ public class ChatLounge extends AbstractPhaseDisplay
         }
         header.repaint();
     }
-    
+
     /**
      * Sets the column width of the given table column of the MekTable with the value stored in the GUIP.
      */
     private void setColumnWidth(TableColumn column) {
         String key;
         if (column.getModelIndex() == MekTableModel.COL_PILOT) {
-            key = GUIPreferences.LOBBY_MEKTABLE_PILOT_WIDTH;
+            key = GUIPreferences.LOBBY_MEK_TABLE_PILOT_WIDTH;
         } else if (column.getModelIndex() == MekTableModel.COL_UNIT) {
-            key = GUIPreferences.LOBBY_MEKTABLE_UNIT_WIDTH;
+            key = GUIPreferences.LOBBY_MEK_TABLE_UNIT_WIDTH;
         } else if (column.getModelIndex() == MekTableModel.COL_PLAYER) {
-            key = GUIPreferences.LOBBY_MEKTABLE_PLAYER_WIDTH;
+            key = GUIPreferences.LOBBY_MEK_TABLE_PLAYER_WIDTH;
         } else if (column.getModelIndex() == MekTableModel.COL_BV) {
-            key = GUIPreferences.LOBBY_MEKTABLE_BV_WIDTH;
+            key = GUIPreferences.LOBBY_MEK_TABLE_BV_WIDTH;
         } else {
             return;
         }
@@ -3335,13 +3398,13 @@ public class ChatLounge extends AbstractPhaseDisplay
                 TableColumn column = mekTable.getColumnModel().getColumn(i);
                 String key;
                 if (column.getModelIndex() == MekTableModel.COL_PILOT) {
-                    key = GUIPreferences.LOBBY_MEKTABLE_PILOT_WIDTH;
+                    key = GUIPreferences.LOBBY_MEK_TABLE_PILOT_WIDTH;
                 } else if (column.getModelIndex() == MekTableModel.COL_UNIT) {
-                    key = GUIPreferences.LOBBY_MEKTABLE_UNIT_WIDTH;
+                    key = GUIPreferences.LOBBY_MEK_TABLE_UNIT_WIDTH;
                 } else if (column.getModelIndex() == MekTableModel.COL_PLAYER) {
-                    key = GUIPreferences.LOBBY_MEKTABLE_PLAYER_WIDTH;
+                    key = GUIPreferences.LOBBY_MEK_TABLE_PLAYER_WIDTH;
                 } else if (column.getModelIndex() == MekTableModel.COL_BV) {
-                    key = GUIPreferences.LOBBY_MEKTABLE_BV_WIDTH;
+                    key = GUIPreferences.LOBBY_MEK_TABLE_BV_WIDTH;
                 } else {
                     continue;
                 }
@@ -3409,7 +3472,7 @@ public class ChatLounge extends AbstractPhaseDisplay
         // the first sorter otherwise
         int index = sorters.indexOf(activeSorter);
         if (index == -1) {
-            activeSorter = sorters.get(0);
+            activeSorter = sorters.getFirst();
         } else {
             index = (index + 1) % sorters.size();
             activeSorter = sorters.get(index);
@@ -3451,7 +3514,7 @@ public class ChatLounge extends AbstractPhaseDisplay
     private void redrawMapTable(Image image) {
         if (image != null) {
             if (lisBoardsAvailable.getFixedCellHeight() != image.getHeight(null) ||
-                      lisBoardsAvailable.getFixedCellWidth() != image.getWidth(null)) {
+                  lisBoardsAvailable.getFixedCellWidth() != image.getWidth(null)) {
                 lisBoardsAvailable.setFixedCellHeight(image.getHeight(null));
                 lisBoardsAvailable.setFixedCellWidth(image.getWidth(null));
             }
@@ -3485,7 +3548,7 @@ public class ChatLounge extends AbstractPhaseDisplay
 
         private Image prepareImage(String boardName) {
             File boardFile = new MegaMekFile(Configuration.boardsDir(),
-                  boardName + MMConstants.CL_KEY_FILEEXTENTION_BOARD).getFile();
+                  boardName + MMConstants.CL_KEY_FILE_EXTENSION_BOARD).getFile();
             Board board;
             java.util.List<String> errors = new ArrayList<>();
             if (boardFile.exists()) {
@@ -3817,7 +3880,7 @@ public class ChatLounge extends AbstractPhaseDisplay
         return clientgui.getClient().getGame();
     }
 
-    /** Convenience for clientgui.getClient() */
+    /** Convenience for clientGUI.getClient() */
     Client client() {
         return clientgui.getClient();
     }
@@ -3833,7 +3896,7 @@ public class ChatLounge extends AbstractPhaseDisplay
     }
 
     @Override
-    public ClientGUI getClientgui() {
+    public ClientGUI getClientGUI() {
         return clientgui;
     }
 }

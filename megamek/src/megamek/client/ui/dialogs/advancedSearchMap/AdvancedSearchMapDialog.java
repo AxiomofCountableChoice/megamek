@@ -1,22 +1,55 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.advancedSearchMap;
+
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
+import java.awt.event.ActionEvent;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.regex.PatternSyntaxException;
+import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableRowSorter;
 
 import megamek.client.ui.Messages;
 import megamek.client.ui.dialogs.buttonDialogs.AbstractButtonDialog;
@@ -25,44 +58,32 @@ import megamek.common.util.StringUtil;
 import megamek.utilities.BoardClassifier;
 import megamek.utilities.BoardsTagger;
 
-import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.TableRowSorter;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.util.Arrays;
-import java.util.List;
-import java.util.regex.PatternSyntaxException;
-
 /**
  * This is the dialog for advanced map filtering
  */
 public class AdvancedSearchMapDialog extends AbstractButtonDialog {
     private BoardClassifier bc;
-    private JTable boardTable = new JTable() {
+    private final JTable boardTable = new JTable() {
         @Override
         public Dimension getPreferredScrollableViewportSize() {
             Dimension standardSize = super.getPreferredScrollableViewportSize();
             return new Dimension(standardSize.width, getRowHeight() * 20);
         }
     };
-    private JList<String> listBoardTags = new JList<>();
-    private final JCheckBox boardTagsAllCheckBox = new JCheckBox(Messages.getString("AdvancedSearchMapDialog.boardTagsAllCheckBox"));
-    private JList<String> listBoardPaths = new JList<>();
+    private final JList<String> listBoardTags = new JList<>();
+    private final JCheckBox boardTagsAllCheckBox = new JCheckBox(Messages.getString(
+          "AdvancedSearchMapDialog.boardTagsAllCheckBox"));
+    private final JList<String> listBoardPaths = new JList<>();
     private JLabel boardImage;
     private JLabel boardInfo;
-    private TableRowSorter<BoardTableModel> boardSorter = new TableRowSorter<>();
-    private BoardTableModel boardModel = new BoardTableModel();
-    private JLabel boardCountLabel = new JLabel("");
-    private JTextField widthStartTextField = new JTextField(4);
-    private JTextField widthEndTextField = new JTextField(4);
-    private JTextField heightStartTextField = new JTextField(4);
-    private JTextField heightEndTextField = new JTextField(4);
-    private JTextField nameTextField = new JTextField(4);
+    private final TableRowSorter<BoardTableModel> boardSorter = new TableRowSorter<>();
+    private final BoardTableModel boardModel = new BoardTableModel();
+    private final JLabel boardCountLabel = new JLabel("");
+    private final JTextField widthStartTextField = new JTextField(4);
+    private final JTextField widthEndTextField = new JTextField(4);
+    private final JTextField heightStartTextField = new JTextField(4);
+    private final JTextField heightEndTextField = new JTextField(4);
+    private final JTextField nameTextField = new JTextField(4);
 
     public AdvancedSearchMapDialog(JFrame parent) {
         super(parent, true, "AdvancedSearchMapDialog", "AdvancedSearchMapDialog.title");
@@ -114,17 +135,26 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         JPanel filterPanel = new JPanel();
         filterPanel.setLayout(new BoxLayout(filterPanel, BoxLayout.PAGE_AXIS));
 
-        filterPanel.add(createFilterRange(widthStartTextField, widthEndTextField, Messages.getString("AdvancedSearchMapDialog.filterRangeWidth")));
-        filterPanel.add(createFilterRange(heightStartTextField, heightEndTextField, Messages.getString("AdvancedSearchMapDialog.filterRangeHeight")));
+        filterPanel.add(createFilterRange(widthStartTextField,
+              widthEndTextField,
+              Messages.getString("AdvancedSearchMapDialog.filterRangeWidth")));
+        filterPanel.add(createFilterRange(heightStartTextField,
+              heightEndTextField,
+              Messages.getString("AdvancedSearchMapDialog.filterRangeHeight")));
         filterPanel.add(createFilterText(nameTextField, Messages.getString("AdvancedSearchMapDialog.filterName")));
 
-        JPanel tagsTitlePanel = createTitleWithCheckBox(boardTagsAllCheckBox, Messages.getString("AdvancedSearchMapDialog.filterBoardTags"));
-        List<String> tags = Arrays.stream(BoardsTagger.Tags.values()).map(BoardsTagger.Tags::getName).distinct().sorted().toList();
+        JPanel tagsTitlePanel = createTitleWithCheckBox(boardTagsAllCheckBox,
+              Messages.getString("AdvancedSearchMapDialog.filterBoardTags"));
+        List<String> tags = Arrays.stream(BoardsTagger.Tags.values())
+              .map(BoardsTagger.Tags::getName)
+              .distinct()
+              .sorted()
+              .toList();
         filterPanel.add(createFilterList(listBoardTags, tags, tagsTitlePanel, true));
 
         JPanel pathsTitlePanel = createTitle(Messages.getString("AdvancedSearchMapDialog.filterBoardPaths"));
         List<String> paths = bc.getBoardPaths().values().stream().toList();
-        paths = paths.stream().map(p -> p.substring(0, p.lastIndexOf("\\") + 1 )).distinct().sorted().toList();
+        paths = paths.stream().map(p -> p.substring(0, p.lastIndexOf("\\") + 1)).distinct().sorted().toList();
         filterPanel.add(createFilterList(listBoardPaths, paths, pathsTitlePanel, true));
 
         return filterPanel;
@@ -136,7 +166,7 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         textBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         textBox.add(new JLabel(caption));
-        textBox.add(Box.createRigidArea( new Dimension(5, 0)));
+        textBox.add(Box.createRigidArea(new Dimension(5, 0)));
         textField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
@@ -167,7 +197,7 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         textBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         textBox.add(new JLabel(caption));
-        textBox.add(Box.createRigidArea( new Dimension(5, 0)));
+        textBox.add(Box.createRigidArea(new Dimension(5, 0)));
         startTextField.setToolTipText(Messages.getString("AdvancedSearchMapDialog.filterRangeStart.tooltip"));
         startTextField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
@@ -218,7 +248,7 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         Box titleBox = new Box(BoxLayout.LINE_AXIS);
         titleBox.setAlignmentX(Component.LEFT_ALIGNMENT);
         titleBox.add(new JLabel(caption));
-        titleBox.add(Box.createRigidArea( new Dimension(5, 0)));
+        titleBox.add(Box.createRigidArea(new Dimension(5, 0)));
         checkBox.setSelected(false);
         checkBox.addActionListener(new AbstractAction() {
             @Override
@@ -243,18 +273,13 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         return titlePanel;
     }
 
-    private JPanel createFilterList(JList list, List<String> data, JPanel title, boolean selectAll) {
+    private JPanel createFilterList(JList<String> list, List<String> data, JPanel title, boolean selectAll) {
         DefaultListModel<String> model = new DefaultListModel<>();
         model.addAll(data);
         list.setModel(model);
         list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         list.setSelectedIndex(0);
-        list.addListSelectionListener (new ListSelectionListener() {
-            @Override
-            public void valueChanged(ListSelectionEvent e) {
-                filterTables();
-            }
-        });
+        list.addListSelectionListener(e -> filterTables());
 
         if (selectAll) {
             list.addSelectionInterval(0, data.size());
@@ -274,15 +299,12 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         boardModel.setData(bc);
         boardTable.setName("Board");
         ListSelectionModel boardSelModel = boardTable.getSelectionModel();
-        boardSelModel.addListSelectionListener (new ListSelectionListener() {
-            @Override
-            public void valueChanged(ListSelectionEvent e) {
-                int index = boardTable.getSelectedRow() ;
-                if (index >= 0) {
-                    index = boardTable.convertRowIndexToModel(index);
-                    boardImage.setIcon(boardModel.getIconAt(index, UIUtil.scaleForGUI(200)));
-                    boardInfo.setText(boardModel.getInfoAt(index));
-                }
+        boardSelModel.addListSelectionListener(e -> {
+            int index = boardTable.getSelectedRow();
+            if (index >= 0) {
+                index = boardTable.convertRowIndexToModel(index);
+                boardImage.setIcon(boardModel.getIconAt(index, UIUtil.scaleForGUI(200)));
+                boardInfo.setText(boardModel.getInfoAt(index));
             }
         });
         boardTable.setModel(boardModel);
@@ -294,7 +316,7 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         for (int i = 0; i < boardModel.getColumnCount(); i++) {
             boardTable.getColumnModel().getColumn(i).setPreferredWidth(boardModel.getPreferredWidth(i));
         }
-        boardTable.setRowSelectionInterval(0,0);
+        boardTable.setRowSelectionInterval(0, 0);
         DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
         rightRenderer.setHorizontalAlignment(JLabel.RIGHT);
         boardTable.setFillsViewportHeight(true);
@@ -325,11 +347,17 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
                     List<String> tags = eqModel.getTagAt(entry.getIdentifier());
                     boolean tagMatch = matchTag(tags);
 
-                    boolean widthMatch = StringUtil.isBetween(eqModel.getWidthAt(entry.getIdentifier()), widthStartTextField.getText(), widthEndTextField.getText());
+                    boolean widthMatch = StringUtil.isBetween(eqModel.getWidthAt(entry.getIdentifier()),
+                          widthStartTextField.getText(),
+                          widthEndTextField.getText());
 
-                    boolean heightMatch = StringUtil.isBetween(eqModel.getHeightAt(entry.getIdentifier()), heightStartTextField.getText(), heightEndTextField.getText());
+                    boolean heightMatch = StringUtil.isBetween(eqModel.getHeightAt(entry.getIdentifier()),
+                          heightStartTextField.getText(),
+                          heightEndTextField.getText());
 
-                    boolean nameMatch = eqModel.getPathAt(entry.getIdentifier()).toUpperCase().contains(nameTextField.getText().toUpperCase());
+                    boolean nameMatch = eqModel.getPathAt(entry.getIdentifier())
+                          .toUpperCase()
+                          .contains(nameTextField.getText().toUpperCase());
 
                     return pathMatch && tagMatch && widthMatch && heightMatch && nameMatch;
                 }
@@ -350,7 +378,7 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
     private boolean matchPath(String path) {
         List<String> include = listBoardPaths.getSelectedValuesList();
 
-        String value = path.substring(0, path.lastIndexOf("\\") + 1 );
+        String value = path.substring(0, path.lastIndexOf("\\") + 1);
 
         return !include.isEmpty() && include.stream().anyMatch(value::contains);
     }
@@ -361,9 +389,9 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
         }
 
         List<String> include = listBoardTags.getSelectedValuesList();
-        
+
         if (boardTagsAllCheckBox.isSelected()) {
-            return !include.isEmpty() && include.stream().allMatch(tags::contains);
+            return !include.isEmpty() && new HashSet<>(tags).containsAll(include);
         } else {
             return !include.isEmpty() && include.stream().anyMatch(tags::contains);
         }
@@ -373,11 +401,10 @@ public class AdvancedSearchMapDialog extends AbstractButtonDialog {
      * Returns if path for the selected map when the dialog is confirmed
      */
     public String getPath() {
-        int index = boardTable.getSelectedRow() ;
+        int index = boardTable.getSelectedRow();
         if (index >= 0) {
             index = boardTable.convertRowIndexToModel(index);
-            String path =  boardModel.getPathAt(index);
-            return path;
+            return boardModel.getPathAt(index);
         }
 
         return null;

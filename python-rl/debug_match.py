@@ -12,8 +12,8 @@ def run_headless():
     cmd = [
         "build/install/MegaMek/bin/megamek", 
         "-rlexport", "-port", "3456", "-autogen", "-randomMap", 
-        "-p1meks", "3058Uu/Blackjack BJ2-OE.mtf", 
-        "-p2meks", "3050U/Grasshopper GHR-7K.mtf"
+        "-p1meks", "testresources/megamek/common/units/Charger C.mtf",
+        "-p2meks", "testresources/megamek/common/units/Sagittaire SGT-14D.mtf"
     ]
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
     

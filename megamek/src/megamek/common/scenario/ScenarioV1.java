@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022-2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2004-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -37,29 +37,57 @@ import java.util.regex.Pattern;
 
 import megamek.client.generator.RandomGenderGenerator;
 import megamek.codeUtilities.MathUtility;
-import megamek.common.*;
-import megamek.common.AmmoType.AmmoTypeEnum;
+import megamek.common.Configuration;
+import megamek.common.CriticalSlot;
+import megamek.common.HitData;
+import megamek.common.Player;
+import megamek.common.SimpleTechLevel;
+import megamek.common.TechConstants;
+import megamek.common.ToHitData;
 import megamek.common.annotations.Nullable;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
+import megamek.common.compute.Compute;
 import megamek.common.enums.GamePhase;
 import megamek.common.enums.Gender;
 import megamek.common.equipment.AmmoMounted;
+import megamek.common.equipment.AmmoType;
+import megamek.common.equipment.AmmoType.AmmoTypeEnum;
+import megamek.common.equipment.EquipmentType;
+import megamek.common.equipment.IArmorState;
+import megamek.common.equipment.Mounted;
+import megamek.common.equipment.WeaponType;
+import megamek.common.game.Game;
+import megamek.common.game.IGame;
 import megamek.common.icons.Camouflage;
+import megamek.common.interfaces.IStartingPositions;
 import megamek.common.loaders.EntityLoadingException;
+import megamek.common.loaders.MapSettings;
+import megamek.common.loaders.MekFileParser;
+import megamek.common.loaders.MekSummary;
+import megamek.common.loaders.MekSummaryCache;
 import megamek.common.options.IOption;
 import megamek.common.options.OptionsConstants;
-import megamek.common.planetaryconditions.Atmosphere;
-import megamek.common.planetaryconditions.BlowingSand;
-import megamek.common.planetaryconditions.EMI;
-import megamek.common.planetaryconditions.Fog;
-import megamek.common.planetaryconditions.Light;
-import megamek.common.planetaryconditions.Weather;
-import megamek.common.planetaryconditions.Wind;
-import megamek.common.planetaryconditions.WindDirection;
+import megamek.common.planetaryConditions.Atmosphere;
+import megamek.common.planetaryConditions.BlowingSand;
+import megamek.common.planetaryConditions.EMI;
+import megamek.common.planetaryConditions.Fog;
+import megamek.common.planetaryConditions.Light;
+import megamek.common.planetaryConditions.Weather;
+import megamek.common.planetaryConditions.Wind;
+import megamek.common.planetaryConditions.WindDirection;
+import megamek.common.units.Crew;
+import megamek.common.units.Entity;
+import megamek.common.units.IAero;
+import megamek.common.units.Mek;
+import megamek.common.units.ProtoMek;
+import megamek.common.units.Tank;
 import megamek.common.util.BoardUtilities;
 import megamek.common.util.fileUtils.MegaMekFile;
 import megamek.logging.MMLogger;
 import megamek.server.IGameManager;
-import megamek.server.totalwarfare.TWGameManager;
+import megamek.server.totalWarfare.TWGameManager;
 
 /**
  * This class holds all scenario info loaded from a scenario (.mms) file. It is a map of constants given in
@@ -265,8 +293,8 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
     private boolean parseBoolean(String key, boolean defaultValue) {
         if (containsKey(key)) {
             return getString(key).equalsIgnoreCase("true") ||
-                         getString(key).equalsIgnoreCase("on") ||
-                         getString(key).equalsIgnoreCase("1");
+                  getString(key).equalsIgnoreCase("on") ||
+                  getString(key).equalsIgnoreCase("1");
         }
 
         return defaultValue;
@@ -357,30 +385,31 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
                   TechConstants.getGameTechLevel(game, entity.isClan()));
             return null;
         } else if (entity.isClan() &&
-                         !game.getOptions().booleanOption(OptionsConstants.ALLOWED_ALL_AMMO_MIXED_TECH)) {
+              !game.getOptions().booleanOption(OptionsConstants.ALLOWED_ALL_AMMO_MIXED_TECH)) {
             // Check for clan weapon restrictions
             if (newAmmoType.notAllowedByClanRules()) {
                 LOGGER.warn("Ammo type {} not allowed by Clan rules", newAmmoType.getName());
                 return null;
             }
 
-            // Construct EnumSet with all the relevant
-            final EnumSet<AmmoType.Munitions> munitionTypes = newAmmoType.getMunitionType();
-            munitionTypes.add(AmmoType.Munitions.M_INCENDIARY_LRM);
+            // Note: Incendiary LRM effects are handled in LRMHandler.isIncendiaryMixed()
+            // which checks if ammo has M_INCENDIARY_LRM munition type
         }
 
         if (AmmoType.canDeliverMinefield(newAmmoType) &&
-                  !game.getOptions().booleanOption(OptionsConstants.ADVANCED_MINEFIELDS)) {
+              !game.getOptions().booleanOption(OptionsConstants.ADVANCED_MINEFIELDS)) {
             LOGGER.warn("Minefield-creating ammo type {} forbidden by game rules", newAmmoType.getName());
             return null;
         }
 
-        AmmoTypeEnum weaponAmmoType = (currentWeaponType instanceof WeaponType weaponType) ? weaponType.getAmmoType() : null;
+        AmmoTypeEnum weaponAmmoType = (currentWeaponType instanceof WeaponType weaponType) ?
+              weaponType.getAmmoType() :
+              null;
         if ((newAmmoType.getRackSize() == ((AmmoType) currentAmmoType).getRackSize()) &&
-                  (newAmmoType.hasFlag(AmmoType.F_BATTLEARMOR) == currentAmmoType.hasFlag(AmmoType.F_BATTLEARMOR)) &&
-                  (newAmmoType.hasFlag(AmmoType.F_ENCUMBERING) == currentAmmoType.hasFlag(AmmoType.F_ENCUMBERING)) &&
-                  (newAmmoType.getTonnage(entity) == currentAmmoType.getTonnage(entity)) &&
-                  (newAmmoType.getAmmoType() == weaponAmmoType)) {
+              (newAmmoType.hasFlag(AmmoType.F_BATTLEARMOR) == currentAmmoType.hasFlag(AmmoType.F_BATTLEARMOR)) &&
+              (newAmmoType.hasFlag(AmmoType.F_ENCUMBERING) == currentAmmoType.hasFlag(AmmoType.F_ENCUMBERING)) &&
+              (newAmmoType.getTonnage(entity) == currentAmmoType.getTonnage(entity)) &&
+              (newAmmoType.getAmmoType() == weaponAmmoType)) {
             return newAmmoType;
         } else {
             return null;
@@ -469,17 +498,17 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
                         // Is this a torso weapon slot?
                         CriticalSlot criticalSlot = null;
                         if ((criticalHitPlan.entity instanceof ProtoMek) &&
-                                  (ProtoMek.LOC_TORSO == criticalHit.loc) &&
-                                  ((ProtoMek.SYSTEM_TORSO_WEAPON_A == criticalHit.slot) ||
-                                         (ProtoMek.SYSTEM_TORSO_WEAPON_B == criticalHit.slot))) {
+                              (ProtoMek.LOC_TORSO == criticalHit.loc) &&
+                              ((ProtoMek.SYSTEM_TORSO_WEAPON_A == criticalHit.slot) ||
+                                    (ProtoMek.SYSTEM_TORSO_WEAPON_B == criticalHit.slot))) {
                             criticalSlot = new CriticalSlot(CriticalSlot.TYPE_SYSTEM, criticalHit.slot);
                         }
                         // Is this a valid slot number?
                         else if ((criticalHit.slot < 0) ||
-                                       (criticalHit.slot >
-                                              criticalHitPlan.entity.getNumberOfCriticals(criticalHit.loc))) {
+                              (criticalHit.slot >
+                                    criticalHitPlan.entity.getNumberOfCriticalSlots(criticalHit.loc))) {
                             LOGGER.error("{} - invalid slot specified (Slot < 0 OR Slot > Number of Critical Slots) " +
-                                               "{}: {}",
+                                        "{}: {}",
                                   criticalHitPlan.entity.getShortName(),
                                   criticalHit.loc,
                                   (criticalHit.slot + 1));
@@ -527,7 +556,7 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
             for (SetAmmoType setAmmoType : setAmmoPlan.ammoSetType) {
                 // Limit to `Meks for now (needs to be extended later)
                 if (setAmmoPlan.entity instanceof Mek) {
-                    if (setAmmoType.slot < setAmmoPlan.entity.getNumberOfCriticals(setAmmoType.loc)) {
+                    if (setAmmoType.slot < setAmmoPlan.entity.getNumberOfCriticalSlots(setAmmoType.loc)) {
                         CriticalSlot criticalSlot = setAmmoPlan.entity.getCritical(setAmmoType.loc, setAmmoType.slot);
                         if (criticalSlot != null) {
                             AmmoMounted ammo = (AmmoMounted) setAmmoPlan.entity.getCritical(setAmmoType.loc,
@@ -558,7 +587,7 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
             for (SetAmmoTo setAmmoTo : setAmmoPlan.ammoSetTo) {
                 // Only can be done against Meks
                 if (setAmmoPlan.entity instanceof Mek) {
-                    if (setAmmoTo.slot < setAmmoPlan.entity.getNumberOfCriticals(setAmmoTo.loc)) {
+                    if (setAmmoTo.slot < setAmmoPlan.entity.getNumberOfCriticalSlots(setAmmoTo.loc)) {
                         // Get the piece of equipment and check to make sure it is an ammo item then set its amount!
                         CriticalSlot criticalSlot = setAmmoPlan.entity.getCritical(setAmmoTo.loc, setAmmoTo.slot);
                         if (criticalSlot != null) {
@@ -645,8 +674,8 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
 
         if (scenarioV1.containsKey(PARAM_PLANET_CONDITIONS_BLOWING_SAND)) {
             BlowingSand blowingSand = parseBoolean(PARAM_PLANET_CONDITIONS_BLOWING_SAND, false) ?
-                                            BlowingSand.BLOWING_SAND :
-                                            BlowingSand.BLOWING_SAND_NONE;
+                  BlowingSand.BLOWING_SAND :
+                  BlowingSand.BLOWING_SAND_NONE;
             game.getPlanetaryConditions().setBlowingSand(blowingSand);
         }
     }
@@ -963,7 +992,7 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
     }
 
     /**
-     * Load board files and create the megaboard.
+     * Load board files and create the mega board.
      */
     private Board createBoard(ScenarioV1 scenarioV1) throws ScenarioLoaderException {
         int mapWidth = 16, mapHeight = 17;
@@ -1027,7 +1056,7 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
 
         Board[] ba = new Board[nWidth * nHeight];
         Queue<String> maps = new LinkedList<>(Arrays.asList(scenarioV1.getString(PARAM_MAPS)
-                                                                  .split(SEPARATOR_COMMA, -1)));
+              .split(SEPARATOR_COMMA, -1)));
         for (int x = 0; x < nWidth; x++) {
             for (int y = 0; y < nHeight; y++) {
                 int n = (y * nWidth) + x;
@@ -1200,18 +1229,7 @@ public class ScenarioV1 extends HashMap<String, Collection<String>> implements S
     /**
      * This is used specify the one damage location
      */
-    private static class SpecDam {
-        public final int loc;
-        public final int setArmorTo;
-        public final boolean rear;
-        public final boolean internal;
-
-        public SpecDam(int Location, int SetArmorTo, boolean RearHit, boolean Internal) {
-            loc = Location;
-            setArmorTo = SetArmorTo;
-            rear = RearHit;
-            internal = Internal;
-        }
+    private record SpecDam(int loc, int setArmorTo, boolean rear, boolean internal) {
     }
 
     /**

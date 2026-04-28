@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -33,7 +33,7 @@
 package megamek.client.ui.panels.phaseDisplay.lobby.sorters;
 
 import megamek.client.ui.panels.phaseDisplay.lobby.MekTableModel;
-import megamek.common.Entity;
+import megamek.common.units.Entity;
 import megamek.common.internationalization.I18n;
 import megamek.common.options.IGameOptions;
 import megamek.common.options.OptionsConstants;
@@ -43,6 +43,7 @@ public class TonnageSorter extends MekTableSorter {
 
     /**
      * A Lobby Mek Table sorter that sorts by tonnage.
+     *
      * @param sorting The sorting direction (ascending or descending).
      */
     public TonnageSorter(Sorting sorting) {

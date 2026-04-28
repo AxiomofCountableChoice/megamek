@@ -1,21 +1,35 @@
 /*
  * Copyright (c) 2000-2011 - Ben Mazur (bmazur@sev.org)
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2013-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.bot.princess;
 
@@ -39,20 +53,26 @@ import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.*;
 
-import megamek.client.bot.princess.BotGeometry.HexLine;
 import megamek.client.bot.princess.FireControl.FireControlType;
 import megamek.client.bot.princess.UnitBehavior.BehaviorType;
+import megamek.client.bot.princess.geometry.HexLine;
 import megamek.codeUtilities.StringUtility;
-import megamek.common.*;
+import megamek.common.Hex;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
 import megamek.common.equipment.ArmorType;
+import megamek.common.game.Game;
+import megamek.common.moves.Key;
 import megamek.common.moves.MovePath;
-import megamek.common.moves.MovePath.Key;
 import megamek.common.moves.MoveStep;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
 import megamek.common.options.PilotOptions;
-import megamek.common.planetaryconditions.PlanetaryConditions;
-import megamek.common.planetaryconditions.Weather;
+import megamek.common.planetaryConditions.PlanetaryConditions;
+import megamek.common.planetaryConditions.Weather;
+import megamek.common.rolls.TargetRoll;
+import megamek.common.units.*;
 import megamek.utils.MockGenerators;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -443,9 +463,8 @@ class BasicPathRankerTest {
             return this;
         }
 
-        public RankPathResultBuilder withFriends() {
+        public void withFriends() {
             this.noFriends = false;
-            return this;
         }
 
         public RankPathResultBuilder withFacingMod(int facingModValue, int facingModConstant, int facingDiff) {
@@ -820,9 +839,6 @@ class BasicPathRankerTest {
 
         // TEST CASE 12: Set friends to null (no friends) - we'll check this in test case 14
 
-        // Reset friends coordinates
-        friendsCoords = new Coords(10, 10);
-
         // TEST CASE 13: Set friends to null (no friends)
         expected = new RankedPath(-36.25,
               mockPath,
@@ -854,7 +870,8 @@ class BasicPathRankerTest {
         assertRankedPathEquals(expected, actual);
 
         // TEST CASE 15: Fleeing - closer to home edge
-        doReturn(10).when(testRanker).distanceToHomeEdge(any(Coords.class), anyInt(), any(CardinalEdge.class), any(Game.class));
+        doReturn(10).when(testRanker)
+              .distanceToHomeEdge(any(Coords.class), anyInt(), any(CardinalEdge.class), any(Game.class));
         expected = new RankedPath(-51.25,
               mockPath,
               builder.withFallMod(0, 0, 500)
@@ -870,7 +887,8 @@ class BasicPathRankerTest {
         }
 
         // TEST CASE 16: Fleeing - farther from home edge
-        doReturn(30).when(testRanker).distanceToHomeEdge(any(Coords.class), anyInt(), any(CardinalEdge.class), any(Game.class));
+        doReturn(30).when(testRanker)
+              .distanceToHomeEdge(any(Coords.class), anyInt(), any(CardinalEdge.class), any(Game.class));
         expected = new RankedPath(-51.25,
               mockPath,
               builder.withFallMod(0, 0, 500)
@@ -1363,7 +1381,7 @@ class BasicPathRankerTest {
         when(mockUnit.getCrew()).thenReturn(mockCrew);
         when(mockCrew.getPiloting()).thenReturn(5);
 
-        final Building mockBuilding = mock(Building.class);
+        final IBuilding mockBuilding = mock(IBuilding.class);
         when(mockGame.getBoard().getBuildingAt(eq(testCoordsThree))).thenReturn(mockBuilding);
         when(mockBuilding.getCurrentCF(eq(testCoordsThree))).thenReturn(77);
 
@@ -1444,12 +1462,12 @@ class BasicPathRankerTest {
         when(mockHexTwo.depth()).thenReturn(0);
         when(mockHexThree.depth()).thenReturn(1);
         when(mockFinalHex.depth()).thenReturn(2);
-        when(mockUnit.getArmor(Mek.LOC_CT)).thenReturn(0);
+        when(mockUnit.getArmor(Mek.LOC_CENTER_TORSO)).thenReturn(0);
         assertEquals(2000, testRanker.checkPathForHazards(mockPath, mockUnit, mockGame), TOLERANCE);
-        when(mockUnit.getArmor(Mek.LOC_CT)).thenReturn(10);
-        when(mockUnit.getArmor(Mek.LOC_RARM)).thenReturn(0);
+        when(mockUnit.getArmor(Mek.LOC_CENTER_TORSO)).thenReturn(10);
+        when(mockUnit.getArmor(Mek.LOC_RIGHT_ARM)).thenReturn(0);
         assertEquals(2000, testRanker.checkPathForHazards(mockPath, mockUnit, mockGame), TOLERANCE);
-        when(mockUnit.getArmor(Mek.LOC_RARM)).thenReturn(10);
+        when(mockUnit.getArmor(Mek.LOC_RIGHT_ARM)).thenReturn(10);
         when(mockHexTwo.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(0)));
         when(mockHexThree.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(0)));
         when(mockFinalHex.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(0)));
@@ -1502,9 +1520,9 @@ class BasicPathRankerTest {
         when(mockFinalHex.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(Terrains.ICE, Terrains.WATER)));
         when(mockFinalHex.terrainLevel(Terrains.WATER)).thenReturn(2);
         when(mockFinalHex.depth()).thenReturn(2);
-        when(mockUnit.getArmor(eq(Mek.LOC_LLEG))).thenReturn(0);
+        when(mockUnit.getArmor(eq(Mek.LOC_LEFT_LEG))).thenReturn(0);
         assertEquals(1000.0, testRanker.checkPathForHazards(mockPath, mockUnit, mockGame), TOLERANCE);
-        when(mockUnit.getArmor(eq(Mek.LOC_LLEG))).thenReturn(10);
+        when(mockUnit.getArmor(eq(Mek.LOC_LEFT_LEG))).thenReturn(10);
         when(mockFinalHex.terrainLevel(Terrains.WATER)).thenReturn(0);
         when(mockFinalHex.depth()).thenReturn(0);
         when(mockFinalHex.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(Terrains.MAGMA)));
@@ -1549,14 +1567,14 @@ class BasicPathRankerTest {
         when(mockUnit.getCrew()).thenReturn(mockCrew);
         when(mockCrew.getPiloting()).thenReturn(5);
 
-        final Building mockBuilding = mock(Building.class);
+        final IBuilding mockBuilding = mock(IBuilding.class);
         when(mockGame.getBoard().getBuildingAt(eq(testCoordsThree))).thenReturn(mockBuilding);
         when(mockBuilding.getCurrentCF(eq(testCoordsThree))).thenReturn(77);
 
         // Test jumping onto Magma Crust.
         when(mockPath.isJumping()).thenReturn(true);
-        when(mockUnit.getArmor(eq(Mek.LOC_LLEG))).thenReturn(24);
-        when(mockUnit.getArmor(eq(Mek.LOC_RLEG))).thenReturn(24);
+        when(mockUnit.getArmor(eq(Mek.LOC_LEFT_LEG))).thenReturn(24);
+        when(mockUnit.getArmor(eq(Mek.LOC_RIGHT_LEG))).thenReturn(24);
         when(mockFinalHex.depth()).thenReturn(0);
         when(mockFinalHex.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(Terrains.MAGMA)));
         // Only 50% chance to break through Crust, but must make PSR to avoid getting
@@ -1595,8 +1613,8 @@ class BasicPathRankerTest {
         // increases)
         when(mockCrew.getPiloting()).thenReturn(5);
         when(mockPath.isJumping()).thenReturn(false);
-        when(mockUnit.getArmor(eq(Mek.LOC_LLEG))).thenReturn(2);
-        when(mockUnit.getArmor(eq(Mek.LOC_RLEG))).thenReturn(2);
+        when(mockUnit.getArmor(eq(Mek.LOC_LEFT_LEG))).thenReturn(2);
+        when(mockUnit.getArmor(eq(Mek.LOC_RIGHT_LEG))).thenReturn(2);
         when(mockFinalHex.terrainLevel(Terrains.MAGMA)).thenReturn(1);
         when(mockFinalHex.depth()).thenReturn(0);
         // Moderate damage means moderate hazard
@@ -1667,7 +1685,7 @@ class BasicPathRankerTest {
         Entity mockUnit;
         Crew mockCrew;
 
-        Building mockBuilding;
+        IBuilding mockBuilding;
 
         @BeforeEach
         void init() {
@@ -1690,7 +1708,7 @@ class BasicPathRankerTest {
             when(mockUnit.getCrew()).thenReturn(mockCrew);
             when(mockCrew.getPiloting()).thenReturn(5);
 
-            mockBuilding = mock(Building.class);
+            mockBuilding = mock(IBuilding.class);
 
             when(mockGame.getBoard().getBuildingAt(eq(testCoordsThree))).thenReturn(mockBuilding);
             when(mockBuilding.getCurrentCF(eq(testCoordsThree))).thenReturn(77);
@@ -1788,8 +1806,8 @@ class BasicPathRankerTest {
 
             // Test jumping into Hazardous Liquid.
             when(mockPath.isJumping()).thenReturn(true);
-            when(mockUnit.getArmor(eq(Mek.LOC_LLEG))).thenReturn(24);
-            when(mockUnit.getArmor(eq(Mek.LOC_RLEG))).thenReturn(24);
+            when(mockUnit.getArmor(eq(Mek.LOC_LEFT_LEG))).thenReturn(24);
+            when(mockUnit.getArmor(eq(Mek.LOC_RIGHT_LEG))).thenReturn(24);
             when(mockFinalHex.depth()).thenReturn(1);
             when(mockFinalHex.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(Terrains.HAZARDOUS_LIQUID,
                   Terrains.WATER)));
@@ -1836,8 +1854,8 @@ class BasicPathRankerTest {
         void testCrippledHazardousLiquidWalkingHazard() {
             when(mockUnit.locations()).thenReturn(8);
             when(mockUnit.getArmor(anyInt())).thenReturn(10);
-            when(mockUnit.getArmor(eq(Mek.LOC_LLEG))).thenReturn(2);
-            when(mockUnit.getArmor(eq(Mek.LOC_RLEG))).thenReturn(2);
+            when(mockUnit.getArmor(eq(Mek.LOC_LEFT_LEG))).thenReturn(2);
+            when(mockUnit.getArmor(eq(Mek.LOC_RIGHT_LEG))).thenReturn(2);
 
             when(mockFinalHex.getTerrainTypesSet()).thenReturn(new HashSet<>(Set.of(Terrains.HAZARDOUS_LIQUID,
                   Terrains.WATER)));
@@ -2132,7 +2150,7 @@ class BasicPathRankerTest {
         when(mockUnit.getCrew()).thenReturn(mockCrew);
         when(mockCrew.getPiloting()).thenReturn(5);
 
-        final Building mockBuilding = mock(Building.class);
+        final IBuilding mockBuilding = mock(IBuilding.class);
         when(mockGame.getBoard().getBuildingAt(eq(testCoordsThree))).thenReturn(mockBuilding);
         when(mockBuilding.getCurrentCF(eq(testCoordsThree))).thenReturn(77);
 
@@ -2213,7 +2231,7 @@ class BasicPathRankerTest {
         when(mockUnit.getCrew()).thenReturn(mockCrew);
         when(mockCrew.getPiloting()).thenReturn(5);
 
-        final Building mockBuilding = mock(Building.class);
+        final IBuilding mockBuilding = mock(IBuilding.class);
         when(mockGame.getBoard().getBuildingAt(eq(testCoordsThree))).thenReturn(mockBuilding);
 
         when(mockBuilding.getCurrentCF(eq(testCoordsThree))).thenReturn(77);

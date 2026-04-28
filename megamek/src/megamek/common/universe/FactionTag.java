@@ -43,19 +43,16 @@ public enum FactionTag {
     /** Major trading company */
     TRADER,
     /**
-     * Super Power: the Terran Hegemony, the First Star League, and the Federated
-     * Commonwealth. (CamOps p12)
+     * Super Power: the Terran Hegemony, the First Star League, and the Federated Commonwealth. (CamOps p12)
      */
     SUPER,
     /**
-     * Major Power: e.g. Inner Sphere Great Houses, Republic of the Sphere, Terran
-     * Alliance,
-     * Second Star League, Inner Sphere Clans. (CamOps p12)
+     * Major Power: e.g. Inner Sphere Great Houses, Republic of the Sphere, Terran Alliance, Second Star League, Inner
+     * Sphere Clans. (CamOps p12)
      */
     MAJOR,
     /**
-     * Faction is limited to a single star system, or potentially just a part of a
-     * planet (CamOps p12)
+     * Faction is limited to a single star system, or potentially just a part of a planet (CamOps p12)
      */
     MINOR,
     /** Independent world or Small State (CamOps p12) */
@@ -63,8 +60,7 @@ public enum FactionTag {
     /** Faction is rebelling against the superior ("parent") faction */
     REBEL,
     /**
-     * Faction isn't overtly acting on the political/military scale; think ComStar
-     * before clan invasion
+     * Faction isn't overtly acting on the political/military scale; think ComStar before clan invasion
      */
     INACTIVE,
     /** Faction represents empty space */
@@ -79,19 +75,19 @@ public enum FactionTag {
     SPECIAL,
     /** Faction is meant to be played */
     PLAYABLE,
-    /** Faction is an independent noble (Camops p. 39) */
+    /** Faction is an independent noble (CamOps p. 39) */
     NOBLE,
-    /** Faction is an independent planetary government (Camops p. 39) */
+    /** Faction is an independent planetary government (CamOps p. 39) */
     PLANETARY_GOVERNMENT,
-    /** Faction is an independent corporation (Camops p. 39) */
+    /** Faction is an independent corporation (CamOps p. 39) */
     CORPORATION,
-    /** Faction is stingy and tends to pay less for contracts (Camops p. 42) */
+    /** Faction is stingy and tends to pay less for contracts (CamOps p. 42) */
     STINGY,
-    /** Faction is generous and tends to pay more for contracts (Camops p. 42) */
+    /** Faction is generous and tends to pay more for contracts (CamOps p. 42) */
     GENEROUS,
-    /** Faction is controlling with mercenary command rights (Camops p. 42) */
+    /** Faction is controlling with mercenary command rights (CamOps p. 42) */
     CONTROLLING,
-    /** Faction is lenient with mercenary command rights (Camops p. 42) */
+    /** Faction is lenient with mercenary command rights (CamOps p. 42) */
     LENIENT,
     /** Faction performs batchall */
     BATCHALL,

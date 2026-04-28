@@ -1,21 +1,36 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.scenario;
 
 import java.io.File;
@@ -26,32 +41,51 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-
 import megamek.client.ui.util.PlayerColour;
-import megamek.common.*;
+import megamek.common.Player;
+import megamek.common.Team;
 import megamek.common.alphaStrike.ASGame;
 import megamek.common.alphaStrike.BattleForceSUA;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
 import megamek.common.enums.GamePhase;
 import megamek.common.force.Force;
 import megamek.common.force.Forces;
-import megamek.common.hexarea.HexArea;
+import megamek.common.game.AbstractGame;
+import megamek.common.game.Game;
+import megamek.common.game.GameType;
+import megamek.common.game.IGame;
+import megamek.common.game.InGameObject;
+import megamek.common.hexArea.HexArea;
 import megamek.common.icons.Camouflage;
 import megamek.common.icons.FileCamouflage;
-import megamek.common.jacksonadapters.*;
+import megamek.common.interfaces.IStartingPositions;
+import megamek.common.interfaces.PlanetaryConditionsUsing;
+import megamek.common.jacksonAdapters.BoardDeserializer;
+import megamek.common.jacksonAdapters.BotParser;
+import megamek.common.jacksonAdapters.EntityDeserializer;
+import megamek.common.jacksonAdapters.GeneralEventDeserializer;
+import megamek.common.jacksonAdapters.HexAreaDeserializer;
+import megamek.common.jacksonAdapters.MMUReader;
+import megamek.common.jacksonAdapters.MessageDeserializer;
+import megamek.common.jacksonAdapters.TriggerDeserializer;
+import megamek.common.jacksonAdapters.VictoryDeserializer;
+import megamek.common.jacksonAdapters.dtos.GroundObjectInfo;
 import megamek.common.options.GameOptions;
-import megamek.common.planetaryconditions.PlanetaryConditions;
+import megamek.common.planetaryConditions.PlanetaryConditions;
 import megamek.common.strategicBattleSystems.SBFGame;
+import megamek.common.units.Entity;
+import megamek.common.units.IBomber;
 import megamek.common.util.C3Util;
 import megamek.logging.MMLogger;
 import megamek.server.IGameManager;
-import megamek.server.scriptedevent.GameEndTriggeredEvent;
+import megamek.server.scriptedEvents.GameEndTriggeredEvent;
 
 public class ScenarioV2 implements Scenario {
     private static final MMLogger logger = MMLogger.create(ScenarioV2.class);
@@ -126,7 +160,7 @@ public class ScenarioV2 implements Scenario {
 
     @Override
     public boolean hasFixedPlanetaryConditions() {
-        return !node.has(PARAM_PLANETCOND_FIXED) || node.get(PARAM_PLANETCOND_FIXED).booleanValue();
+        return !node.has(PARAM_PLANET_CONDITIONS_FIXED) || node.get(PARAM_PLANET_CONDITIONS_FIXED).booleanValue();
     }
 
     @Override
@@ -185,7 +219,7 @@ public class ScenarioV2 implements Scenario {
                 List<Entity> units = network.participants.stream().map(twGame::getEntity).toList();
                 try {
                     if (network.masterId == Entity.NONE) {
-                        C3Util.joinNh(twGame, units, units.get(0).getId(), false);
+                        C3Util.joinNh(twGame, units, units.getFirst().getId(), false);
                     } else {
                         boolean connectMM = units.stream().anyMatch(Entity::hasC3M);
                         if (connectMM) {
@@ -196,6 +230,20 @@ public class ScenarioV2 implements Scenario {
                     }
                 } catch (Exception e) {
                     throw new ScenarioLoaderException("Faulty C3 network definition: " + network);
+                }
+            }
+
+            List<TransportsScenarioParser.ParsedTransportsInfo> transportsInfos = TransportsScenarioParser.parse(node);
+            for (TransportsScenarioParser.ParsedTransportsInfo transport : transportsInfos) {
+                try {
+                    Entity carrier = twGame.getEntity(transport.carrierId);
+                    List<Entity> units = transport.carriedUnits.stream().map(twGame::getEntity).toList();
+                    for (Entity unit : units) {
+                        carrier.load(unit);
+                        unit.setTransportId(transport.carrierId);
+                    }
+                } catch (Exception e) {
+                    throw new ScenarioLoaderException("Faulty transports definition: " + transport);
                 }
             }
 
@@ -215,9 +263,9 @@ public class ScenarioV2 implements Scenario {
     }
 
     private void parsePlanetaryConditions(PlanetaryConditionsUsing plGame) throws JsonProcessingException {
-        if (node.has(MMS_PLANETCOND)) {
-            PlanetaryConditions conditions = yamlMapper.treeToValue(node.get(MMS_PLANETCOND),
-                    PlanetaryConditions.class);
+        if (node.has(MMS_PLANET_CONDITIONS)) {
+            PlanetaryConditions conditions = yamlMapper.treeToValue(node.get(MMS_PLANET_CONDITIONS),
+                  PlanetaryConditions.class);
             conditions.determineWind();
             plGame.setPlanetaryConditions(conditions);
         }
@@ -338,7 +386,7 @@ public class ScenarioV2 implements Scenario {
         int teamId = 0;
         final PlayerColour[] colours = PlayerColour.values();
 
-        for (Iterator<JsonNode> it = node.get(PARAM_FACTIONS).elements(); it.hasNext();) {
+        for (Iterator<JsonNode> it = node.get(PARAM_FACTIONS).elements(); it.hasNext(); ) {
             JsonNode playerNode = it.next();
             MMUReader.requireFields("Player", playerNode, NAME);
 
@@ -384,16 +432,17 @@ public class ScenarioV2 implements Scenario {
             // Carryables
             if (playerNode.has(OBJECTS) && (game instanceof AbstractGame)) {
                 JsonNode carryablesNode = playerNode.get(OBJECTS);
-                List<CarryableDeserializer.CarryableInfo> carryables = new MMUReader(scenariofile)
-                        .read(carryablesNode, CarryableDeserializer.CarryableInfo.class).stream()
-                        .filter(o -> o instanceof CarryableDeserializer.CarryableInfo)
-                        .map(o -> (CarryableDeserializer.CarryableInfo) o)
-                        .toList();
-                for (CarryableDeserializer.CarryableInfo carryableInfo : carryables) {
-                    if (carryableInfo.position() == null) {
-                        player.getGroundObjectsToPlace().add(carryableInfo.carryable());
+                List<GroundObjectInfo> carryables = new MMUReader(scenariofile)
+                      .read(carryablesNode, GroundObjectInfo.class).stream()
+                      .filter(o -> o instanceof GroundObjectInfo)
+                      .map(o -> (GroundObjectInfo) o)
+                      .toList();
+                for (GroundObjectInfo groundObjectInfo : carryables) {
+                    if (groundObjectInfo.position() == null) {
+                        player.getGroundObjectsToPlace().add(groundObjectInfo.groundObject());
                     } else {
-                        ((AbstractGame) game).placeGroundObject(carryableInfo.position(), carryableInfo.carryable());
+                        ((AbstractGame) game).placeGroundObject(groundObjectInfo.position(),
+                              groundObjectInfo.groundObject());
                     }
                 }
             }
@@ -402,9 +451,9 @@ public class ScenarioV2 implements Scenario {
                 JsonNode unitsNode = playerNode.get(UNITS);
                 if (game instanceof Game twGame) {
                     List<Entity> units = new MMUReader(scenariofile).read(unitsNode, Entity.class).stream()
-                            .filter(o -> o instanceof Entity)
-                            .map(o -> (Entity) o)
-                            .collect(Collectors.toList());
+                          .filter(o -> o instanceof Entity)
+                          .map(o -> (Entity) o)
+                          .collect(Collectors.toList());
                     int entityId = Math.max(smallestFreeUnitID(units), game.getNextEntityId());
                     Map<Integer, Integer> forceMapping = new HashMap<>();
                     for (Entity unit : units) {
@@ -414,6 +463,9 @@ public class ScenarioV2 implements Scenario {
                             entityId++;
                         }
                         twGame.addEntity(unit);
+                        if (unit instanceof IBomber bomber) {
+                            bomber.applyBombs();
+                        }
                         // Grounded DropShips don't set secondary positions unless they're part of a
                         // game and can verify
                         // they're not on a space map.
@@ -446,9 +498,9 @@ public class ScenarioV2 implements Scenario {
                     }
                 } else if (game instanceof SBFGame) {
                     List<InGameObject> units = new MMUReader(scenariofile).read(unitsNode).stream()
-                            .filter(o -> o instanceof InGameObject)
-                            .map(o -> (InGameObject) o)
-                            .collect(Collectors.toList());
+                          .filter(o -> o instanceof InGameObject)
+                          .map(o -> (InGameObject) o)
+                          .collect(Collectors.toList());
                     int entityId = Math.max(smallestFreeUnitID(units), game.getNextEntityId());
                     for (InGameObject unit : units) {
                         if (unit.getId() == Entity.NONE) {
@@ -512,8 +564,8 @@ public class ScenarioV2 implements Scenario {
     private void validateSBFGame(SBFGame game) {
         // Exactly one COM formation per team
         Map<Integer, Long> comCountsByTeam = game.getActiveFormations().stream()
-                .filter(f -> f.hasSUA(BattleForceSUA.COM))
-                .collect(Collectors.groupingBy(f -> game.getPlayer(f.getOwnerId()).getTeam(), Collectors.counting()));
+              .filter(f -> f.hasSUA(BattleForceSUA.COM))
+              .collect(Collectors.groupingBy(f -> game.getPlayer(f.getOwnerId()).getTeam(), Collectors.counting()));
         for (Team team : game.getTeams()) {
             if (!comCountsByTeam.containsKey(team.getId()) || comCountsByTeam.get(team.getId()) != 1) {
                 throw new IllegalArgumentException("Each team must have one formation with the COM ability");

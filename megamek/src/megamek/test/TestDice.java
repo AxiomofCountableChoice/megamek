@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2004-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -32,7 +32,7 @@
  */
 package megamek.test;
 
-import megamek.common.Compute;
+import megamek.common.compute.Compute;
 
 public class TestDice {
 
@@ -43,16 +43,16 @@ public class TestDice {
 
         System.out.println("testing dice, " + rolls + " rolls...");
 
-        long start = System.currentTimeMillis();
+        long start = java.lang.System.currentTimeMillis();
         for (long i = 0; i < rolls; i++) {
-            hits[megamek.common.Compute.d6(2) - 2]++;
+            hits[Compute.d6(2) - 2]++;
         }
-        long end = System.currentTimeMillis();
+        long end = java.lang.System.currentTimeMillis();
 
         System.out.println("done testing dice in " + (end - start) + " ms.");
         for (int i = 0; i < hits.length; i++) {
             System.out.println("hits on " + (i + 2) + " : " + hits[i]
-                    + "; probability = " + ((double) hits[i] / (double) rolls));
+                  + "; probability = " + ((double) hits[i] / (double) rolls));
         }
 
         int[][] pairs = new int[6][6];
@@ -67,7 +67,7 @@ public class TestDice {
         for (int x = 0; x < pairs.length; x++) {
             for (int y = 0; y < pairs[x].length; y++) {
                 System.out
-                        .println((x + 1) + "," + (y + 1) + ": " + pairs[x][y]);
+                      .println((x + 1) + "," + (y + 1) + ": " + pairs[x][y]);
             }
         }
         // odd, but necessary

@@ -1,23 +1,57 @@
 /*
- * MegaMek - Copyright (C) 2000-2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2000-2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2002-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.actions;
 
-import megamek.client.ui.Messages;
-import megamek.common.*;
-import megamek.common.options.OptionsConstants;
-
 import java.io.Serial;
+
+import megamek.client.ui.Messages;
+import megamek.common.CriticalSlot;
+import megamek.common.Hex;
+import megamek.common.ToHitData;
+import megamek.common.board.Coords;
+import megamek.common.compute.Compute;
+import megamek.common.compute.ComputeArc;
+import megamek.common.game.Game;
+import megamek.common.options.OptionsConstants;
+import megamek.common.rolls.TargetRoll;
+import megamek.common.units.Entity;
+import megamek.common.units.EntityWeightClass;
+import megamek.common.units.IBuilding;
+import megamek.common.units.Mek;
+import megamek.common.units.Targetable;
+import megamek.common.units.Terrains;
 
 /**
  * The attacker pushes the target.
@@ -35,7 +69,13 @@ public class PushAttackAction extends DisplacementAttackAction {
     }
 
     public ToHitData toHit(Game game) {
-        return toHit(game, getEntityId(), game.getTarget(getTargetType(), getTargetId()));
+        Targetable target = game.getTarget(getTargetType(), getTargetId());
+
+        if (target == null) {
+            return null;
+        }
+
+        return toHit(game, getEntityId(), target);
     }
 
     /**
@@ -55,7 +95,8 @@ public class PushAttackAction extends DisplacementAttackAction {
         }
 
         // can't push if carrying any cargo per TW
-        if ((attacker instanceof Mek mek) && !(mek.canFireWeapon(Mek.LOC_LARM) || mek.canFireWeapon(Mek.LOC_RARM))) {
+        if ((attacker instanceof Mek mek) && !(mek.canFireWeapon(Mek.LOC_LEFT_ARM)
+              || mek.canFireWeapon(Mek.LOC_RIGHT_ARM))) {
             return Messages.getString("WeaponAttackAction.CantFireWhileCarryingCargo");
         }
 
@@ -104,7 +145,7 @@ public class PushAttackAction extends DisplacementAttackAction {
 
         boolean inSameBuilding = Compute.isInSameBuilding(game, ae, te);
         final boolean targetInBuilding = Compute.isInBuilding(game, te);
-        Building bldg = null;
+        IBuilding bldg = null;
         if (targetInBuilding) {
             bldg = game.getBuildingAt(te.getBoardLocation()).orElse(null);
         }
@@ -145,13 +186,13 @@ public class PushAttackAction extends DisplacementAttackAction {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Target is a passenger.");
         }
 
-        // Can't target a entity conducting a swarm attack.
+        // Can't target an entity conducting a swarm attack.
         if (Entity.NONE != te.getSwarmTargetId()) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Target is swarming a Mek.");
         }
 
         // check if both arms are present
-        if (ae.isLocationBad(Mek.LOC_RARM) || ae.isLocationBad(Mek.LOC_LARM)) {
+        if (ae.isLocationBad(Mek.LOC_RIGHT_ARM) || ae.isLocationBad(Mek.LOC_LEFT_ARM)) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Arm missing");
         }
 
@@ -161,7 +202,7 @@ public class PushAttackAction extends DisplacementAttackAction {
         }
 
         // check if attacker has fired arm-mounted weapons
-        if (ae.weaponFiredFrom(Mek.LOC_RARM) || ae.weaponFiredFrom(Mek.LOC_LARM)) {
+        if (ae.weaponFiredFrom(Mek.LOC_RIGHT_ARM) || ae.weaponFiredFrom(Mek.LOC_LEFT_ARM)) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Weapons fired from arm this turn");
         }
 
@@ -187,13 +228,13 @@ public class PushAttackAction extends DisplacementAttackAction {
 
         // can't do anything but counter-push if the target of another attack
         if (ae.isTargetOfDisplacementAttack()
-                && (ae.findTargetedDisplacement().getEntityId() != target.getId())) {
+              && (ae.findTargetedDisplacement().getEntityId() != target.getId())) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Attacker is the target of another push/charge/DFA");
         }
 
         // can't attack the target of another displacement attack
         if (te.isTargetOfDisplacementAttack()
-                && (te.findTargetedDisplacement().getEntityId() != ae.getId())) {
+              && (te.findTargetedDisplacement().getEntityId() != ae.getId())) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Target is the target of another push/charge/DFA");
         }
 
@@ -205,6 +246,12 @@ public class PushAttackAction extends DisplacementAttackAction {
         // check facing
         if (!target.getPosition().equals(ae.getPosition().translated(ae.getFacing()))) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Target not directly ahead of feet");
+        }
+
+        // Tripods can only push targets in front arc based on torso facing per IO:AE p.158
+        if (ae.isTripodMek() && !ComputeArc.isInArc(ae.getPosition(), ae.getSecondaryFacing(),
+              target, Compute.ARC_FORWARD)) {
+            return new ToHitData(TargetRoll.IMPOSSIBLE, "Target not in torso front arc");
         }
 
         // can't push while prone
@@ -228,15 +275,15 @@ public class PushAttackAction extends DisplacementAttackAction {
 
         // Attacks against adjacent buildings automatically hit.
         if ((target.getTargetType() == Targetable.TYPE_BUILDING)
-                || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
+              || (target.getTargetType() == Targetable.TYPE_FUEL_TANK)) {
             return new ToHitData(TargetRoll.IMPOSSIBLE,
-                    "You can not push a building (well, you can, but it won't do anything).");
+                  "You can not push a building (well, you can, but it won't do anything).");
         }
 
         // Can't target woods or ignite a building with a physical.
         if ((target.getTargetType() == Targetable.TYPE_BLDG_IGNITE)
-                || (target.getTargetType() == Targetable.TYPE_HEX_CLEAR)
-                || (target.getTargetType() == Targetable.TYPE_HEX_IGNITE)) {
+              || (target.getTargetType() == Targetable.TYPE_HEX_CLEAR)
+              || (target.getTargetType() == Targetable.TYPE_HEX_IGNITE)) {
             return new ToHitData(TargetRoll.IMPOSSIBLE, "Invalid attack");
         }
 
@@ -264,10 +311,10 @@ public class PushAttackAction extends DisplacementAttackAction {
         toHit.append(Compute.getTargetTerrainModifier(game, te, 0, inSameBuilding));
 
         // damaged or missing actuators
-        if (!ae.hasWorkingSystem(Mek.ACTUATOR_SHOULDER, Mek.LOC_RARM)) {
+        if (!ae.hasWorkingSystem(Mek.ACTUATOR_SHOULDER, Mek.LOC_RIGHT_ARM)) {
             toHit.addModifier(2, "Right Shoulder destroyed");
         }
-        if (!ae.hasWorkingSystem(Mek.ACTUATOR_SHOULDER, Mek.LOC_LARM)) {
+        if (!ae.hasWorkingSystem(Mek.ACTUATOR_SHOULDER, Mek.LOC_LEFT_ARM)) {
             toHit.addModifier(2, "Left Shoulder destroyed");
         }
 
@@ -278,7 +325,7 @@ public class PushAttackAction extends DisplacementAttackAction {
 
         // water partial cover?
         if ((te.height() > 0) && (te.getElevation() == -1)
-                && (targHex.terrainLevel(Terrains.WATER) == te.height())) {
+              && (targHex.terrainLevel(Terrains.WATER) == te.height())) {
             toHit.addModifier(3, "target has partial cover");
         }
 
@@ -299,8 +346,10 @@ public class PushAttackAction extends DisplacementAttackAction {
         // sensor hits...
         // It gets a =4 penalty for being blind!
         if (((Mek) ae).getCockpitType() == Mek.COCKPIT_TORSO_MOUNTED) {
-            int sensorHits = ae.getBadCriticals(CriticalSlot.TYPE_SYSTEM, Mek.SYSTEM_SENSORS, Mek.LOC_HEAD);
-            int sensorHits2 = ae.getBadCriticals(CriticalSlot.TYPE_SYSTEM, Mek.SYSTEM_SENSORS, Mek.LOC_CT);
+            int sensorHits = ae.getBadCriticalSlots(CriticalSlot.TYPE_SYSTEM, Mek.SYSTEM_SENSORS, Mek.LOC_HEAD);
+            int sensorHits2 = ae.getBadCriticalSlots(CriticalSlot.TYPE_SYSTEM,
+                  Mek.SYSTEM_SENSORS,
+                  Mek.LOC_CENTER_TORSO);
             if ((sensorHits + sensorHits2) == 3) {
                 return new ToHitData(TargetRoll.IMPOSSIBLE, "Sensors Completely Destroyed for Torso-Mounted Cockpit");
             } else if (sensorHits == 2) {
@@ -309,7 +358,7 @@ public class PushAttackAction extends DisplacementAttackAction {
         }
 
         // Attacking Weight Class Modifier.
-        if (game.getOptions().booleanOption(OptionsConstants.ADVGRNDMOV_TACOPS_PHYSICAL_ATTACK_PSR)) {
+        if (game.getOptions().booleanOption(OptionsConstants.ADVANCED_GROUND_MOVEMENT_TAC_OPS_PHYSICAL_ATTACK_PSR)) {
             if (ae.getWeightClass() == EntityWeightClass.WEIGHT_LIGHT) {
                 toHit.addModifier(-2, "Weight Class Attack Modifier");
             } else if (ae.getWeightClass() == EntityWeightClass.WEIGHT_MEDIUM) {

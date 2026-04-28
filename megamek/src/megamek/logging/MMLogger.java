@@ -1,24 +1,40 @@
 /*
- * Copyright (c) 2024 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2024-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 
 package megamek.logging;
 
+import java.util.Objects;
 import javax.swing.JOptionPane;
 
 import io.sentry.Sentry;
@@ -28,8 +44,6 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.logging.log4j.spi.AbstractLogger;
 import org.apache.logging.log4j.spi.ExtendedLoggerWrapper;
-
-import java.util.Objects;
 
 /**
  * <p>
@@ -44,24 +58,24 @@ import java.util.Objects;
  * </p>
  *
  * <pre>{@code
- * private static final MMLogger logger = MMLogger.create(MegaMek.class);
+ * private static final MMLogger LOGGER = MMLogger.create(MegaMek.class);
  * }</pre>
  * <p>
- * And then for use, use {@code logger.info(message)} and pass a string to it. Currently supported levels include trace,
+ * And then for use, use {@code LOGGER.info(message)} and pass a string to it. Currently supported levels include trace,
  * info, warn, debug, error, and fatal. Warn, Error and Fatal can take any Throwable for sending to Sentry and has an
  * overload for a title to allow for displaying of a dialog box.
  * </p>
  * <p>
- * This class also implements both the parametric pattern and the string format for the functions that are overriden and
- * added here. This means that you can use the following formats for the messages in some cases:
+ * This class also implements both the parametric pattern and the string format for the functions that are overridden
+ * and added here. This means that you can use the following formats for the messages in some cases:
  * </p>
  *
  * <pre>{@code
- * logger.info("number: {} string: {}", 42, "Hello");
- * logger.info("number: %d string: %s", 42, "Hello");
+ * LOGGER.info("number: {} string: {}", 42, "Hello");
+ * LOGGER.info("number: %d string: %s", 42, "Hello");
  * }</pre>
  * <p>
- * Due to how the logger works, the first format using curly braces is preferred, but the second one is grandfathered
+ * Due to how the LOGGER works, the first format using curly braces is preferred, but the second one is grandfathered
  * exclusively for logs already existing, and it is not recommended for any new log.
  * </p>
  */
@@ -209,6 +223,7 @@ public class MMLogger extends ExtendedLoggerWrapper {
      * @param message   Message to be logged.
      * @param exception Exception to be logged.
      */
+    @Override
     public void error(String message, Throwable exception) {
         Sentry.captureException(exception);
         exLoggerWrapper.logIfEnabled(MMLogger.FQCN, Level.ERROR, null, message, exception);
@@ -304,7 +319,7 @@ public class MMLogger extends ExtendedLoggerWrapper {
 
     /**
      * Takes the passed in Level and checks if the current log level is more specific than provided. This is a helper
-     * method around the default logger's method.
+     * method around the default LOGGER's method.
      *
      * @param checkedLevel Passed in Level to compare to.
      *
@@ -316,7 +331,7 @@ public class MMLogger extends ExtendedLoggerWrapper {
 
     /**
      * Takes the passed in Level and checks if the current log level is less specific than provided. This is a helper
-     * method around the default logger's method.
+     * method around the default LOGGER's method.
      *
      * @param checkedLevel Passed in Level to compare to.
      *

@@ -1,3 +1,20 @@
+# MegaMek Data (C) 2025 by The MegaMek Team is licensed under CC BY-NC-SA 4.0.
+# To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/4.0/
+#
+# NOTICE: The MegaMek organization is a non-profit group of volunteers
+# creating free software for the BattleTech community.
+#
+# MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+# of The Topps Company, Inc. All Rights Reserved.
+#
+# Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+# InMediaRes Productions, LLC.
+#
+# MechWarrior Copyright Microsoft Corporation. MegaMek Data was created under
+# Microsoft's "Game Content Usage Rules"
+# <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+# affiliated with Microsoft.
+
 # This document explains how to write a scenario V2 file.
 # ScenarioV2 uses YAML formatting which relies heavily on indentation
 
@@ -269,7 +286,7 @@ factions:
           type: fledunits
           modify: atend
           units: [ 101, 102, 103, 104, 105, 106 ]
-          atleast: 4
+          atLeast: 4
         # the onlyatend modifier means that this victory condition will not end the game by itself; instead
         # it will only be checked once the game has ended for any other reason, such as a game end trigger
         # (for example, a round count end)
@@ -327,6 +344,9 @@ factions:
           RT: [ 1, 3 ]
           CT: 1
           # non-location crits (TODO)
+          # Tanks
+          # Engine hits (TW p.194); the number is ignored (more than one hit has no further effect) and can be omitted
+          engine: 1
           # motive: 1
           # firecontrol: 1
 
@@ -337,6 +357,29 @@ factions:
             slot: 5
             shots: 2
             # type: xyz (TODO)
+
+        # Bombs for any IBomber types (LAM and aero units);
+        bombs:
+          # bombs can be given directly, which will place them on external hardpoints
+          HE: 1
+          CLUSTER: 2
+          LG: 3
+          # other types, see BombTypeEnum
+          # RL, TAG, AAA, AS, ASEW, ARROW, HOMING, INFERNO, LAA, THUNDER, TORPEDO, ALAMO, FAE_SMALL, FAE_LARGE, RLP
+
+        # alternatively, bombs can be separated into internal and external; in this case, do not give bombs directly
+        # internal requires the IBB quirk
+        bombs:
+          internal:
+            HE: 2
+            LG: 2
+          external:
+            CLUSTER: 1
+
+        # bombs:
+        #   HE: 1    <---- wrong, must use external:
+        #   internal:
+        #     CLUSTER: 2
 
         # Optional: give details of the crew/pilot - currently only for single pilots (TODO)
         # by default, the pilot is an unnamed 4/5 pilot
@@ -458,6 +501,13 @@ c3:
     connected: [ 302, 208 ]
   # atm, double master units are not supported
 
+# ###############################################
+# Transporting units:
+transports:
+  # the carrier and the carried unit ids
+  102: [ 104, 105 ]
+  202: [ 205 ]
+
 
 # ###############################################
 # Game End, Victory and Victory/Defeat/Other Messages
@@ -479,7 +529,7 @@ end:
   - trigger:
       type: killedunits
       units: [ 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112 ]
-      atleast: 7
+      atLeast: 7
 
   - trigger:
       type: killedunit
@@ -515,7 +565,7 @@ messages:
       type: fledunits
       modify: [ atend, once ]
       units: [ 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112 ]
-      atleast: 6
+      atLeast: 6
 
 # ###############################################
 # Victory conditions; they always come as a list (use dashes). Listing them outside the factions can be
@@ -529,7 +579,7 @@ victory:
       type: fledunits
       modify: atend
       units: [ 101, 102, 103, 104, 105, 106 ]
-      atleast: 4
+      atLeast: 4
     # the onlyatend modifier means that this victory condition will not end the game by itself; instead
     # it will only be checked once the game has ended for any other reason, such as a game end trigger
     # (for example, a round count end)
@@ -567,10 +617,10 @@ trigger:
   # It also makes sense to set fixed IDs for all units to make sure this works correctly
   units: [ 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112 ]
   # At least the given number of units must have been killed, can be alone or combined with atmost
-  atleast: 7
-  # At most the given number of units must have been killed, can be alone or combined with atleast
+  atLeast: 7
+  # At most the given number of units must have been killed, can be alone or combined with atLeast
   atmost: 10
-  # OR: the exact number of units must have been killed; this cannot be combined with atmost/atleast
+  # OR: the exact number of units must have been killed; this cannot be combined with atmost/atLeast
   count: 2
 
 trigger:
@@ -675,10 +725,10 @@ trigger:
   # It also makes sense to set fixed IDs for all units to make sure this works correctly
   units: [ 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112 ]
   # At least the given number of units must be in the given area, can be alone or combined with atmost
-  atleast: 7
-  # At most the given number of units must be in the given area, can be alone or combined with atleast
+  atLeast: 7
+  # At most the given number of units must be in the given area, can be alone or combined with atLeast
   atmost: 10
-  # OR: the exact number of units must be in the given area; this cannot be combined with atmost/atleast
+  # OR: the exact number of units must be in the given area; this cannot be combined with atmost/atLeast
   count: 2
 
 trigger:

@@ -1,7 +1,6 @@
 /*
- * MegaMek
  * Copyright (c) 2004 - Ben Mazur (bmazur@sev.org)
- * Copyright (c) 2022 - 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (c) 2004-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -34,30 +33,36 @@
  */
 package megamek.common;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
-import megamek.common.AmmoType.AmmoTypeEnum;
+
+import megamek.common.board.Coords;
+import megamek.common.equipment.AmmoType.AmmoTypeEnum;
+import megamek.common.equipment.Mounted;
+import megamek.common.equipment.WeaponType;
+import megamek.common.rolls.TargetRoll;
 
 /**
- * ArtilleryTracker - one held by every entity, it holds a list of the artillery
- * weapons an entity
- * controls, and the mods they get to hit certain hexes.
+ * ArtilleryTracker - one held by every entity, it holds a list of the artillery weapons an entity controls, and the
+ * mods they get to hit certain hexes.
  */
 public class ArtilleryTracker implements Serializable {
+    @Serial
     private static final long serialVersionUID = -6913144265531983734L;
 
     /**
-     * Maps WeaponID's of artillery weapons to a Vector of ArtilleryModifiers, for
-     * all the different
-     * coords it's got mods to.
+     * Maps WeaponID's of artillery weapons to a Vector of ArtilleryModifiers, for all the different coords it's got
+     * mods to.
      */
-    private Map<Mounted<?>, Vector<ArtilleryModifier>> weapons;
+    private final Map<Mounted<?>, Vector<ArtilleryModifier>> weapons;
 
     private boolean spotterIsForwardObs;
+    private boolean spotterHasCommImplant;
 
     /**
      * Creates new instance of the tracker
@@ -80,6 +85,7 @@ public class ArtilleryTracker implements Serializable {
      *
      * @param mounted existing weapon
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void removeWeapon(Mounted<?> mounted) {
         weapons.remove(mounted);
     }
@@ -92,9 +98,8 @@ public class ArtilleryTracker implements Serializable {
     }
 
     /**
-     * Remove all autohit mods from hexes that were hit previously; used when artillery unit moves.
-     * This _should_ be thread-safe.
-     * Only autohit mods are lost when an artillery unit spends MPs (TO:AR pg. 150)
+     * Remove all auto hit mods from hexes that were hit previously; used when artillery unit moves. This _should_ be
+     * thread-safe. Only auto hit mods are lost when an artillery unit spends MPs (TO:AR pg. 150)
      */
     public void clearHitHexMods() {
         for (Vector<ArtilleryModifier> modVector : weapons.values()) {
@@ -108,10 +113,12 @@ public class ArtilleryTracker implements Serializable {
         }
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public boolean weaponInList(Mounted<?> mounted) {
         return (weapons.containsKey(mounted));
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public boolean ammoTypeInList(AmmoTypeEnum ammoType) {
         for (Mounted<?> mounted : weapons.keySet()) {
             if (((WeaponType) mounted.getType()).getAmmoType() == ammoType) {
@@ -122,29 +129,26 @@ public class ArtilleryTracker implements Serializable {
     }
 
     /**
-     * Sets the modifier for artillery weapons on this unit. All weapons use the
-     * same modifier due
-     * to artillery fire adjustment being handled on a per-unit basis.
+     * Sets the modifier for artillery weapons on this unit. All weapons use the same modifier due to artillery fire
+     * adjustment being handled on a per-unit basis.
      *
-     * @param modifier
-     * @param coords
      */
     public void setModifier(int modifier, Coords coords) {
         for (Mounted<?> weapon : weapons.keySet()) {
             Vector<ArtilleryModifier> weaponMods = getWeaponModifiers(weapon);
-            ArtilleryModifier am = getModifierByCoords(weaponMods, coords);
-            if (am != null) {
-                am.setModifier(modifier);
+            ArtilleryModifier artilleryModifier = getModifierByCoords(weaponMods, coords);
+            if (artilleryModifier != null) {
+                artilleryModifier.setModifier(modifier);
             } else {
-                am = new ArtilleryModifier(coords, modifier);
-                weaponMods.addElement(am);
+                artilleryModifier = new ArtilleryModifier(coords, modifier);
+                weaponMods.addElement(artilleryModifier);
             }
         }
     }
 
     /**
      * @param weapon weapon to get modifier for
-     * @param coords
+     *
      * @return the modifier for the given weapon
      */
     public int getModifier(Mounted<?> weapon, Coords coords) {
@@ -155,6 +159,7 @@ public class ArtilleryTracker implements Serializable {
 
     /**
      * @param mounted weapon to get modifiers for
+     *
      * @return the <code>Vector</code> of the modifiers for the given weapon
      */
     public Vector<ArtilleryModifier> getWeaponModifiers(Mounted<?> mounted) {
@@ -162,53 +167,15 @@ public class ArtilleryTracker implements Serializable {
     }
 
     /**
-     * Search the given vector of modifiers for the modifier which coords equals to
-     * the given coords
+     * Search the given vector of modifiers for the modifier which coords equals to the given coords
      *
      * @param modifiers <code>Vector</code> of the modifiers to process
      * @param coords    coordinates of the modifier looked for
-     * @return modifier with coords equals to the given on <code>null</code> if not
-     *         found
+     *
+     * @return modifier with coords equals to the given on <code>null</code> if not found
      */
     protected ArtilleryModifier getModifierByCoords(Vector<ArtilleryModifier> modifiers, Coords coords) {
         return modifiers.stream().filter(mod -> mod.getCoords().equals(coords)).findFirst().orElse(null);
-    }
-
-    /**
-     * Small collector... just holds a Coords and a modifier (either
-     * ToHitData.AUTOMATIC_SUCCESS or
-     * just a modifier)
-     */
-    public static class ArtilleryModifier implements Serializable {
-        private static final long serialVersionUID = 4913880091708068708L;
-        private Coords coords;
-        private int modifier;
-
-        public ArtilleryModifier(Coords coords, int modifier) {
-            this.coords = coords;
-            this.setModifier(modifier);
-        }
-
-        /**
-         * @return the coords.
-         */
-        public Coords getCoords() {
-            return coords;
-        }
-
-        /**
-         * @param modifier The modifier to set.
-         */
-        public void setModifier(int modifier) {
-            this.modifier = modifier;
-        }
-
-        /**
-         * @return the modifier.
-         */
-        public int getModifier() {
-            return modifier;
-        }
     }
 
     public boolean getSpotterHasForwardObs() {
@@ -217,5 +184,13 @@ public class ArtilleryTracker implements Serializable {
 
     public void setSpotterHasForwardObs(boolean forwardObserver) {
         spotterIsForwardObs = forwardObserver;
+    }
+
+    public boolean getSpotterHasCommImplant() {
+        return spotterHasCommImplant;
+    }
+
+    public void setSpotterHasCommImplant(boolean hasCommImplant) {
+        spotterHasCommImplant = hasCommImplant;
     }
 }

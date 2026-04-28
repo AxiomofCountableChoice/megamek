@@ -1,18 +1,37 @@
 /*
- * MegaMek -
  * Copyright (C) 2000-2016 Ben Mazur (bmazur@sev.org)
- * Copyright (C) 2018 The MegaMek Team
+ * Copyright (C) 2016-2025 The MegaMek Team. All Rights Reserved.
  *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
+ * This file is part of MegaMek.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
- * details.
+ * MegaMek is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
+ *
+ * MegaMek is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ *
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.util;
 
 import java.awt.*;
@@ -23,7 +42,6 @@ import java.awt.image.ImageFilter;
 import java.awt.image.ImageObserver;
 import java.awt.image.ImageProducer;
 import java.awt.image.Kernel;
-import java.awt.image.VolatileImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -40,9 +58,9 @@ import megamek.MMConstants;
 import megamek.client.ui.util.ImageAtlasMap;
 import megamek.client.ui.util.ImprovedAveragingScaleFilter;
 import megamek.client.ui.util.UIUtil;
-import megamek.common.Coords;
 import megamek.common.Report;
 import megamek.common.annotations.Nullable;
+import megamek.common.board.Coords;
 import megamek.common.util.fileUtils.MegaMekFile;
 import megamek.logging.MMLogger;
 
@@ -98,8 +116,8 @@ public final class ImageUtil {
      */
     public static BufferedImage createAcceleratedImage(int w, int h) {
         return (GRAPHICS_CONFIGURATION == null) ?
-                     new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB) :
-                     GRAPHICS_CONFIGURATION.createCompatibleImage(w, h, Transparency.TRANSLUCENT);
+              new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB) :
+              GRAPHICS_CONFIGURATION.createCompatibleImage(w, h, Transparency.TRANSLUCENT);
     }
 
     /**
@@ -214,9 +232,10 @@ public final class ImageUtil {
     /**
      * Add a new image loader to the first position of the list, if it isn't there already
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public static void addImageLoader(ImageLoader loader) {
         if (null != loader && !IMAGE_LOADERS.contains(loader)) {
-            IMAGE_LOADERS.add(0, loader);
+            IMAGE_LOADERS.addFirst(loader);
         }
     }
 
@@ -490,7 +509,7 @@ public final class ImageUtil {
         FinishedLoadingObserver observer = new FinishedLoadingObserver(Thread.currentThread());
         // Check to see if the image is loaded
         if (!Toolkit.getDefaultToolkit().prepareImage(result, -1, -1, observer)) {
-            long startTime = System.currentTimeMillis();
+            long startTime = java.lang.System.currentTimeMillis();
             long maxRuntime = 10000;
             long runTime = 0;
             while (!observer.isLoaded() && runTime < maxRuntime) {
@@ -501,7 +520,7 @@ public final class ImageUtil {
                     // Do nothing
                 }
 
-                runTime = System.currentTimeMillis() - startTime;
+                runTime = java.lang.System.currentTimeMillis() - startTime;
             }
         }
         return observer.isAnimated();
@@ -509,9 +528,9 @@ public final class ImageUtil {
 
     private static class FinishedLoadingObserver implements ImageObserver {
         private static final int DONE = ImageObserver.ABORT |
-                                              ImageObserver.ERROR |
-                                              ImageObserver.FRAMEBITS |
-                                              ImageObserver.ALLBITS;
+              ImageObserver.ERROR |
+              ImageObserver.FRAMEBITS |
+              ImageObserver.ALLBITS;
 
         private final Thread mainThread;
         private volatile boolean loaded = false;
@@ -603,9 +622,9 @@ public final class ImageUtil {
         for (int x = 0; x < width; ++x) {
             for (int y = 0; y < width; ++y) {
                 float value = (float) (Math.exp(-0.5 *
-                                                      (Math.pow((x - mean) / sigma, 2.0) +
-                                                             Math.pow((y - mean) / sigma, 2.0))) /
-                                             (2 * Math.PI * sigma * sigma));
+                      (Math.pow((x - mean) / sigma, 2.0) +
+                            Math.pow((y - mean) / sigma, 2.0))) /
+                      (2 * Math.PI * sigma * sigma));
                 data[y * width + x] = value;
                 sum += value;
             }

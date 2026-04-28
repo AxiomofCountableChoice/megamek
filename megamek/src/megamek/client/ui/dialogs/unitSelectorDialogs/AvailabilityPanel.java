@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2026 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -25,7 +25,7 @@
  * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
  * InMediaRes Productions, LLC.
  *
- * MechWarrior Copyright Microsoft Corporation. <Package Name> was created under
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
  * Microsoft's "Game Content Usage Rules"
  * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
  * affiliated with Microsoft.
@@ -37,7 +37,6 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.image.VolatileImage;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,8 +47,8 @@ import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.*;
+import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
-import javax.swing.event.HyperlinkEvent;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -58,7 +57,6 @@ import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
-import javax.swing.text.View;
 
 import megamek.client.ratgenerator.AvailabilityRating;
 import megamek.client.ratgenerator.FactionRecord;
@@ -67,13 +65,14 @@ import megamek.client.ratgenerator.RATGenerator;
 import megamek.client.ui.util.UIUtil;
 import megamek.common.eras.Era;
 import megamek.common.eras.Eras;
-import megamek.common.util.ManagedVolatileImage;
+import megamek.common.util.ImageUtil;
 import megamek.logging.MMLogger;
-import megamek.utilities.ImageUtilities;
 
 public class AvailabilityPanel {
+
     private static final MMLogger logger = MMLogger.create(AvailabilityPanel.class);
 
+    private static final int ICON_SIZE = UIUtil.scaleForGUI(32);
 
     private static class FixedColumnGrid extends JPanel {
         private final JTable fixedTable;
@@ -81,7 +80,7 @@ public class AvailabilityPanel {
         private final JScrollPane fixedScrollPane;
         private final JScrollPane scrollableScrollPane;
         private final DefaultTableModel model;
-        private static final int FIXED_COLUMN_WIDTH = 200;
+        private static final int FIXED_COLUMN_WIDTH = UIUtil.scaleForGUI(210);
 
         public static class FactionCellData {
             ImageIcon icon;
@@ -100,109 +99,24 @@ public class AvailabilityPanel {
             }
         }
 
-        private static class FactionCellRenderer extends JPanel implements TableCellRenderer {
-            private ManagedVolatileImage factionImage;
-            private final JLabel textLabel = new JLabel();
-            private boolean showIcon = false;
-            private int textContentWidth = 0;
-            private static final int ICON_SIZE = 32; // Fixed height for icon
-            private static final int ICON_MARGIN = 5;
+        private static class FactionCellRenderer extends DefaultTableCellRenderer {
 
-            public FactionCellRenderer() {
-                setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
-                setOpaque(true);
-                setBorder(new EmptyBorder(2, 5, 2, 5)); // Padding for the whole cell
-                textLabel.setAlignmentY(Component.CENTER_ALIGNMENT);
-                textLabel.setVerticalAlignment(SwingConstants.CENTER);
-                add(textLabel, BorderLayout.CENTER);
-            }
+            private static final EmptyBorder CELL_PADDING = new EmptyBorder(4, 10, 4, 2);
 
             @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                
-                if (showIcon && factionImage != null) {
-                    Graphics2D g2d = (Graphics2D) g.create();
-                    UIUtil.setHighQualityRendering(g2d);
-                    
-                    // Draw the icon on the left side, vertically centered
-                    VolatileImage img = factionImage.getImage();
-                    int iconY = (getHeight() - ICON_SIZE) / 2;
-                    g2d.drawImage(img, ICON_MARGIN, iconY, null);
-                    
-                    g2d.dispose();
-                }
-            }
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                  boolean hasFocus, int row, int column) {
 
-            @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-            if (value instanceof FactionCellData data) {
-                this.textContentWidth = FIXED_COLUMN_WIDTH -
-                                             getInsets().left - getInsets().right - // Panel border
-                                             ICON_SIZE -
-                                             ICON_MARGIN -
-                                             30;
-                // Create ManagedVolatileImage for the icon
-                if (data.icon != null) {
-                    factionImage = new ManagedVolatileImage(data.icon.getImage(), 
-                        Transparency.TRANSLUCENT, ICON_SIZE, ICON_SIZE);
-                    showIcon = true;
+                String text = "?";
+                if (value instanceof FactionCellData data) {
+                    setIcon(data.icon);
+                    text = data.factionName != null ? data.factionName : "Unknown";
                 } else {
-                    factionImage = null;
-                    showIcon = false;
+                    setIcon(null);
                 }
-                textLabel.setBorder(new EmptyBorder(0, ICON_SIZE + ICON_MARGIN, 0, 0));
-                textLabel.setText("<html><body style='width: " + textContentWidth + "px'>" +
-                                        (data.factionName != null ? data.factionName : "Unknown") +
-                                        "</body></html>");
-            }
-
-                if (isSelected) {
-                    setBackground(table.getSelectionBackground());
-                    setForeground(table.getSelectionForeground());
-                    textLabel.setForeground(table.getSelectionForeground()); // Ensure text color changes
-                } else {
-                    setBackground(row % 2 == 0 ? table.getBackground() : slightlyDarker(table.getBackground()));
-                    setForeground(table.getForeground());
-                    textLabel.setForeground(table.getForeground());
-                }
+                super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column);
+                setBorder(new CompoundBorder(getBorder(), CELL_PADDING));
                 return this;
-            }
-
-            @Override
-            public Dimension getPreferredSize() {
-                Dimension size = super.getPreferredSize();
-                int minHeight = showIcon ? ICON_SIZE : 0;
-                String text = textLabel.getText();
-                int textHeight = 0;
-                if (text != null && text.contains("<html>")) {
-                    if (this.textContentWidth > 0) {
-                        try {
-                            JLabel tempLabel = new JLabel(text);
-                            tempLabel.setFont(textLabel.getFont());
-                            tempLabel.setSize(this.textContentWidth, Integer.MAX_VALUE);
-                            View view = (View) tempLabel.getClientProperty("html");
-                            if (view == null) {
-                                tempLabel.getPreferredSize();
-                                view = (View) tempLabel.getClientProperty("html");
-                            }
-                            if (view != null) {
-                                view.setSize(this.textContentWidth, 0);
-                                textHeight = (int) view.getPreferredSpan(View.Y_AXIS);
-                            }
-                        } catch (NumberFormatException ignored) {
-                            // Fallback
-                            textHeight = textLabel.getPreferredSize().height;
-                        }
-                    }
-                } else {
-                    textHeight = textLabel.getPreferredSize().height;
-                }
-                int contentHeight = Math.max(minHeight, textHeight);
-                Insets insets = getInsets();
-                int totalHeight = contentHeight + insets.top + insets.bottom;
-                size.height = Math.max(size.height, totalHeight);
-                return size;
             }
         }
 
@@ -216,7 +130,8 @@ public class AvailabilityPanel {
             }
 
             @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                  boolean hasFocus, int row, int column) {
                 setText(value == null ? "" : value.toString());
                 return this;
             }
@@ -237,13 +152,13 @@ public class AvailabilityPanel {
             fixedTable = new JTable(model);
             fixedTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
             fixedTable.getTableHeader().setReorderingAllowed(false);
-            fixedTable.setIntercellSpacing(new Dimension(0,1));
+            fixedTable.setIntercellSpacing(new Dimension(0, 1));
 
             // Create the scrollable columns table (right side)
             scrollableTable = new JTable(model);
             scrollableTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
             scrollableTable.getTableHeader().setReorderingAllowed(false);
-            scrollableTable.setIntercellSpacing(new Dimension(1,1));
+            scrollableTable.setIntercellSpacing(new Dimension(1, 1));
 
             // Set up scroll panes
             fixedScrollPane = new JScrollPane(fixedTable,
@@ -281,18 +196,24 @@ public class AvailabilityPanel {
                     int columnIndexInView = table.columnAtPoint(e.getPoint());
                     if (columnIndexInView != -1) {
                         int modelColumnIndex = table.convertColumnIndexToModel(columnIndexInView);
-                        String headerValue = table.getModel().getColumnName(modelColumnIndex); // Get from model for original HTML
+                        String headerValue = table.getModel()
+                              .getColumnName(modelColumnIndex); // Get from model for original HTML
                         if (headerValue != null) {
-                            Pattern pattern = Pattern.compile("href\\s*=\\s*['\"]([^'\"]*)['\"]", Pattern.CASE_INSENSITIVE);
+                            Pattern pattern = Pattern.compile("href\\s*=\\s*['\"]([^'\"]*)['\"]",
+                                  Pattern.CASE_INSENSITIVE);
                             Matcher matcher = pattern.matcher(headerValue);
                             if (matcher.find()) {
                                 String url = matcher.group(1);
                                 try {
-                                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                                    if (Desktop.isDesktopSupported() && Desktop.getDesktop()
+                                          .isSupported(Desktop.Action.BROWSE)) {
                                         Desktop.getDesktop().browse(new URI(url));
                                     }
                                 } catch (Exception ex) {
-                                    JOptionPane.showMessageDialog(table, "Could not open link: " + ex.getMessage(), "Link Error", JOptionPane.ERROR_MESSAGE);
+                                    JOptionPane.showMessageDialog(table,
+                                          "Could not open link: " + ex.getMessage(),
+                                          "Link Error",
+                                          JOptionPane.ERROR_MESSAGE);
                                 }
                             }
                         }
@@ -353,7 +274,8 @@ public class AvailabilityPanel {
                 }
             }
 
-            fixedTable.setPreferredScrollableViewportSize(new Dimension(FIXED_COLUMN_WIDTH, fixedTable.getPreferredScrollableViewportSize().height));
+            fixedTable.setPreferredScrollableViewportSize(new Dimension(FIXED_COLUMN_WIDTH,
+                  fixedTable.getPreferredScrollableViewportSize().height));
             fixedTable.getTableHeader().revalidate();
             fixedTable.getTableHeader().repaint();
         }
@@ -363,9 +285,11 @@ public class AvailabilityPanel {
          */
         private void setupScrollableColumns() {
             TableColumnModel scm = scrollableTable.getColumnModel();
-            for (int i = scm.getColumnCount() - 1; i >= 0; i--) {
-                if (scm.getColumn(i).getModelIndex() == 0) {
-                    scm.removeColumn(scm.getColumn(i));
+            if (scm.getColumnCount() != 1) {
+                for (int i = scm.getColumnCount() - 1; i >= 0; i--) {
+                    if (scm.getColumn(i).getModelIndex() == 0) {
+                        scm.removeColumn(scm.getColumn(i));
+                    }
                 }
             }
             for (int i = 0; i < scm.getColumnCount(); i++) {
@@ -373,28 +297,10 @@ public class AvailabilityPanel {
                 col.setHeaderValue(model.getColumnName(col.getModelIndex()));
                 DefaultTableCellRenderer renderer = new DefaultTableCellRenderer();
                 renderer.setHorizontalAlignment(SwingConstants.CENTER);
-                col.setCellRenderer(new DefaultTableCellRenderer() {
-                    @Override
-                    public Component getTableCellRendererComponent(JTable table, Object value,
-                          boolean isSelected, boolean hasFocus,
-                          int row, int column) {
-                        Component c = super.getTableCellRendererComponent(table, value,
-                              isSelected, hasFocus, row, column);
-                        if (!isSelected) {
-                            c.setBackground(row % 2 == 0 ? table.getBackground() : slightlyDarker(table.getBackground()));
-                        }
-                        setHorizontalAlignment(SwingConstants.CENTER);
-                        return c;
-                    }
-                });
+                col.setCellRenderer(renderer);
             }
             scrollableTable.getTableHeader().revalidate();
             scrollableTable.getTableHeader().repaint();
-        }
-
-        private static Color slightlyDarker(Color color) {
-            if (color == null) return Color.LIGHT_GRAY;
-            return color.darker();
         }
 
         /**
@@ -419,8 +325,8 @@ public class AvailabilityPanel {
                 if (maxHeight <= 0) {
                     maxHeight = UIManager.getFont("Table.font").getSize() + 4; // Default based on font
                 }
-                if (fixedTable.getRowCount() > row) fixedTable.setRowHeight(row, maxHeight);
-                if (scrollableTable.getRowCount() > row) scrollableTable.setRowHeight(row, maxHeight);
+                if (fixedTable.getRowCount() > row) {fixedTable.setRowHeight(row, maxHeight);}
+                if (scrollableTable.getRowCount() > row) {scrollableTable.setRowHeight(row, maxHeight);}
             }
             adjustColumnWidths();
             fixedScrollPane.revalidate();
@@ -434,10 +340,10 @@ public class AvailabilityPanel {
          */
         private int getPreferredRowHeight(JTable table, int row) {
             int height = table.getRowHeight(); // Start with current or default
-            if (row < 0 || row >= table.getRowCount()) return height;
+            if (row < 0 || row >= table.getRowCount()) {return height;}
 
             for (int column = 0; column < table.getColumnCount(); column++) {
-                if (column >= table.getColumnCount()) continue;
+                if (column >= table.getColumnCount()) {continue;}
                 Component comp = table.prepareRenderer(table.getCellRenderer(row, column), row, column);
                 try {
                     int compHeight = comp.getPreferredSize().height + table.getRowMargin();
@@ -524,14 +430,12 @@ public class AvailabilityPanel {
     private final static RATGenerator RAT_GENERATOR = RATGenerator.getInstance();
     private static volatile Integer[] RG_ERAS;
 
-    private final JFrame parent;
     private final Box mainPanel = Box.createVerticalBox();
     private final JScrollPane scrollPane = new JScrollPane(mainPanel);
     private ModelRecord record;
     private final FixedColumnGrid grid;
 
-    public AvailabilityPanel(JFrame parent) {
-        this.parent = parent;
+    public AvailabilityPanel() {
         grid = new FixedColumnGrid();
         mainPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
         mainPanel.add(grid);
@@ -544,7 +448,7 @@ public class AvailabilityPanel {
     }
 
     public void setUnit(String model, String chassis) {
-        record = RAT_GENERATOR.getModelRecord(chassis + " " + model);
+        record = RAT_GENERATOR.getModelRecord((chassis + " " + model).trim());
         initializePanel();
     }
 
@@ -579,7 +483,7 @@ public class AvailabilityPanel {
                     FactionRecord factionRecord = RAT_GENERATOR.getFaction(factionName);
                     for (Integer year : RG_ERAS) {
                         if ((Eras.getEra(year) != currentEra)
-                                  || (factionRecord != null && !factionRecord.isActiveInYear(year))) {
+                              || (factionRecord != null && !factionRecord.isActiveInYear(year))) {
                             continue;
                         }
                         AvailabilityRating modelAvailRecord = RAT_GENERATOR.findModelAvailabilityRecord(
@@ -595,7 +499,8 @@ public class AvailabilityPanel {
                             availabilityTextCheck = mergedAvailability.formatAvailability(factionRecord);
                         }
                     }
-                    eraFactionAvailabilityCache.computeIfAbsent(currentEra, k -> new HashMap<>()).put(factionName, availabilityTextCheck);
+                    eraFactionAvailabilityCache.computeIfAbsent(currentEra, k -> new HashMap<>())
+                          .put(factionName, availabilityTextCheck);
                     if (!availabilityTextCheck.isEmpty()) {
                         currentEraHasAnyData = true;
                     }
@@ -641,12 +546,15 @@ public class AvailabilityPanel {
                 List<Object> rowData = new ArrayList<>();
                 String baseAbbr = factionCode.split("\\.")[0];
                 ImageIcon factionIcon = RAT_GENERATOR.getFactionLogo(0, baseAbbr, Color.WHITE);
+                if (factionIcon != null) {
+                    factionIcon = new ImageIcon(ImageUtil.getScaledImage(factionIcon.getImage(), ICON_SIZE, ICON_SIZE));
+                }
                 rowData.add(new FixedColumnGrid.FactionCellData(factionIcon, factionCode));
 
                 for (Era era : erasToDisplay) {
                     String availabilityText = eraFactionAvailabilityCache
-                                                    .getOrDefault(era, Collections.emptyMap())
-                                                    .getOrDefault(factionCode, "-");
+                          .getOrDefault(era, Collections.emptyMap())
+                          .getOrDefault(factionCode, "-");
                     if (availabilityText.isEmpty()) {
                         availabilityText = "-";
                     }

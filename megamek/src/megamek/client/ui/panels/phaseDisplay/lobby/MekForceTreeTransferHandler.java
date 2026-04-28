@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2021 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2021-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay.lobby;
 
@@ -22,35 +36,34 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.dnd.DnDConstants;
-import java.io.IOException;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
-
 import javax.swing.JComponent;
 import javax.swing.JTree;
 import javax.swing.TransferHandler;
 import javax.swing.tree.TreePath;
 
-import megamek.common.Entity;
+import jakarta.annotation.Nonnull;
 import megamek.common.force.Force;
+import megamek.common.units.Entity;
 import megamek.logging.MMLogger;
 
 /**
- * The TransferHandler manages drag-and-drop for the C3 tree.
- * Partly taken from
- * https://coderanch.com/t/346509/java/JTree-drag-drop-tree-Java
+ * The TransferHandler manages drag-and-drop for the C3 tree. Partly taken from LOGGER
  */
 public class MekForceTreeTransferHandler extends TransferHandler {
     private static final MMLogger logger = MMLogger.create(MekForceTreeTransferHandler.class);
 
+    @Serial
     private static final long serialVersionUID = -2872981855792727691L;
     private static final DataFlavor FLAVOR = DataFlavor.stringFlavor;
 
     private final ChatLounge lobby;
 
-    public MekForceTreeTransferHandler(ChatLounge cl, MekTreeForceModel model) {
-        lobby = cl;
+    public MekForceTreeTransferHandler(ChatLounge chatLounge, MekTreeForceModel model) {
+        lobby = chatLounge;
     }
 
     @Override
@@ -107,8 +120,8 @@ public class MekForceTreeTransferHandler extends TransferHandler {
 
         try {
             String source = (String) support.getTransferable().getTransferData(FLAVOR);
-            List<Integer> entityIdList = getselectedEntityIds(source);
-            List<Integer> forceIdList = getselectedForceIds(source);
+            List<Integer> entityIdList = getSelectedEntityIds(source);
+            List<Integer> forceIdList = getSelectedForceIds(source);
             // Only drag either entities or forces
             if (!entityIdList.isEmpty() && !forceIdList.isEmpty()) {
                 return false;
@@ -130,8 +143,8 @@ public class MekForceTreeTransferHandler extends TransferHandler {
         try {
             // Source info, dragged forces and entities
             String source = (String) support.getTransferable().getTransferData(FLAVOR);
-            List<Integer> entityIdList = getselectedEntityIds(source);
-            List<Integer> forceIdList = getselectedForceIds(source);
+            List<Integer> entityIdList = getSelectedEntityIds(source);
+            List<Integer> forceIdList = getSelectedForceIds(source);
             StringTokenizer outer = new StringTokenizer(source, ":");
             String entityIds = outer.nextToken();
 
@@ -139,7 +152,7 @@ public class MekForceTreeTransferHandler extends TransferHandler {
 
             // Cannot drag both entities and forces and cannot drag none
             if ((!entityIdList.isEmpty() && !forceIdList.isEmpty())
-                    || (entityIdList.isEmpty() && forceIdList.isEmpty())) {
+                  || (entityIdList.isEmpty() && forceIdList.isEmpty())) {
                 return false;
             }
 
@@ -176,7 +189,7 @@ public class MekForceTreeTransferHandler extends TransferHandler {
             // Attach a force to a new parent
             if (dest != null && dest.getLastPathComponent() instanceof Force && forceIdList.size() == 1) {
                 int newParentId = ((Force) dest.getLastPathComponent()).getId();
-                lobby.lobbyActions.forceAttach(forceIdList.get(0), newParentId);
+                lobby.lobbyActions.forceAttach(forceIdList.getFirst(), newParentId);
             }
 
         } catch (Exception e) {
@@ -186,7 +199,7 @@ public class MekForceTreeTransferHandler extends TransferHandler {
         return false;
     }
 
-    private List<Integer> getselectedForceIds(String source) {
+    private List<Integer> getSelectedForceIds(String source) {
         StringTokenizer outer = new StringTokenizer(source, ":");
         outer.nextToken();
         String forceIds = outer.nextToken();
@@ -201,7 +214,7 @@ public class MekForceTreeTransferHandler extends TransferHandler {
         return forceIdList;
     }
 
-    private List<Integer> getselectedEntityIds(String source) {
+    private List<Integer> getSelectedEntityIds(String source) {
         StringTokenizer outer = new StringTokenizer(source, ":");
         String entityIds = outer.nextToken();
         StringTokenizer entitySt = new StringTokenizer(entityIds, ",");
@@ -214,10 +227,10 @@ public class MekForceTreeTransferHandler extends TransferHandler {
         return entityIdList;
     }
 
-    private class StringTransferable implements Transferable {
+    private static class StringTransferable implements Transferable {
 
         private final DataFlavor[] supported = { DataFlavor.stringFlavor };
-        private String selectionIds;
+        private final String selectionIds;
 
         StringTransferable(String str) {
             this.selectionIds = str;
@@ -229,7 +242,8 @@ public class MekForceTreeTransferHandler extends TransferHandler {
         }
 
         @Override
-        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
+        @Nonnull
+        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
             if (!isDataFlavorSupported(flavor)) {
                 throw new UnsupportedFlavorException(flavor);
             }

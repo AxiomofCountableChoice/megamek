@@ -35,16 +35,18 @@ package megamek.common.moves;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import megamek.common.BattleArmor;
-import megamek.common.BipedMek;
-import megamek.common.EntityMovementMode;
 import megamek.common.GameBoardTestCase;
-import megamek.common.SupportTank;
+import megamek.common.battleArmor.BattleArmor;
+import megamek.common.enums.MoveStepType;
+import megamek.common.units.BipedMek;
+import megamek.common.units.EntityMovementMode;
+import megamek.common.units.SupportTank;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 /**
  * Test class for MovePath executing JUMP the Jump movement type.
+ *
  * @author Luana Coppio
  */
 public class JumpTest extends GameBoardTestCase {
@@ -54,40 +56,40 @@ public class JumpTest extends GameBoardTestCase {
 
         static {
             initializeBoard("BOARD_1x6_START_LOW", """
-size 1 6
-hex 0101 -1 "" ""
-hex 0102 0 "" ""
-hex 0103 0 "bldg_elev:2;building:2:8;bldg_cf:50" ""
-hex 0104 0 "bldg_elev:4;building:2:8;bldg_cf:100" ""
-hex 0105 0 "bldg_elev:4;building:2:9;bldg_cf:100" ""
-hex 0106 0 "bldg_elev:4;building:2:1;bldg_cf:100" ""
-end""");
+                  size 1 6
+                  hex 0101 -1 "" ""
+                  hex 0102 0 "" ""
+                  hex 0103 0 "bldg_elev:2;building:2:8;bldg_cf:50" ""
+                  hex 0104 0 "bldg_elev:4;building:2:8;bldg_cf:100" ""
+                  hex 0105 0 "bldg_elev:4;building:2:9;bldg_cf:100" ""
+                  hex 0106 0 "bldg_elev:4;building:2:1;bldg_cf:100" ""
+                  end""");
 
             initializeBoard("BOARD_MORE_FORGIVING", """
-size 1 6
-hex 0101 0 "" ""
-hex 0102 0 "" ""
-hex 0103 0 "bldg_elev:2;building:2:8;bldg_cf:50" ""
-hex 0104 0 "bldg_elev:4;building:2:8;bldg_cf:100" ""
-hex 0105 0 "bldg_elev:4;building:2:9;bldg_cf:100" ""
-hex 0106 0 "bldg_elev:4;building:2:1;bldg_cf:100" ""
-end""");
+                  size 1 6
+                  hex 0101 0 "" ""
+                  hex 0102 0 "" ""
+                  hex 0103 0 "bldg_elev:2;building:2:8;bldg_cf:50" ""
+                  hex 0104 0 "bldg_elev:4;building:2:8;bldg_cf:100" ""
+                  hex 0105 0 "bldg_elev:4;building:2:9;bldg_cf:100" ""
+                  hex 0106 0 "bldg_elev:4;building:2:1;bldg_cf:100" ""
+                  end""");
 
             initializeBoard("BOARD_INSIDE_BUILDING", """
-size 1 4
-hex 0101 0 "bldg_elev:90;building:2:8;bldg_cf:100" ""
-hex 0102 0 "bldg_elev:90;building:2:9;bldg_cf:100" ""
-hex 0103 0 "bldg_elev:90;building:2:9;bldg_cf:100" ""
-hex 0104 0 "bldg_elev:90;building:2:1;bldg_cf:100" ""
-end""");
+                  size 1 4
+                  hex 0101 0 "bldg_elev:90;building:2:8;bldg_cf:100" ""
+                  hex 0102 0 "bldg_elev:90;building:2:9;bldg_cf:100" ""
+                  hex 0103 0 "bldg_elev:90;building:2:9;bldg_cf:100" ""
+                  hex 0104 0 "bldg_elev:90;building:2:1;bldg_cf:100" ""
+                  end""");
 
             initializeBoard("BOARD_JUMP_OUT_OF_BUILDING", """
-size 1 4
-hex 0101 0 "bldg_elev:90;building:2:1;bldg_cf:100" ""
-hex 0102 0 "" ""
-hex 0103 0 "bldg_elev:90;building:2:8;bldg_cf:100" ""
-hex 0104 0 "bldg_elev:90;building:2:9;bldg_cf:100" ""
-end""");
+                  size 1 4
+                  hex 0101 0 "bldg_elev:90;building:2:1;bldg_cf:100" ""
+                  hex 0102 0 "" ""
+                  hex 0103 0 "bldg_elev:90;building:2:8;bldg_cf:100" ""
+                  hex 0104 0 "bldg_elev:90;building:2:9;bldg_cf:100" ""
+                  end""");
         }
 
         @Test
@@ -97,23 +99,23 @@ end""");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   startingElevation,
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN
             );
 
             assertTrue(movePath.isMoveLegal(),
                   "A BA or infantry can only jump from inside a building to outside of it, or from out to in");
 
-            assertMovePathElevations(movePath,5, 0, 13, 12, 11, 10, 9, 8, 7, 6, 5);
+            assertMovePathElevations(movePath, 5, 0, 13, 12, 11, 10, 9, 8, 7, 6, 5);
         }
 
         @Test
@@ -123,14 +125,14 @@ end""");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   startingElevation,
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS
             );
 
             assertTrue(movePath.isMoveLegal(),
                   "A BA or infantry can only jump from inside a building to outside of it, or from out to in");
 
-            assertMovePathElevations(movePath,5, 0);
+            assertMovePathElevations(movePath, 5, 0);
         }
 
 
@@ -141,16 +143,16 @@ end""");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   startingElevation,
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS
             );
 
             assertFalse(movePath.isMoveLegal(),
                   "A BA or infantry can only jump from inside a building to outside of it, or from out to in");
 
-            assertMovePathElevations(movePath,2, 2, 2, 2);
+            assertMovePathElevations(movePath, 2, 2, 2, 2);
         }
 
         @Test
@@ -160,15 +162,15 @@ end""");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   startingElevation,
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.UP
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.UP
             );
 
             assertFalse(movePath.isMoveLegal(),
                   "A BA or infantry can only jump from inside a building to outside of it, or from out to in");
 
-            assertMovePathElevations(movePath,2, 2, 3);
+            assertMovePathElevations(movePath, 2, 2, 3);
         }
 
         @Test
@@ -176,17 +178,17 @@ end""");
             setBoard("BOARD_MORE_FORGIVING");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN
             );
 
             assertTrue(movePath.isMoveLegal(),
-                  "A BA cannot jump into a building lower floors comming from a connected side and not on LOS");
+                  "A BA cannot jump into a building lower floors coming from a connected side and not on LOS");
 
-            assertMovePathElevations(movePath,0, 0, 2, 4, 3);
+            assertMovePathElevations(movePath, 0, 0, 2, 4, 3);
         }
 
         @Test
@@ -194,16 +196,16 @@ end""");
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN
             );
 
             assertFalse(movePath.isMoveLegal(),
-                  "A BA cannot jump into a building lower floors comming from a connected side and not on LOS");
+                  "A BA cannot jump into a building lower floors coming from a connected side and not on LOS");
 
             assertMovePathElevations(movePath, 0, 0, 2, 4, 4, 3);
         }
@@ -212,15 +214,15 @@ end""");
         void cantJumpIntoTheBuildingThroughTheWindowWithNoLOS() {
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BattleArmor(), EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN
             );
 
             assertFalse(movePath.isMoveLegal(), "A BA can jump into a building lower floors coming from an exit side" +
-                                                     " and if the LOS is unblocked");
+                  " and if the LOS is unblocked");
             assertMovePathElevations(movePath, 0, 0, 2, 4, 3);
         }
 
@@ -228,16 +230,16 @@ end""");
         void cantJumpIntoTheBuildingThroughTheWindowButItsOnSameLevelOfNeighboringBuilding() {
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BattleArmor(), EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN
             );
 
             assertFalse(movePath.isMoveLegal(), "A BA cant jump into a building lower floors coming from a side " +
-                                                      "which is covered by another building of same height");
+                  "which is covered by another building of same height");
 
             assertMovePathElevations(movePath, 0, 0, 2, 4, 3, 2);
         }
@@ -247,13 +249,13 @@ end""");
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN
             );
 
             assertFalse(movePath.isMoveLegal(),
@@ -267,12 +269,12 @@ end""");
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS
             );
 
             assertTrue(movePath.isMoveLegal(),
@@ -285,17 +287,17 @@ end""");
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BattleArmor(),
                   EntityMovementMode.INF_LEG,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN,
+                  MoveStepType.DOWN
             );
             assertFalse(movePath.isMoveLegal(),
-                  "A BA cannot jump into a building lower floors comming from an exit side");
+                  "A BA cannot jump into a building lower floors coming from an exit side");
             assertMovePathElevations(movePath, 0, 0, 2, 4, 3, 2, 1, 0);
         }
 
@@ -303,13 +305,13 @@ end""");
         void bipedMekJumpPath() {
             setBoard("BOARD_1x6_START_LOW");
             MovePath movePath = getMovePathFor(new BipedMek(), EntityMovementMode.BIPED,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.DOWN
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.DOWN
             );
 
             assertFalse(movePath.isMoveLegal(), "A Mek cannot jump into a building lower floors");
@@ -322,60 +324,60 @@ end""");
 
         static {
             initializeBoard("BOARD_JUMP_INTO_BUILDING", """
-size 1 5
-hex 0101 0 "" ""
-hex 0102 0 "building:4;bldg_cf:100;bldg_elev:4;bldg_basement_type:2" ""
-hex 0103 0 "building:4;bldg_cf:100;bldg_elev:4;bldg_basement_type:2" ""
-hex 0104 0 "ultra_sublevel:0" ""
-hex 0105 0 "water:2" ""
-end"""
+                  size 1 5
+                  hex 0101 0 "" ""
+                  hex 0102 0 "building:4;bldg_cf:100;bldg_elev:4;bldg_basement_type:2" ""
+                  hex 0103 0 "building:4;bldg_cf:100;bldg_elev:4;bldg_basement_type:2" ""
+                  hex 0104 0 "ultra_sublevel:0" ""
+                  hex 0105 0 "water:2" ""
+                  end"""
             );
         }
-        
+
         @Test
         void bipedMekJumpPath() {
             setBoard("BOARD_JUMP_INTO_BUILDING");
             MovePath movePath = getMovePathFor(new BipedMek(), EntityMovementMode.BIPED,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS);
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS);
             assertMovePathElevations(movePath,
-                    ExpectedElevation.of(0, "Jumping from the ground, level 0"),
-                    ExpectedElevation.of(4, "Jumping from the ground, level 0 with height 4"),
-                    ExpectedElevation.of(4, "Jumping over a building, level 0 with height 4"),
-                    ExpectedElevation.of(0, "Jumping over ultra sublevel, level 0"),
-                    ExpectedElevation.of(-2, "Jumping into a water hex, level 0 with depth 2"));
+                  ExpectedElevation.of(0, "Jumping from the ground, level 0"),
+                  ExpectedElevation.of(4, "Jumping from the ground, level 0 with height 4"),
+                  ExpectedElevation.of(4, "Jumping over a building, level 0 with height 4"),
+                  ExpectedElevation.of(0, "Jumping over ultra sublevel, level 0"),
+                  ExpectedElevation.of(-2, "Jumping into a water hex, level 0 with depth 2"));
         }
 
         @Test
         void wigeJumpMovePath() {
             setBoard("BOARD_JUMP_INTO_BUILDING");
             MovePath movePath = getMovePathFor(new SupportTank(), EntityMovementMode.WIGE,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS);
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS);
             assertMovePathElevations(movePath,
                   ExpectedElevation.of(1, "Jumping from the ground, level 0, wige +1 elevation"),
                   ExpectedElevation.of(5, "Jumping from the ground, level 0 with height 4, wige +1 elevation"),
                   ExpectedElevation.of(5, "Jumping over a building, level 0 with height 4, wige +1 elevation"),
                   ExpectedElevation.of(1, "Jumping over ultra sublevel, level 0, wige +1 elevation"),
                   ExpectedElevation.of(1, "Jumping into a water hex, level 0 with depth 2, wige stay above water " +
-                                                "with 1 elevation"));
+                        "with 1 elevation"));
         }
 
         @Test
         void hoverJumpPath() {
             setBoard("BOARD_JUMP_INTO_BUILDING");
             MovePath movePath = getMovePathFor(new SupportTank(), EntityMovementMode.HOVER,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS);
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS);
             assertMovePathElevations(movePath,
                   ExpectedElevation.of(0, "Jumping from the ground, level 0"),
                   ExpectedElevation.of(4, "Jumping from the ground, level 0 with height 4"),
@@ -390,13 +392,13 @@ end"""
 
         static {
             initializeBoard("BOARD_MISC_TILES", """
-size 1 5
-hex 0101 0 "bridge:1;bridge_cf:100;bridge_elev:4" ""
-hex 0102 0 "bldg_elev:4;building:2:0;bldg_cf:100;bldg_basement_type:2" ""
-hex 0103 0 "ultra_sublevel:0;bridge:1;bridge_cf:100;bridge_elev:2" ""
-hex 0104 0 "water:2" ""
-hex 0105 0 "water:2;bridge:1;bridge_cf:100;bridge_elev:1" ""
-end"""
+                  size 1 5
+                  hex 0101 0 "bridge:1;bridge_cf:100;bridge_elev:4" ""
+                  hex 0102 0 "bldg_elev:4;building:2:0;bldg_cf:100;bldg_basement_type:2" ""
+                  hex 0103 0 "ultra_sublevel:0;bridge:1;bridge_cf:100;bridge_elev:2" ""
+                  hex 0104 0 "water:2" ""
+                  hex 0105 0 "water:2;bridge:1;bridge_cf:100;bridge_elev:1" ""
+                  end"""
             );
         }
 
@@ -404,11 +406,11 @@ end"""
         void testJumpMovePath() {
             setBoard("BOARD_MISC_TILES");
             MovePath movePath = getMovePathFor(new BipedMek(), EntityMovementMode.BIPED,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS);
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS);
             assertMovePathElevations(movePath, 4, 4, 2, -2, 1);
         }
 
@@ -416,11 +418,11 @@ end"""
         void wigeJumpMovePath() {
             setBoard("BOARD_MISC_TILES");
             MovePath movePath = getMovePathFor(new SupportTank(), EntityMovementMode.WIGE,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS);
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS);
             assertMovePathElevations(movePath, 5, 5, 3, 1, 2);
         }
 
@@ -428,11 +430,11 @@ end"""
         void testHoverJumpMovePath() {
             setBoard("BOARD_MISC_TILES");
             MovePath movePath = getMovePathFor(new SupportTank(), EntityMovementMode.HOVER,
-                  MovePath.MoveStepType.START_JUMP,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS,
-                  MovePath.MoveStepType.FORWARDS);
+                  MoveStepType.START_JUMP,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS,
+                  MoveStepType.FORWARDS);
             assertMovePathElevations(movePath, 4, 4, 2, 0, 1);
         }
     }

@@ -37,14 +37,15 @@ import static org.apache.commons.lang3.ObjectUtils.firstNonNull;
 import java.util.List;
 
 import megamek.ai.utility.EntityFeatureUtils;
-import megamek.common.Compute;
-import megamek.common.Entity;
-import megamek.common.Game;
-import megamek.common.IAero;
-import megamek.common.UnitRole;
+import megamek.common.compute.Compute;
+import megamek.common.game.Game;
+import megamek.common.units.Entity;
+import megamek.common.units.IAero;
+import megamek.common.units.UnitRole;
 
 /**
  * Flexible container for unit state data using a map-based approach with enum keys.
+ *
  * @author Luana Coppio
  */
 public class UnitState extends EntityDataMap<UnitState.Field> {
@@ -86,7 +87,7 @@ public class UnitState extends EntityDataMap<UnitState.Field> {
         ARMOR_LEFT_P,
         ARMOR_RIGHT_P,
         ARMOR_BACK_P,
-        WEAPON_DMG_FACING_SHORT_MEDIUM_LONG_RANGE;
+        WEAPON_DMG_FACING_SHORT_MEDIUM_LONG_RANGE
     }
 
     /**
@@ -98,8 +99,10 @@ public class UnitState extends EntityDataMap<UnitState.Field> {
 
     /**
      * Creates a UnitStateMap from an Entity.
+     *
      * @param entity The entity to extract state from
-     * @param game The game reference
+     * @param game   The game reference
+     *
      * @return A populated UnitStateMap
      */
     public static UnitState fromEntity(Entity entity, Game game) {

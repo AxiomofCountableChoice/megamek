@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2023 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2023-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.clientGUI.boardview;
 
@@ -26,13 +40,15 @@ import java.util.List;
 import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.panels.phaseDisplay.DeploymentDisplay;
 import megamek.client.ui.panels.phaseDisplay.MovementDisplay;
-import megamek.common.Board;
-import megamek.common.BoardLocation;
-import megamek.common.Building;
-import megamek.common.Coords;
-import megamek.common.Entity;
-import megamek.common.Game;
+import megamek.common.Hex;
+import megamek.common.board.Board;
+import megamek.common.board.BoardLocation;
+import megamek.common.board.Coords;
 import megamek.common.enums.GamePhase;
+import megamek.common.game.Game;
+import megamek.common.units.Entity;
+import megamek.common.units.IBuilding;
+import megamek.common.units.Terrains;
 import megamek.logging.MMLogger;
 
 /**
@@ -66,11 +82,11 @@ public final class CollapseWarning {
         return (isEnabled && isCFWarningPhase(gp));
     }
 
-    private static boolean toggleCFWarning() {
+    private static void toggleCFWarning() {
         // Toggle the GUI Preference setting for CF Warning setting.
         GUIPreferences GUIP = GUIPreferences.getInstance();
         GUIP.setShowCFWarnings(!GUIP.getShowCFWarnings());
-        return (GUIP.getShowCFWarnings());
+        GUIP.getShowCFWarnings();
     }
 
     public static List<BoardLocation> findCFWarningsMovement(Game game, Entity entity) {
@@ -122,7 +138,7 @@ public final class CollapseWarning {
             // For each hex in jumping range, look for buildings, if found check for collapse.
             for (Coords c : hexesToCheck) {
                 // is there a building at this location? If so add it to hexes with buildings.
-                Building bld = board.getBuildingAt(c);
+                IBuilding bld = board.getBuildingAt(c);
 
                 // If a building, compare total weight and add to warning list.
                 if (null != bld) {
@@ -163,9 +179,9 @@ public final class CollapseWarning {
      * Looks for all building locations in a legal deploy zone that would collapse if the currently selected entity
      * would deploy there. This is used by {@link DeploymentDisplay} to render a warning sprite on danger hexes.
      *
-     * @param game {@link Game} provided by the phase display class
+     * @param game   {@link Game} provided by the phase display class
      * @param entity {@link Entity} currently selected in the movement phase.
-     * @param board {@link Board} board object with building data.
+     * @param board  {@link Board} board object with building data.
      *
      * @return returns a list of {@link Coords} that where warning flags should be placed.
      */
@@ -178,11 +194,11 @@ public final class CollapseWarning {
                 return warnList;
             }
 
-            Enumeration<Building> buildings = board.getBuildings();
+            Enumeration<IBuilding> buildings = board.getBuildings();
 
             // Enumerate through all the buildings
             while (buildings.hasMoreElements()) {
-                Building bld = buildings.nextElement();
+                IBuilding bld = buildings.nextElement();
                 List<Coords> buildingList = bld.getCoordsList();
 
                 // For each hex occupied by the building, check if it's a legal deploy hex.
@@ -211,19 +227,26 @@ public final class CollapseWarning {
      * at the hex location that could cause a building to collapse.
      */
     public static double calculateTotalTonnage(Game g, Entity selected, Coords c) {
-        // Calculate total weight of entity and all entities at the location.
+        Hex hex = g.getBoard().getHex(c);
         double totalWeight = selected.getWeight();
         List<Entity> units = g.getEntitiesVector(c, true);
         for (Entity ent : units) {
-            if (CollapseWarning.isEntityPartOfWeight(selected, ent)) {
+            boolean weightCounts = (hex.hasBridge() && isEntityPartOfBridgeWeight(selected, ent,
+                  hex.terrainLevel(Terrains.BRIDGE_ELEV)))
+                  || (!hex.hasBridge() && isEntityPartOfWeight(selected, ent));
+            if (weightCounts) {
                 totalWeight += ent.getWeight();
             }
         }
         return totalWeight;
     }
 
-    protected static boolean isEntityPartOfWeight(Entity selected, Entity inHex) {
+    private static boolean isEntityPartOfWeight(Entity selected, Entity inHex) {
         return ((selected != inHex) && inHex.isGround() && !inHex.isAirborneVTOLorWIGE());
+    }
+
+    private static boolean isEntityPartOfBridgeWeight(Entity selected, Entity inHex, int bridgeElevation) {
+        return isEntityPartOfWeight(selected, inHex) && (inHex.getElevation() == bridgeElevation);
     }
 
     private CollapseWarning() {

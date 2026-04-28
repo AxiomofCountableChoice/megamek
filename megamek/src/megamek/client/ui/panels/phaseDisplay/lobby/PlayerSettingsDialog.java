@@ -1,21 +1,35 @@
 /*
- * MegaMek - Copyright (C) 2000-2004 Ben Mazur (bmazur@sev.org)
- * Copyright (c) 2021 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2000-2004 Ben Mazur (bmazur@sev.org)
+ * Copyright (C) 2020-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.panels.phaseDisplay.lobby;
 
@@ -59,13 +73,13 @@ import megamek.client.ratgenerator.FactionRecord;
 import megamek.client.ratgenerator.RATGenerator;
 import megamek.client.ui.GBC;
 import megamek.client.ui.Messages;
+import megamek.client.ui.clientGUI.ClientGUI;
+import megamek.client.ui.clientGUI.GUIPreferences;
+import megamek.client.ui.clientGUI.boardview.BoardView;
 import megamek.client.ui.dialogs.buttonDialogs.AbstractButtonDialog;
 import megamek.client.ui.dialogs.buttonDialogs.BotConfigDialog;
 import megamek.client.ui.enums.DialogResult;
 import megamek.client.ui.panels.abstractPanels.SkillGenerationOptionsPanel;
-import megamek.client.ui.clientGUI.ClientGUI;
-import megamek.client.ui.clientGUI.GUIPreferences;
-import megamek.client.ui.clientGUI.boardview.BoardView;
 import megamek.client.ui.util.UIUtil;
 import megamek.client.ui.util.UIUtil.Content;
 import megamek.client.ui.util.UIUtil.FixedYPanel;
@@ -73,11 +87,20 @@ import megamek.client.ui.util.UIUtil.OptionPanel;
 import megamek.client.ui.util.UIUtil.TipButton;
 import megamek.client.ui.util.UIUtil.TipLabel;
 import megamek.client.ui.util.UIUtil.TipTextField;
-import megamek.common.*;
+import megamek.common.OffBoardDirection;
+import megamek.common.Player;
+import megamek.common.Team;
 import megamek.common.annotations.Nullable;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
 import megamek.common.containers.MunitionTree;
+import megamek.common.equipment.Briefcase;
+import megamek.common.equipment.ICarryable;
+import megamek.common.interfaces.IStartingPositions;
+import megamek.common.loaders.MapSettings;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
+import megamek.common.units.Entity;
 import megamek.server.ServerBoardHelper;
 
 /**
@@ -137,7 +160,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
 
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected,
-                                                      boolean cellHasFocus) {
+              boolean cellHasFocus) {
             if (value == null) {
                 setText("General");
             } else {
@@ -182,6 +205,11 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
     /** Returns the chosen vibrabombs. */
     public int getVibMines() {
         return parseField(fldVibrabomb);
+    }
+
+    /** Returns the chosen EMP mines. */
+    public int getEmpMines() {
+        return parseField(fldEMP);
     }
 
     /** Returns the start location offset */
@@ -246,10 +274,12 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
           SwingConstants.RIGHT);
     private final JLabel labActive = new JLabel(getString("PlayerSettingsDialog.labActive"), SwingConstants.RIGHT);
     private final JLabel labInferno = new JLabel(getString("PlayerSettingsDialog.labInferno"), SwingConstants.RIGHT);
+    private final JLabel labEMP = new JLabel(getString("PlayerSettingsDialog.labEMP"), SwingConstants.RIGHT);
     private final JTextField fldConventional = new JTextField(3);
     private final JTextField fldVibrabomb = new JTextField(3);
     private final JTextField fldActive = new JTextField(3);
     private final JTextField fldInferno = new JTextField(3);
+    private final JTextField fldEMP = new JTextField(3);
 
     // Skills Section
     private SkillGenerationOptionsPanel skillGenerationOptionsPanel;
@@ -268,6 +298,8 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
     private JSpinner spinStartingAnyNWy;
     private JSpinner spinStartingAnySEx;
     private JSpinner spinStartingAnySEy;
+    private JButton btnUseRuler = new JButton(Messages.getString("CustomMekDialog.BtnDeploymentUseRuler"));
+    private JButton btnApply = new JButton(Messages.getString("CustomMekDialog.BtnDeploymentApply"));
 
     // ground object config section
     private Content groundSectionContent = new Content(new GridLayout(2, 3));
@@ -543,6 +575,8 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         result.add(lblWidth, GBC.std());
         result.add(txtWidth, GBC.eol());
 
+        result.add(new JLabel(" "), GBC.eol());
+        result.add(new JLabel(Messages.getString("CustomMekDialog.labDeploymentCustomBox")), GBC.eol());
         result.add(new JLabel(Messages.getString("CustomMekDialog.labDeploymentAnyNW")), GBC.std());
         result.add(spinStartingAnyNWx, GBC.std());
         result.add(spinStartingAnyNWy, GBC.eol());
@@ -550,11 +584,9 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         result.add(spinStartingAnySEx, GBC.std());
         result.add(spinStartingAnySEy, GBC.eol());
 
-        JButton btnUseRuler = new JButton(Messages.getString("CustomMekDialog.BtnDeploymentUseRuler"));
         btnUseRuler.setToolTipText(Messages.getString("CustomMekDialog.BtnDeploymentUseRulerTip"));
         btnUseRuler.addActionListener(e -> useRuler());
         result.add(btnUseRuler, GBC.std());
-        JButton btnApply = new JButton(Messages.getString("CustomMekDialog.BtnDeploymentApply"));
         btnApply.setToolTipText(Messages.getString("CustomMekDialog.BtnDeploymentApplyTip"));
         btnApply.addActionListener(e -> apply());
         result.add(btnApply, GBC.eol());
@@ -582,6 +614,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         player.setNbrMFVibra(getVibMines());
         player.setNbrMFActive(getActMines());
         player.setNbrMFInferno(getInfMines());
+        player.setNbrMFEMP(getEmpMines());
         getSkillGenerationOptionsPanel().updateClient();
         player.setEmail(getEmail());
 
@@ -591,7 +624,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         // the newly selected home edge.
         OffBoardDirection direction = OffBoardDirection.translateStartPosition(getStartPos());
         if (direction != OffBoardDirection.NONE &&
-                  gOpts.booleanOption(OptionsConstants.BASE_SET_ARTY_PLAYER_HOMEEDGE)) {
+              gOpts.booleanOption(OptionsConstants.BASE_SET_ARTY_PLAYER_HOME_EDGE)) {
             for (Entity entity : client.getGame().getPlayerEntities(client.getLocalPlayer(), false)) {
                 if (entity.getOffBoardDirection() != OffBoardDirection.NONE) {
                     entity.setOffBoard(entity.getOffBoardDistance(), direction);
@@ -610,11 +643,10 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
                 rp.binFillPercent = (rp.isPirate) ? TeamLoadOutGenerator.UNSET_FILL_RATIO : 1.0f;
                 // Clear any bomb assignments
                 LobbyMekPopupActions.resetBombChoices(clientgui, client.getGame(), updateEntities);
-                tlg.reconfigureEntities(updateEntities, faction, munitionTree, rp);
+                tlg.reconfigureEntities(updateEntities, faction, munitionTree, rp, null);
                 // Use sendUpdate because we want the Game to allow us to change on Bot's
                 // behalf.
                 clientgui.chatlounge.sendProxyUpdates(updateEntities, client.getLocalPlayer());
-                // clientgui.chatlounge.sendUpdate(updateEntities);
             }
         }
 
@@ -626,7 +658,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         player.setStartingAnyNWy(getStartingAnyNWy());
         player.setStartingAnySEx(getStartingAnySEx());
         player.setStartingAnySEy(getStartingAnySEy());
-        client.sendPlayerInfo();
+        client.sendPlayerInfo(player);
     }
 
     private JPanel initiativeSection() {
@@ -642,7 +674,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
 
     private JPanel mineSection() {
         JPanel result = new OptionPanel("PlayerSettingsDialog.header.minefields");
-        Content panContent = new Content(new GridLayout(4, 2, 10, 5));
+        Content panContent = new Content(new GridLayout(5, 2, 10, 5));
         result.add(panContent);
         panContent.add(labConventional);
         panContent.add(fldConventional);
@@ -652,6 +684,8 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         panContent.add(fldActive);
         panContent.add(labInferno);
         panContent.add(fldInferno);
+        panContent.add(labEMP);
+        panContent.add(fldEMP);
         return result;
     }
 
@@ -691,6 +725,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         fldVibrabomb.setText(Integer.toString(player.getNbrMFVibra()));
         fldActive.setText(Integer.toString(player.getNbrMFActive()));
         fldInferno.setText(Integer.toString(player.getNbrMFInferno()));
+        fldEMP.setText(Integer.toString(player.getNbrMFEMP()));
         fldEmail.setText(player.getEmail());
         txtWidth.setText(Integer.toString(player.getStartWidth()));
         txtOffset.setText(Integer.toString(player.getStartOffset()));
@@ -728,8 +763,8 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
         }
 
         var currentBoard = clientgui.getClient().getGame().getPhase().isLounge() ?
-                                 ServerBoardHelper.getPossibleGameBoard(clientgui.getClient().getMapSettings(), true) :
-                                 clientgui.getClient().getGame().getBoard();
+              ServerBoardHelper.getPossibleGameBoard(clientgui.getClient().getMapSettings(), true) :
+              clientgui.getClient().getGame().getBoard();
         var deploymentZones = currentBoard.getCustomDeploymentZones();
         int extraRowCount = (int) Math.ceil(deploymentZones.size() / 3.0);
 
@@ -773,6 +808,7 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
             butStartPos.put(internalZoneID, buttonCustomZone);
             panStartButtons.add(buttonCustomZone);
         }
+
 
         updateStartGrid();
     }
@@ -821,6 +857,23 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
 
         butText.get(currentPlayerStartPos).append(UIUtil.fontHTML(GUIPreferences.getInstance().getMyUnitColor()));
         butText.get(currentPlayerStartPos).append("\u2B24</FONT>");
+
+        // Turn off custom deployment if start is not Any
+        if (currentPlayerStartPos == Board.START_ANY) {
+            spinStartingAnyNWx.setEnabled(true);
+            spinStartingAnyNWy.setEnabled(true);
+            spinStartingAnySEx.setEnabled(true);
+            spinStartingAnySEy.setEnabled(true);
+            btnUseRuler.setEnabled(true);
+            btnApply.setEnabled(true);
+        } else {
+            spinStartingAnyNWx.setEnabled(false);
+            spinStartingAnyNWy.setEnabled(false);
+            spinStartingAnySEx.setEnabled(false);
+            spinStartingAnySEy.setEnabled(false);
+            btnUseRuler.setEnabled(false);
+            btnApply.setEnabled(false);
+        }
 
         for (int i : butStartPos.keySet()) {
             butStartPos.get(i).setText(butText.get(i).toString());
@@ -908,7 +961,6 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
      * @return {@link MunitionTree} of available options, null otherwise.
      */
     private @Nullable MunitionTree loadLoadout() {
-        MunitionTree mt = null;
         JFileChooser fc = new JFileChooser(Paths.get(MMConstants.USER_LOADOUTS_DIR).toAbsolutePath().toString());
         FileNameExtensionFilter adfFilter = new FileNameExtensionFilter("adf files (*.adf)", "adf");
         fc.addChoosableFileFilter(adfFilter);
@@ -922,11 +974,8 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
             return null;
         }
 
-        if (fc.getSelectedFile() != null) {
-            String file = fc.getSelectedFile().getAbsolutePath();
-            mt = new MunitionTree(file);
-        }
-        return mt;
+        String file = fc.getSelectedFile().getAbsolutePath();
+        return new MunitionTree(file);
     }
 
     private void saveLoadout(MunitionTree source) {
@@ -942,13 +991,11 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
             // No file selected? No loadout!
             return;
         }
-        if (fc.getSelectedFile() != null) {
-            String file = fc.getSelectedFile().getAbsolutePath();
-            if (!file.toLowerCase().endsWith(".adf")) {
-                file = file + ".adf";
-            }
-            source.writeToADFFilename(file);
+        String file = fc.getSelectedFile().getAbsolutePath();
+        if (!file.toLowerCase().endsWith(".adf")) {
+            file = file + ".adf";
         }
+        source.writeToADFFilename(file);
     }
 
     /**
@@ -973,9 +1020,9 @@ public class PlayerSettingsDialog extends AbstractButtonDialog {
     public FactionRecord getFactionFromCode(String code, int year) {
         for (FactionRecord fRec : RATGenerator.getInstance().getFactionList()) {
             if ((!fRec.isMinor()) &&
-                      !fRec.getKey().contains(".") &&
-                      fRec.isActiveInYear(year) &&
-                      fRec.getKey().equals(code)) {
+                  !fRec.getKey().contains(".") &&
+                  fRec.isActiveInYear(year) &&
+                  fRec.getKey().equals(code)) {
                 return fRec;
             }
         }

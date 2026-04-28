@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Ben Mazur (bmazur@sev.org)
- * Copyright (C) 2025 The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2003-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
@@ -40,9 +40,9 @@ import java.util.stream.Stream;
 import megamek.client.bot.princess.ChatCommands;
 import megamek.client.bot.princess.Princess;
 import megamek.codeUtilities.StringUtility;
-import megamek.common.Game;
 import megamek.common.Player;
-import megamek.common.event.GamePlayerChatEvent;
+import megamek.common.event.player.GamePlayerChatEvent;
+import megamek.common.game.Game;
 import megamek.logging.MMLogger;
 import megamek.server.Server;
 import megamek.server.commands.DefeatCommand;
@@ -51,13 +51,13 @@ import megamek.server.commands.arguments.Arguments;
 import megamek.server.commands.arguments.ArgumentsParser;
 
 public class ChatProcessor {
-    private final static MMLogger logger = MMLogger.create(ChatProcessor.class);
+    private final static MMLogger LOGGER = MMLogger.create(ChatProcessor.class);
 
     boolean shouldBotAcknowledgeDefeat(String message, BotClient bot) {
         boolean result = false;
         if (!StringUtility.isNullOrBlank(message) &&
-                  (message.contains("declares individual victory at the end of the turn.") ||
-                         message.contains("declares team victory at the end of the turn."))) {
+              (message.contains("declares individual victory at the end of the turn.") ||
+                    message.contains("declares team victory at the end of the turn."))) {
             String[] splitMessage = message.split(" ");
             int i = 1;
             StringBuilder name = new StringBuilder(splitMessage[i]);
@@ -164,7 +164,7 @@ public class ChatProcessor {
         }
 
         String msg = "Received message: \"" + chatEvent.getMessage() + "\".\tMessage Type: " + chatEvent.getEventName();
-        logger.info(msg);
+        LOGGER.info(msg);
 
         // First token should be who sent the message.
         String from = tokenizer.nextToken().trim();
@@ -173,7 +173,7 @@ public class ChatProcessor {
         String sentTo = tokenizer.nextToken().trim();
         Player princessPlayer = princess.getLocalPlayer();
         if (princessPlayer == null) {
-            logger.error("Princess Player is NULL.");
+            LOGGER.error("Princess Player is NULL.");
             return;
         }
         String princessName = princessPlayer.getName(); // Make sure the command is directed at the Princess player.
@@ -192,7 +192,7 @@ public class ChatProcessor {
         if (tokenizer.hasMoreElements()) {
             String[] additionalArguments = tokenizer.nextToken().trim().split(" ");
             arguments = Stream.concat(Arrays.stream(arguments), Arrays.stream(additionalArguments))
-                              .toArray(String[]::new);
+                  .toArray(String[]::new);
         }
 
 
@@ -201,7 +201,7 @@ public class ChatProcessor {
         if (speakerPlayer == null) {
             speakerPlayer = getPlayer(princess.getGame(), from);
             if (speakerPlayer == null) {
-                logger.info("speakerPlayer is NULL.");
+                LOGGER.info("speakerPlayer is NULL.");
                 return;
             }
         }
@@ -212,7 +212,7 @@ public class ChatProcessor {
         if ((princessTeam != speakerTeam) && !speakerPlayer.getGameMaster()) {
             msg = "Only my teammates and game-masters can command me.";
             princess.sendChat(msg);
-            logger.info(msg);
+            LOGGER.info(msg);
             return;
         }
 
@@ -222,7 +222,7 @@ public class ChatProcessor {
     private static void processChatCommand(Princess princess, String command, String[] arguments) {
         for (ChatCommands cmd : ChatCommands.values()) {
             if (command.toLowerCase().equalsIgnoreCase(cmd.getAbbreviation()) ||
-                      command.toLowerCase().equalsIgnoreCase(cmd.getCommand())) {
+                  command.toLowerCase().equalsIgnoreCase(cmd.getCommand())) {
                 try {
                     Arguments args = ArgumentsParser.parse(arguments, cmd.getChatCommand().defineArguments());
                     cmd.getChatCommand().execute(princess, args);

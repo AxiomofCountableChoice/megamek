@@ -1,20 +1,34 @@
 /*
- * Copyright (c) 2023 - The MegaMek Team. All Rights Reserved.
+ * Copyright (C) 2023-2025 The MegaMek Team. All Rights Reserved.
  *
  * This file is part of MegaMek.
  *
  * MegaMek is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License (GPL),
+ * version 3 or (at your option) any later version,
+ * as published by the Free Software Foundation.
  *
  * MegaMek is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
+ * but WITHOUT ANY WARRANTY; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with MegaMek. If not, see <http://www.gnu.org/licenses/>.
+ * A copy of the GPL should have been included with this project;
+ * if not, see <https://www.gnu.org/licenses/>.
+ *
+ * NOTICE: The MegaMek organization is a non-profit group of volunteers
+ * creating free software for the BattleTech community.
+ *
+ * MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+ * of The Topps Company, Inc. All Rights Reserved.
+ *
+ * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+ * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
 package megamek.client.ui.dialogs.forceDisplay;
 
@@ -37,10 +51,15 @@ import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.GUIPreferences;
 import megamek.client.ui.clientGUI.tooltip.UnitToolTip;
 import megamek.client.ui.util.UIUtil;
-import megamek.common.*;
+import megamek.common.Player;
+import megamek.common.board.Board;
 import megamek.common.force.Force;
+import megamek.common.game.Game;
+import megamek.common.interfaces.ForceAssignable;
+import megamek.common.interfaces.IStartingPositions;
 import megamek.common.options.GameOptions;
 import megamek.common.options.OptionsConstants;
+import megamek.common.units.*;
 import megamek.common.util.CollectionUtil;
 
 class ForceDisplayMekCellFormatter {
@@ -51,8 +70,8 @@ class ForceDisplayMekCellFormatter {
     }
 
     /**
-     * Creates and returns the display content of the C3-MekTree cell for the given entity and
-     * for the compact display mode. Assumes that no enemy or blind-drop-hidden units are provided.
+     * Creates and returns the display content of the C3-MekTree cell for the given entity and for the compact display
+     * mode. Assumes that no enemy or blind-drop-hidden units are provided.
      */
     static String formatUnitCompact(Entity entity, Client client, int row) {
         Game game = client.getGame();
@@ -60,17 +79,17 @@ class ForceDisplayMekCellFormatter {
         Player localPlayer = client.getLocalPlayer();
         Player owner = entity.getOwner();
         boolean showAsUnknown = owner.isEnemyOf(localPlayer)
-                && !EntityVisibilityUtils.detectedOrHasVisual(localPlayer, client.getGame(), entity);
+              && !EntityVisibilityUtils.detectedOrHasVisual(localPlayer, client.getGame(), entity);
 
         if (entity.isSensorReturn(localPlayer)) {
             String value = "";
-            String uType = "";
+            String uType;
 
             if (entity instanceof Infantry) {
                 uType = Messages.getString("ChatLounge.0");
             } else if (entity instanceof ProtoMek) {
                 uType = Messages.getString("ChatLounge.1");
-            } else if (entity instanceof GunEmplacement) {
+            } else if (entity.isBuildingEntityOrGunEmplacement()) {
                 uType = Messages.getString("ChatLounge.2");
             } else if (entity.isSupportVehicle()) {
                 uType = entity.getWeightClassName();
@@ -116,7 +135,7 @@ class ForceDisplayMekCellFormatter {
 
         // Done
         if (!game.getPhase().isReport()) {
-            String done = "";
+            String done;
             if (!entity.isDone()) {
                 done = "\u2610 ";
             } else {
@@ -129,8 +148,8 @@ class ForceDisplayMekCellFormatter {
         // Gray out if the unit is a fighter in a squadron
         if (entity.isPartOfFighterSquadron()) {
             result.append(formatCell(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) +
-                                entity.getShortNameRaw() +
-                                           "</FONT>", 180, entity.getOwner().getColour().getColour()));
+                  entity.getShortNameRaw() +
+                  "</FONT>", 180, entity.getOwner().getColour().getColour()));
         } else {
             result.append(formatCell(entity.getShortNameRaw(), 180, entity.getOwner().getColour().getColour()));
         }
@@ -147,19 +166,19 @@ class ForceDisplayMekCellFormatter {
                 String txt = "";
                 if ((pilot.getNickname(0) != null) && !pilot.getNickname(0).isEmpty()) {
                     txt += UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) +
-                                 "<B>'" +
-                                 pilot.getNickname(0).toUpperCase() +
-                                 "'</B></FONT>";
+                          "<B>'" +
+                          pilot.getNickname(0).toUpperCase() +
+                          "'</B></FONT>";
                 } else {
                     txt += pilot.getName(0).toUpperCase();
                 }
                 // Pilot Status
                 if (!pilot.getStatusDesc(0).isEmpty()) {
                     txt += "<br><font color='" +
-                                 UIUtil.hexColor(GUIP.getCautionColor()) +
-                                 "'>" +
-                                 pilot.getStatusDesc(0) +
-                                 "</font>";
+                          UIUtil.hexColor(GUIP.getCautionColor()) +
+                          "'>" +
+                          pilot.getStatusDesc(0) +
+                          "</font>";
                 }
                 result.append(formatCell(txt, 150));
             }
@@ -172,15 +191,15 @@ class ForceDisplayMekCellFormatter {
         if (GUIP.getForceDisplayBtnMP()) {
             if (entity.getJumpMP() != 0) {
                 result.append(formatCell("MP: " +
-                                               entity.getWalkMP() +
-                                               "/" +
-                                               entity.getRunMP() + "/" + entity.getJumpMP(),
+                            entity.getWalkMP() +
+                            "/" +
+                            entity.getRunMP() + "/" + entity.getJumpMP(),
                       90));
             } else {
                 result.append(formatCell("MP: " +
-                                               entity.getWalkMP() +
-                                               "/" +
-                                               entity.getRunMP(),
+                            entity.getWalkMP() +
+                            "/" +
+                            entity.getRunMP(),
                       90));
             }
         }
@@ -189,12 +208,12 @@ class ForceDisplayMekCellFormatter {
         if (GUIP.getForceDisplayBtnHeat()) {
             if (entity.getHeatCapacity() != 999) { // if unit is not a vehicle (999 heat sinks)
                 result.append(formatCell("H: <font color='" +
-                                               UIUtil.hexColor(GUIP.getColorForHeat(entity.getHeat())) +
-                                               "'>" +
-                                               entity.getHeat() +
-                                               "/" +
-                                               entity.getHeatCapacity() +
-                                               "</font>", 70));
+                      UIUtil.hexColor(GUIP.getColorForHeat(entity.getHeat())) +
+                      "'>" +
+                      entity.getHeat() +
+                      "/" +
+                      entity.getHeatCapacity() +
+                      "</font>", 70));
             } else {
                 result.append(formatCell("-", 70));
             }
@@ -220,19 +239,19 @@ class ForceDisplayMekCellFormatter {
                 clr = GUIP.getWarningColor();
             }
             result.append(formatCell("A: <font color='" + UIUtil.hexColor(clr) + "'>" +
-                                           entity.getTotalArmor() +
-                                           "/" + entity.getTotalOArmor() + "</font>", 90));
+                  entity.getTotalArmor() +
+                  "/" + entity.getTotalOArmor() + "</font>", 90));
 
             clr = GUIP.getUnitToolTipFGColor();
-            ;
+
             if ((double) entity.getTotalInternal() / entity.getTotalOInternal() <= 0.5) {
                 clr = GUIP.getCautionColor();
             } else if ((double) entity.getTotalInternal() / entity.getTotalOInternal() <= 0.1) {
                 clr = GUIP.getWarningColor();
             }
             result.append(formatCell("I: <font color='" + UIUtil.hexColor(clr) + "'>" +
-                                           entity.getTotalInternal() +
-                                           "/" + entity.getTotalOInternal() + "</font>", 90));
+                  entity.getTotalInternal() +
+                  "/" + entity.getTotalOInternal() + "</font>", 90));
         }
 
         // Tonnage
@@ -280,11 +299,20 @@ class ForceDisplayMekCellFormatter {
 
         // C3 ...
         if (GUIP.getForceDisplayBtnC3()) {
-            if (entity.hasC3i() || entity.hasNavalC3()) {
+            if (entity.hasC3i() || entity.hasNavalC3() || entity.hasNovaCEWS()) {
                 String msg_c3i = Messages.getString("ChatLounge.C3i");
                 String msg_nc3 = Messages.getString("ChatLounge.NC3");
+                String msg_nova = Messages.getString("BoardView1.Tooltip.NovaCEWS");
 
-                String c3Name = entity.hasC3i() ? msg_c3i : msg_nc3;
+                String c3Name;
+                if (entity.hasC3i()) {
+                    c3Name = msg_c3i;
+                } else if (entity.hasNovaCEWS()) {
+                    c3Name = msg_nova;
+                } else {  // hasNavalC3()
+                    c3Name = msg_nc3;
+                }
+
                 if (entity.calculateFreeC3Nodes() >= 5) {
                     c3Name += UNCONNECTED_SIGN;
                 } else {
@@ -293,14 +321,14 @@ class ForceDisplayMekCellFormatter {
                 result.append(formatCell(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) + c3Name + "</FONT>",
                       70));
             } else if (entity.hasC3()) {
-                String msg_c3sabrv = Messages.getString("ChatLounge.C3SAbrv");
+                String msgC3SAbbreviation = Messages.getString("ChatLounge.C3SAbrv");
                 String msg_c3m = Messages.getString("ChatLounge.C3M");
                 String msg_c3mcc = Messages.getString("ChatLounge.C3MCC");
                 String c3 = "";
 
                 if (entity.getC3Master() == null) {
                     if (entity.hasC3S()) {
-                        c3 = msg_c3sabrv + UNCONNECTED_SIGN;
+                        c3 = msgC3SAbbreviation + UNCONNECTED_SIGN;
                     }
                     if (entity.hasC3M()) {
                         c3 = msg_c3m;
@@ -309,7 +337,7 @@ class ForceDisplayMekCellFormatter {
                     result.append(msg_c3mcc);
                 } else {
                     if (entity.hasC3S()) {
-                        c3 = msg_c3sabrv + CONNECTED_SIGN;
+                        c3 = msgC3SAbbreviation + CONNECTED_SIGN;
                     } else {
                         c3 = msg_c3m + CONNECTED_SIGN;
                     }
@@ -327,15 +355,20 @@ class ForceDisplayMekCellFormatter {
             // Loaded onto another unit
             if (isCarried) {
                 Entity loader = entity.getGame().getEntity(entity.getTransportId());
-                result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
-                String carried = "(" + loader.getChassis() + " [" + entity.getTransportId() + "])";
-                carried = "<I>" + carried + "</I>";
-                result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) + carried + "</FONT>");
+
+                if (loader != null) {
+                    result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
+                    String carried = "(" + loader.getChassis() + " [" + entity.getTransportId() + "])";
+                    carried = "<I>" + carried + "</I>";
+                    result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()))
+                          .append(carried)
+                          .append("</FONT>");
+                }
             }
 
             if (entity.countPartialRepairs() > 0) {
                 result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
-                result.append(UIUtil.fontHTML(GUIP.getWarningColor()) + "Partial Repairs" + "</FONT>");
+                result.append(UIUtil.fontHTML(GUIP.getWarningColor())).append("Partial Repairs").append("</FONT>");
             }
 
             // Offboard deployment
@@ -343,7 +376,9 @@ class ForceDisplayMekCellFormatter {
                 result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
                 String msg_offboard = Messages.getString("ChatLounge.compact.deploysOffBoard");
                 msg_offboard = "<I>" + msg_offboard + "</I>";
-                result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) + msg_offboard + "</FONT>");
+                result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()))
+                      .append(msg_offboard)
+                      .append("</FONT>");
             } else if (!entity.isDeployed()) {
                 result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
                 String msg_deploy = Messages.getString("ChatLounge.compact.deployRound", entity.getDeployRound());
@@ -353,7 +388,9 @@ class ForceDisplayMekCellFormatter {
                           IStartingPositions.START_LOCATION_NAMES[entity.getStartingPos(false)]);
                 }
                 msg_deploy = "<I>" + msg_deploy + msg_zone + "</I>";
-                result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) + msg_deploy + "</FONT>");
+                result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()))
+                      .append(msg_deploy)
+                      .append("</FONT>");
             }
 
             // Starting values for Altitude / Velocity / Elevation
@@ -369,18 +406,22 @@ class ForceDisplayMekCellFormatter {
                         msg_alt = ", " + Messages.getString("ChatLounge.compact.altitude") + ": ";
                         msg_alt += aero.getAltitude();
                     }
-                    if (options.booleanOption(OptionsConstants.ADVAERORULES_FUEL_CONSUMPTION)) {
+                    if (options.booleanOption(OptionsConstants.ADVANCED_AERO_RULES_FUEL_CONSUMPTION)) {
                         msg_fuel = ", " + Messages.getString("ChatLounge.compact.fuel") + ": ";
                         msg_fuel += aero.getCurrentFuel();
                     }
                     msg_vel = "<I>" + msg_vel + msg_alt + msg_fuel + "</I>";
-                    result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) + msg_vel + "</FONT>");
+                    result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()))
+                          .append(msg_vel)
+                          .append("</FONT>");
                 } else if (entity.getPosition() != null && ((entity.getElevation() != 0) || (entity instanceof VTOL))) {
                     result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
                     String msg_ele = Messages.getString("ChatLounge.compact.elevation") + ": ";
                     msg_ele += entity.getElevation();
                     msg_ele = "<I>" + msg_ele + "</I>;";
-                    result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()) + msg_ele + "</FONT>");
+                    result.append(UIUtil.fontHTML(GUIP.getUnitToolTipHighlightColor()))
+                          .append(msg_ele)
+                          .append("</FONT>");
                 }
             }
 
@@ -388,7 +429,7 @@ class ForceDisplayMekCellFormatter {
             if (!localPlayer.equals(owner)) {
                 result.append("&nbsp;&nbsp;&nbsp;&nbsp;");
                 String player = entity.getOwner().getName() + " \u2691 ";
-                result.append(UIUtil.fontHTML(color) + player + "</FONT>");
+                result.append(UIUtil.fontHTML(color)).append(player).append("</FONT>");
             }
         }
 
@@ -396,8 +437,8 @@ class ForceDisplayMekCellFormatter {
     }
 
     /**
-     * Creates and returns the display content of the C3-MekTree cell for the given entity and
-     * for the compact display mode. Assumes that no enemy or blind-drop-hidden units are provided.
+     * Creates and returns the display content of the C3-MekTree cell for the given entity and for the compact display
+     * mode. Assumes that no enemy or blind-drop-hidden units are provided.
      */
     static String formatForceCompact(Force force, Client client) {
         return formatForce(force, client);
@@ -409,7 +450,7 @@ class ForceDisplayMekCellFormatter {
         int ownerId = game.getForces().getOwnerId(force);
         Player owner = game.getPlayer(ownerId);
 
-        // Get the my / ally / enemy color
+        // Get the / ally / enemy color
         Color color = GUIP.getEnemyUnitColor();
         if (ownerId == localPlayer.getId()) {
             color = GUIP.getMyUnitColor();
@@ -419,56 +460,62 @@ class ForceDisplayMekCellFormatter {
 
         StringBuilder result = new StringBuilder("<NOBR>");
 
-        // A top-level / subforce special char
-        String fLevel = "";
+        // A top-level / sub force special char
+        String fLevel;
         if (force.isTopLevel()) {
             fLevel = "\u2327&nbsp;&nbsp; ";
         } else {
             fLevel = "\u25E5&nbsp;&nbsp; ";
         }
-        result.append(fontHTML(color) + fLevel +  "</FONT>");
+        result.append(fontHTML(color)).append(fLevel).append("</FONT>");
 
         // Name
         String fName = force.getName();
         fName = "<B>" + fName + "</B>";
-        result.append(fontHTML(color) + fName +  "</FONT>");
+        result.append(fontHTML(color)).append(fName).append("</FONT>");
 
         // ID
         String id = " [" + force.getId() + "]";
-        result.append(fontHTML(GUIP.getUnitToolTipHighlightColor()) + id + "</FONT>");
+        result.append(fontHTML(GUIP.getUnitToolTipHighlightColor())).append(id).append("</FONT>");
 
         // Display force owner
         if ((ownerId != client.getLocalPlayerNumber()) && (owner != null)) {
             result.append(DOT_SPACER);
             String oName = "\u2691 " + owner.getName();
-            result.append(fontHTML(color) + oName + "</FONT>");
+            result.append(fontHTML(color)).append(oName).append("</FONT>");
         }
 
         // BV
         List<Entity> fullEntities = ForceAssignable.filterToEntityList(game.getForces().getFullEntities(force));
         result.append(DOT_SPACER);
-        int totalBv = fullEntities.stream().filter(e -> !e.isPartOfFighterSquadron()).mapToInt(Entity::calculateBattleValue).sum();
+        int totalBv = fullEntities.stream()
+              .filter(e -> !e.isPartOfFighterSquadron())
+              .mapToInt(Entity::calculateBattleValue)
+              .sum();
 
         if (totalBv > 0) {
-            String msg_bvplain = Messages.getString("ChatLounge.BVplain");
-            msg_bvplain =  msg_bvplain + " " + String.format("%,d", totalBv);
-            result.append(fontHTML(color) + msg_bvplain  + "</FONT>");
+            String msgBVPlain = Messages.getString("ChatLounge.BVplain");
+            msgBVPlain = msgBVPlain + " " + String.format("%,d", totalBv);
+            result.append(fontHTML(color)).append(msgBVPlain).append("</FONT>");
 
             // Unit Type
-            long unittypes = fullEntities.stream().map(e -> Entity.getEntityMajorTypeName(e.getEntityType())).distinct().count();
+            long unitTypes = fullEntities.stream()
+                  .map(e -> Entity.getEntityMajorTypeName(e.getEntityType()))
+                  .distinct()
+                  .count();
             result.append(DOT_SPACER);
 
-            if (unittypes > 1) {
+            if (unitTypes > 1) {
                 String msg_mixed = Messages.getString("ChatLounge.Mixed");
-                result.append(fontHTML(color) + msg_mixed + "</FONT>");
-            } else if (unittypes == 1) {
+                result.append(fontHTML(color)).append(msg_mixed).append("</FONT>");
+            } else if (unitTypes == 1) {
                 Entity entity = CollectionUtil.anyOneElement(fullEntities);
                 String eType = UnitType.getTypeName(entity.getUnitType());
-                result.append(fontHTML(color) + eType + "</FONT>");
+                result.append(fontHTML(color)).append(eType).append("</FONT>");
             }
 
         } else {
-            result.append(fontHTML(color) + "Empty" + "</FONT>");
+            result.append(fontHTML(color)).append("Empty").append("</FONT>");
         }
 
         return UnitToolTip.wrapWithHTML(result.toString());
@@ -480,6 +527,7 @@ class ForceDisplayMekCellFormatter {
         current.append(";>");
     }
 
+    @Deprecated(since = "0.51.0", forRemoval = true)
     static void formatSpan(StringBuilder current, String hexColor) {
         current.append("<SPAN style=color:");
         current.append(hexColor);
@@ -492,8 +540,8 @@ class ForceDisplayMekCellFormatter {
             rowBGColor = "0,0,0,0.1";
         }
         return "<table><tr valign='top' style='background-color: rgba(" + rowBGColor + ")'>" + text +
-                     "</tr" +
-                     "></table>";
+              "</tr" +
+              "></table>";
     }
 
     private static String formatCell(String text, int width) {
@@ -503,15 +551,15 @@ class ForceDisplayMekCellFormatter {
     private static String formatCell(String text, int width, Color color) {
         String cellBGColor = color.getRed() + "," + color.getGreen() + "," + color.getBlue() + ",0.1";
         return "<td width='" +
-                     UIUtil.scaleForGUI(width) +
-                     "' style='background-color: rgba(" +
-                     cellBGColor +
-                     ")'>" +
-                     text +
-                     "</td>";
+              UIUtil.scaleForGUI(width) +
+              "' style='background-color: rgba(" +
+              cellBGColor +
+              ")'>" +
+              text +
+              "</td>";
     }
 
-    static void fullidString(StringBuilder current, int id) {
+    static void fullIDString(StringBuilder current, int id) {
         formatSpan(current, uiGray());
         current.append(" [ID: ").append(id).append("]</SPAN>");
     }

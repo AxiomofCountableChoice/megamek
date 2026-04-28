@@ -32,33 +32,35 @@
  */
 package megamek.common.moves;
 
-import megamek.common.Entity;
-import megamek.common.Game;
-import megamek.common.QuadMek;
-import megamek.common.pathfinder.CachedEntityState;
-
 import java.util.EnumSet;
 import java.util.Set;
 
+import megamek.common.enums.MoveStepType;
+import megamek.common.game.Game;
+import megamek.common.pathfinder.CachedEntityState;
+import megamek.common.units.Entity;
+
 /**
- * This class handles the lateral steps of a unit.
- * It is used in the MoveStep compilation to calculate the movement of a unit.
+ * This class handles the lateral steps of a unit. It is used in the MoveStep compilation to calculate the movement of a
+ * unit.
+ *
  * @author Luana Coppio
  * @since 0.50.07
  */
 class LateralStep extends SideStepStep {
-    private static final EnumSet<MovePath.MoveStepType> TYPES = EnumSet.of(MovePath.MoveStepType.LATERAL_LEFT,
-          MovePath.MoveStepType.LATERAL_RIGHT);
+    private static final EnumSet<MoveStepType> TYPES = EnumSet.of(MoveStepType.LATERAL_LEFT,
+          MoveStepType.LATERAL_RIGHT);
 
     @Override
-    public Set<MovePath.MoveStepType> getTypesOfInterest() {
+    public Set<MoveStepType> getTypesOfInterest() {
         return TYPES;
     }
 
     @Override
     public PhasePassResult preCompilation(final MoveStep moveStep, final Game game, final Entity entity, MoveStep prev,
           final CachedEntityState cachedEntityState) {
-        moveStep.moveInDir(MovePath.getAdjustedFacing(moveStep.getFacing(), MovePath.turnForLateralShift(moveStep.getType())));
+        moveStep.moveInDir(MovePath.getAdjustedFacing(moveStep.getFacing(),
+              MovePath.turnForLateralShift(moveStep.getType())));
         moveStep.setThisStepBackwards(false);
         return PhasePassResult.COMPILE;
     }

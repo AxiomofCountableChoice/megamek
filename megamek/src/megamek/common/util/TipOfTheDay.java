@@ -24,7 +24,13 @@
  *
  * Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
  * InMediaRes Productions, LLC.
+ *
+ * MechWarrior Copyright Microsoft Corporation. MegaMek was created under
+ * Microsoft's "Game Content Usage Rules"
+ * <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+ * affiliated with Microsoft.
  */
+
 package megamek.common.util;
 
 import java.awt.*;
@@ -41,11 +47,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import javax.swing.JTextPane;
 import javax.swing.Timer;
-import javax.swing.text.html.HTMLEditorKit;
-import javax.swing.text.html.StyleSheet;
 
 import megamek.client.ui.util.KeyCommandBind;
 import megamek.client.ui.util.UIUtil;
@@ -83,7 +86,7 @@ public class TipOfTheDay {
 
     private static final String VARIABLE_PREFIX = "{";
     private static final String VARIABLE_SUFFIX = "}";
-    private static final String KEYBIND_VARIABLE_PREFIX = VARIABLE_PREFIX+"keybind:";
+    private static final String KEYBIND_VARIABLE_PREFIX = VARIABLE_PREFIX + "keybind:";
 
     private static final int TIP_CYCLE_INTERVAL = 10000;
     private static final int FADE_ANIMATION_DURATION = 1000;
@@ -105,11 +108,12 @@ public class TipOfTheDay {
     private float currentOffset = 0.0f;
     private boolean isFading = false;
     private boolean isVisible = true;
-    private Component repaintComponent;
+    private final Component repaintComponent;
     private List<String> allTips;
     private int currentTipIndex = 0;
     private Rectangle tipClickBounds;
     private boolean clickListenerAdded = false;
+
     /**
      * Constructor for TipOfTheDay
      *
@@ -127,7 +131,7 @@ public class TipOfTheDay {
         addClickListener();
         startCycling();
     }
-        
+
     /**
      * Adds a mouse click listener to the repaint component for tip interaction
      */
@@ -148,7 +152,7 @@ public class TipOfTheDay {
             clickListenerAdded = true;
         }
     }
-    
+
     /**
      * Loads all available tips into memory for cycling
      */
@@ -162,7 +166,7 @@ public class TipOfTheDay {
             allTips.add(""); // Fallback
         }
     }
-    
+
     /**
      * Starts the tip cycling animation
      */
@@ -170,7 +174,7 @@ public class TipOfTheDay {
         if (cycleTimer != null) {
             cycleTimer.stop();
         }
-        
+
         cycleTimer = new Timer(TIP_CYCLE_INTERVAL, e -> startFadeTransition());
         cycleTimer.setRepeats(true);
         cycleTimer.start();
@@ -200,22 +204,22 @@ public class TipOfTheDay {
         if (isFading) {
             return; // Already fading
         }
-        
+
         // Prepare next tip
         nextTipOfTheDay = getNextTip();
-        
+
         isFading = true;
-        
+
         if (fadeTimer != null) {
             fadeTimer.stop();
         }
-        
-        final long startTime = System.currentTimeMillis();
-        
+
+        final long startTime = java.lang.System.currentTimeMillis();
+
         fadeTimer = new Timer(ANIMATION_FRAME_DELAY, e -> {
-            long elapsed = System.currentTimeMillis() - startTime;
+            long elapsed = java.lang.System.currentTimeMillis() - startTime;
             float progress = Math.min(1.0f, (float) elapsed / FADE_ANIMATION_DURATION);
-            
+
             if (progress < 0.5f) {
                 // Fade out current tip
                 float fadeProgress = progress * 2.0f;
@@ -230,12 +234,12 @@ public class TipOfTheDay {
                 currentAlpha = fadeInProgress;
                 currentOffset = (1.0f - fadeInProgress) * (MAX_FADE_OFFSET * scaleFactor);
             }
-            
+
             // Trigger repaint
             if (repaintComponent != null) {
                 repaintComponent.repaint();
             }
-            
+
             if (progress >= 1.0f) {
                 // Animation complete
                 currentAlpha = 1.0f;
@@ -244,7 +248,7 @@ public class TipOfTheDay {
                 fadeTimer.stop();
             }
         });
-        
+
         fadeTimer.start();
     }
 
@@ -255,7 +259,7 @@ public class TipOfTheDay {
         if (allTips.isEmpty()) {
             return ""; // No tips available
         }
-        
+
         currentTipIndex = (currentTipIndex + 1) % allTips.size();
         return allTips.get(currentTipIndex);
     }
@@ -270,6 +274,7 @@ public class TipOfTheDay {
     /**
      * Returns the current alpha value for fade animations
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public float getCurrentAlpha() {
         return currentAlpha;
     }
@@ -311,6 +316,7 @@ public class TipOfTheDay {
      *
      * @return A tip string for today
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public String getTodaysTip() {
         LocalDate today = LocalDate.now();
         int dayOfYear = today.getDayOfYear();
@@ -337,6 +343,7 @@ public class TipOfTheDay {
      * @param referenceBounds The bounds of the reference component
      * @param position        The position of the tip (BOTTOM_BORDER, etc.)
      */
+    @Deprecated(since = "0.51.0", forRemoval = true)
     public void drawTipOfTheDay(Graphics2D graphics2D, Rectangle referenceBounds, Position position) {
         drawTipOfTheDay(graphics2D, referenceBounds, position, DEFAULT_USE_RADIAL_GRADIENT);
     }
@@ -351,7 +358,11 @@ public class TipOfTheDay {
      */
     public void drawTipOfTheDay(Graphics2D graphics2D, Rectangle referenceBounds, Position position,
           boolean useRadialGradient) {
-        if (!isVisible || currentTipOfTheDay == null || currentTipOfTheDay.isEmpty() || tipLabelFont == null || tipFont == null) {
+        if (!isVisible
+              || currentTipOfTheDay == null
+              || currentTipOfTheDay.isEmpty()
+              || tipLabelFont == null
+              || tipFont == null) {
             return;
         }
         if (referenceBounds == null || referenceBounds.width <= 0 || referenceBounds.height <= 0) {
@@ -395,7 +406,10 @@ public class TipOfTheDay {
             float labelWidth = (float) labelLayout.getBounds().getWidth();
             String actualTipContentToRender = mapVariables(currentTipOfTheDay);
             // We unwrap and wrap the tip content with HTML to ensure it is displayed correctly
-            actualTipContentToRender = wrapTextWithHtml(unwrapHtml(actualTipContentToRender), tipFont, currentAvailableTextWidth, position);
+            actualTipContentToRender = wrapTextWithHtml(unwrapHtml(actualTipContentToRender),
+                  tipFont,
+                  currentAvailableTextWidth,
+                  position);
             JTextPane htmlPane = createHtmlPane(actualTipContentToRender, tipFont, currentAvailableTextWidth);
             float totalTipHeight = htmlPane.getPreferredSize().height;
 
@@ -424,7 +438,7 @@ public class TipOfTheDay {
                 if (bgRectHeight > 0 && bgRectWidth > 0) {
                     if (!useRadialGradient) {
                         float fadeRegionPhysicalWidth = bgRectWidth * TIP_BACKGROUND_FADE_AREA_PERCENT;
-                        fadeRegionPhysicalWidth = Math.max(0f, Math.min(fadeRegionPhysicalWidth, bgRectWidth));
+                        fadeRegionPhysicalWidth = Math.clamp(fadeRegionPhysicalWidth, 0f, bgRectWidth);
                         // Opaque on the left, fades to transparent towards the right
                         bgPaint = new GradientPaint(bgRectX + fadeRegionPhysicalWidth,
                               bgRectTopY,
@@ -465,7 +479,7 @@ public class TipOfTheDay {
                 if (bgRectHeight > 0 && bgRectWidth > 0) {
                     if (!useRadialGradient) {
                         float fadeRegionPhysicalWidth = bgRectWidth * TIP_BACKGROUND_FADE_AREA_PERCENT;
-                        fadeRegionPhysicalWidth = Math.max(0f, Math.min(fadeRegionPhysicalWidth, bgRectWidth));
+                        fadeRegionPhysicalWidth = Math.clamp(fadeRegionPhysicalWidth, 0f, bgRectWidth);
                         // Opaque on the right, fades to transparent towards the left
                         bgPaint = new GradientPaint(bgRectX,
                               bgRectTopY,
@@ -505,7 +519,7 @@ public class TipOfTheDay {
 
                 if (bgRectHeight > 0 && bgRectWidth > 0) {
                     float fadeRegionPhysicalHeight = bgRectHeight * TIP_BACKGROUND_FADE_AREA_PERCENT;
-                    fadeRegionPhysicalHeight = Math.max(0f, Math.min(fadeRegionPhysicalHeight, bgRectHeight));
+                    fadeRegionPhysicalHeight = Math.clamp(fadeRegionPhysicalHeight, 0f, bgRectHeight);
 
                     // Transparent at its top, fades to opaque towards its bottom
                     bgPaint = new GradientPaint(bgRectX,
@@ -517,13 +531,13 @@ public class TipOfTheDay {
                           false);
                 }
             }
-            
+
             // Click detection rectangle (same as the background rectangle)
             tipClickBounds = new Rectangle(
-                (int) bgRectX,
-                (int) bgRectTopY,
-                (int) bgRectWidth,
-                (int) bgRectHeight
+                  (int) bgRectX,
+                  (int) bgRectTopY,
+                  (int) bgRectWidth,
+                  (int) bgRectHeight
             );
 
             if (bgPaint != null && bgRectHeight > 0 && bgRectWidth > 0) {
@@ -552,8 +566,10 @@ public class TipOfTheDay {
                 // Draw Label
                 float labelDrawX = switch (position) {
                     case BOTTOM_LEFT_CORNER -> startX + currentOffset; // Left align
-                    case BOTTOM_RIGHT_CORNER ->
-                          referenceBounds.x + referenceBounds.width - labelWidth - scaledSidePadding - currentOffset; // Right align
+                    case BOTTOM_RIGHT_CORNER -> referenceBounds.x + referenceBounds.width
+                          - labelWidth
+                          - scaledSidePadding
+                          - currentOffset; // Right align
                     default -> {
                         labelDrawX = startX + (currentAvailableTextWidth - labelWidth) / 2; // Center label
                         yield Math.max(startX, labelDrawX);
@@ -566,7 +582,7 @@ public class TipOfTheDay {
                 float tipStartY = startY + labelHeight;
                 // Render HTML content
                 drawHtmlTip(textGraphics, htmlPane, startX, tipStartY,
-                        currentAvailableTextWidth, position, referenceBounds, scaledSidePadding);
+                      currentAvailableTextWidth, position, referenceBounds, scaledSidePadding);
 
             } finally {
                 textGraphics.dispose();
@@ -592,7 +608,7 @@ public class TipOfTheDay {
                 } else {
                     // Use content within <html> but outside/malformed <body>
                     bodyContent = bodyContent.substring(bodyTagStartIndex + "<body>".length()).trim();
-                    if(bodyContent.toLowerCase().endsWith("</body>")){
+                    if (bodyContent.toLowerCase().endsWith("</body>")) {
                         bodyContent = bodyContent.substring(0, bodyContent.length() - "</body>".length()).trim();
                     }
                 }
@@ -612,14 +628,14 @@ public class TipOfTheDay {
             default -> "center"; // BOTTOM_BORDER
         };
         final String style = "font-family: '" + font.getFamily() + "'; " +
-            "font-size: " + Math.ceil(font.getSize()*0.75) + "pt; " +
-            "font-weight: " + fontWeight + "; " +
-            "margin: 0; " +
-            "padding: 0; " +
-            "width: " + width + "px; " +
-            "max-width: " + width + "px; " +
-            "text-align: " + textAlign + "; ";
-        return "<html style=\""+style+"\">" + bodyContent + "</html>";
+              "font-size: " + Math.ceil(font.getSize() * 0.75) + "pt; " +
+              "font-weight: " + fontWeight + "; " +
+              "margin: 0; " +
+              "padding: 0; " +
+              "width: " + width + "px; " +
+              "max-width: " + width + "px; " +
+              "text-align: " + textAlign + "; ";
+        return "<html style=\"" + style + "\">" + bodyContent + "</html>";
     }
 
     /**
@@ -643,7 +659,7 @@ public class TipOfTheDay {
      * Draws HTML content with outline and fill
      */
     private void drawHtmlTip(Graphics2D graphics, JTextPane htmlPane, float startX, float startY,
-                            int availableWidth, Position position, Rectangle referenceBounds, float scaledSidePadding) {
+          int availableWidth, Position position, Rectangle referenceBounds, float scaledSidePadding) {
         if (htmlPane == null || htmlPane.getText() == null || htmlPane.getText().trim().isEmpty()) {
             return;
         }
@@ -657,19 +673,17 @@ public class TipOfTheDay {
         int contentWidthToDraw = Math.min(preferredSize.width, availableWidth);
         int actualHeight = preferredSize.height;
 
-        float drawX;
-        switch (position) {
-            case BOTTOM_LEFT_CORNER:
-                drawX = startX + currentOffset;
-                break;
-            case BOTTOM_RIGHT_CORNER:
-                drawX = referenceBounds.x + referenceBounds.width - contentWidthToDraw - scaledSidePadding - currentOffset;
-                break;
-            default: // BOTTOM_BORDER
+        float drawX = switch (position) {
+            case BOTTOM_LEFT_CORNER -> startX + currentOffset;
+            case BOTTOM_RIGHT_CORNER -> referenceBounds.x + referenceBounds.width
+                  - contentWidthToDraw
+                  - scaledSidePadding
+                  - currentOffset;
+            default -> {
                 drawX = startX + (availableWidth - contentWidthToDraw) / 2f;
-                drawX = Math.max(startX, drawX);
-                break;
-        }
+                yield Math.max(startX, drawX);
+            }
+        };
         htmlPane.setBounds(0, 0, contentWidthToDraw, actualHeight);
 
         Graphics2D g2d = (Graphics2D) graphics.create();
@@ -728,14 +742,14 @@ public class TipOfTheDay {
             return text; // No keybind variables to replace
         }
         Set<String> keybindCommands = new java.util.HashSet<>();
-        Pattern pattern = Pattern.compile("\\"+KEYBIND_VARIABLE_PREFIX+"([^}]+)\\"+VARIABLE_SUFFIX);
+        Pattern pattern = Pattern.compile("\\" + KEYBIND_VARIABLE_PREFIX + "([^}]+)" + VARIABLE_SUFFIX);
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             keybindCommands.add(matcher.group(1));
         }
         for (String cmd : keybindCommands) {
             String keybindVariable = KEYBIND_VARIABLE_PREFIX + cmd + VARIABLE_SUFFIX;
-            KeyCommandBind kcb = null;
+            KeyCommandBind kcb;
             try {
                 // We try to find it by enum first (faster)
                 kcb = KeyCommandBind.valueOf(cmd.toUpperCase());

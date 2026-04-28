@@ -31,14 +31,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 
 import megamek.client.bot.BotClient;
-import megamek.common.Board;
-import megamek.common.Entity;
-import megamek.common.Mounted;
+import megamek.common.board.Board;
+import megamek.common.units.Entity;
+import megamek.common.equipment.Mounted;
 import megamek.common.Hex;
-import megamek.common.Game;
+import megamek.common.game.Game;
 import megamek.common.Player;
-import megamek.common.Terrains;
-import megamek.common.WeaponType;
+import megamek.common.units.Terrains;
+import megamek.common.equipment.WeaponType;
 import megamek.common.moves.MovePath;
 import megamek.logging.MMLogger;
 
@@ -152,7 +152,7 @@ public class RLDataPipeline {
         pythonOut.flush();
     }
     
-    public <T> T queryPython(String actionContext, Map<String, Object> mask, Class<T> responseType) {
+    public <T> T queryPython(String actionContext, Object mask, Class<T> responseType) {
         if (!isConnected()) {
             return null;
         }
@@ -195,13 +195,13 @@ public class RLDataPipeline {
         float maxHeat = e.getHeatCapacity();
         float armor = e.getTotalArmor();
         float structure = e.getTotalInternal();
-        float tmm = megamek.common.Compute.getTargetMovementModifier(game, e.getId()).getValue();
+        float tmm = megamek.common.compute.Compute.getTargetMovementModifier(game, e.getId()).getValue();
         
         float speedMode = 0f;
-        if (e.moved != megamek.common.EntityMovementType.MOVE_NONE) {
-            if (e.moved == megamek.common.EntityMovementType.MOVE_WALK) speedMode = 1f;
-            else if (e.moved == megamek.common.EntityMovementType.MOVE_RUN) speedMode = 2f;
-            else if (e.moved == megamek.common.EntityMovementType.MOVE_JUMP) speedMode = 3f;
+        if (e.moved != megamek.common.units.EntityMovementType.MOVE_NONE) {
+            if (e.moved == megamek.common.units.EntityMovementType.MOVE_WALK) speedMode = 1f;
+            else if (e.moved == megamek.common.units.EntityMovementType.MOVE_RUN) speedMode = 2f;
+            else if (e.moved == megamek.common.units.EntityMovementType.MOVE_JUMP) speedMode = 3f;
         }
         
         float gunnery = e.getCrew() != null ? e.getCrew().getGunnery() : 4f;
@@ -224,7 +224,7 @@ public class RLDataPipeline {
         float numClusters = wt.getRackSize();
         
         float salvosRemaining = 99f;
-        if (wt.getAmmoType() != null && wt.getAmmoType() != megamek.common.AmmoType.AmmoTypeEnum.NA) {
+        if (wt.getAmmoType() != null && wt.getAmmoType() != megamek.common.equipment.AmmoType.AmmoTypeEnum.NA) {
             Mounted<?> ammo = weapon.getLinked();
             if (ammo != null) {
                 salvosRemaining = ammo.getUsableShotsLeft();
@@ -296,8 +296,8 @@ public class RLDataPipeline {
             // LOS Threat and Partial Cover Edges
             for (int hexY = 0; hexY < boardHeight; hexY++) {
                 for (int hexX = 0; hexX < boardWidth; hexX++) {
-                    megamek.common.Coords targetCoords = new megamek.common.Coords(hexX, hexY);
-                    megamek.common.HexTarget target = new megamek.common.HexTarget(targetCoords, game.getBoard(), megamek.common.Targetable.TYPE_HEX_CLEAR);
+                    megamek.common.board.Coords targetCoords = new megamek.common.board.Coords(hexX, hexY);
+                    megamek.common.HexTarget target = new megamek.common.HexTarget(targetCoords, game.getBoard(), megamek.common.units.Targetable.TYPE_HEX_CLEAR);
                     megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, target);
                     if (los.canSee()) {
                         int hexIdx = hexY * boardWidth + hexX;
@@ -314,7 +314,7 @@ public class RLDataPipeline {
             try {
                 int maxMove = Math.max(e1.getWalkMP(), e1.getRunMP());
                 if (maxMove > 0 && !e1.isImmobile()) {
-                    megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
+                    megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.enums.MoveStepType.FORWARDS, game);
                     spfGround.run(new megamek.common.moves.MovePath(game, e1, null));
                     for (megamek.common.moves.MovePath p : spfGround.getAllComputedPathsUncategorized()) {
                         if (p.getFinalCoords() != null) {
@@ -343,23 +343,23 @@ public class RLDataPipeline {
         return state;
     }
 
-    public List<MovePath> buildMovementMask(Entity mover, List<Map<String, Object>> serializedMaskOut) {
+    public List<MovePath> buildMovementMask(Entity mover, List<RLActionMask.RLPathMask> serializedMaskOut) {
         Game game = (Game) baseClient.getGame();
         List<MovePath> calculatedPaths = new ArrayList<>();
         serializedMaskOut.clear();
         
         // Ground path generation
-        int maxMove = Math.min(mover.getRunMPwithoutMASC(), mover.getRunMP(megamek.common.MPCalculationSetting.NO_GRAVITY));
+        int maxMove = Math.max(mover.getWalkMP(), Math.max(mover.getRunMPWithoutMASC(), mover.getJumpMP()));
         if (maxMove > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
+            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(maxMove, megamek.common.enums.MoveStepType.FORWARDS, game);
             spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
             calculatedPaths.addAll(spfGround.getAllComputedPathsUncategorized());
         }
         
         // Add jump paths if applicable
         if (mover.getAnyTypeMaxJumpMP() > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.moves.MovePath.MoveStepType.FORWARDS, game);
-            spfJump.run(new megamek.common.moves.MovePath(game, mover, null).addStep(megamek.common.moves.MovePath.MoveStepType.START_JUMP));
+            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder.newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.enums.MoveStepType.FORWARDS, game);
+            spfJump.run(new megamek.common.moves.MovePath(game, mover, null).addStep(megamek.common.enums.MoveStepType.START_JUMP));
             calculatedPaths.addAll(spfJump.getAllComputedPathsUncategorized());
         }
 
@@ -367,19 +367,19 @@ public class RLDataPipeline {
             MovePath p = calculatedPaths.get(i);
             
             // Filter out illegal destination states (stacking violations)
-            if (!p.isMoveLegal() || megamek.common.Compute.stackingViolation(game, mover.getId(), p.getFinalCoords(), mover.climbMode()) != null) {
+            if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(), p.getFinalCoords(), mover.climbMode()) != null) {
                 continue;
             }
 
-            Map<String, Object> pm = new HashMap<>();
-            pm.put("path_index", i);
+            RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
+            pm.path_index = i;
             if (p.getFinalCoords() != null && game.getBoard() != null) {
                 int destIndex = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
-                pm.put("dest_index", destIndex);
+                pm.dest_index = destIndex;
             }
-            pm.put("dest_facing", p.getFinalFacing());
-            pm.put("mp_used", p.getMpUsed());
-            pm.put("is_jump", p.isJumping());
+            pm.dest_facing = p.getFinalFacing();
+            pm.mp_used = p.getMpUsed();
+            pm.is_jump = p.isJumping();
             serializedMaskOut.add(pm);
         }
         return calculatedPaths;
@@ -390,7 +390,7 @@ public class RLDataPipeline {
         ensureTopologySent();
         
         try {
-            List<Map<String, Object>> serializedMask = new ArrayList<>();
+            List<RLActionMask.RLPathMask> serializedMask = new ArrayList<>();
             List<MovePath> calculatedPaths = buildMovementMask(mover, serializedMask);
             
             // Find target action index
@@ -418,7 +418,7 @@ public class RLDataPipeline {
             // Translate the absolute calculated path index into the continuous subset index
             int subsetChoiceIndex = -1;
             for (int k = 0; k < serializedMask.size(); k++) {
-                int absIdx = (Integer) serializedMask.get(k).get("path_index");
+                int absIdx = serializedMask.get(k).path_index;
                 if (absIdx == chosenIndex) {
                     subsetChoiceIndex = k;
                     break;
@@ -430,10 +430,10 @@ public class RLDataPipeline {
                 return;
             }
             
-            Map<String, Object> maskData = new HashMap<>();
+            RLActionMask maskData = new RLActionMask();
             int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(mover);
-            maskData.put("active_entity_index", activeIndex);
-            maskData.put("valid_paths", serializedMask);
+            maskData.active_entity_index = activeIndex;
+            maskData.valid_paths = serializedMask;
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", "MOVEMENT_BC");

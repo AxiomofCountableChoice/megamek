@@ -1,3 +1,19 @@
+# MegaMek Data (C) 2025 by The MegaMek Team is licensed under CC BY-NC-SA 4.0.
+# To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/4.0/
+#
+# NOTICE: The MegaMek organization is a non-profit group of volunteers
+# creating free software for the BattleTech community.
+#
+# MechWarrior, BattleMech, `Mech and AeroTech are registered trademarks
+# of The Topps Company, Inc. All Rights Reserved.
+#
+# Catalyst Game Labs and the Catalyst Game Labs logo are trademarks of
+# InMediaRes Productions, LLC.
+#
+# MechWarrior Copyright Microsoft Corporation. MegaMek Data was created under
+# Microsoft's "Game Content Usage Rules"
+# <https://www.xbox.com/en-US/developers/rules> and it is not endorsed by or
+# affiliated with Microsoft.
 chassis:Dervish
 model:DV-11DK
 mul id:9396
@@ -167,6 +183,6 @@ primaryfactory:New Avalon
 systemmanufacturer:CHASSIS:Dorwinion Standard 55TES
 systemmanufacturer:ENGINE:Core Tek 275 XL
 systemmanufacturer:ARMOR:Durallex Ballistic-Reinforced with CASE II
-systemmanufacturer:JUMPJET:Swingline X-100
+systemmanufacturer:JUMP_JET:Swingline X-100
 systemmanufacturer:COMMUNICATIONS:Achernar Electronics HID-21
 systemmanufacturer:TARGETING:Federated Hunter Mk. II

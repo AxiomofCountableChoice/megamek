@@ -38,21 +38,20 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.Serial;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
 
 import megamek.client.ui.Messages;
 import megamek.client.ui.clientGUI.ClientGUI;
-import megamek.client.ui.dialogs.buttonDialogs.AbstractButtonDialog;
-import megamek.client.ui.dialogs.buttonDialogs.BotConfigDialog;
 import megamek.client.ui.util.UIUtil;
 import megamek.client.ui.util.UIUtil.TipList;
 import megamek.client.ui.util.UIUtil.TipTextField;
-import megamek.common.Board;
-import megamek.common.Building;
-import megamek.common.Coords;
 import megamek.common.annotations.Nullable;
+import megamek.common.board.Board;
+import megamek.common.board.Coords;
+import megamek.common.units.IBuilding;
 import megamek.server.ServerBoardHelper;
 
 public class BotConfigTargetHexDialog extends AbstractButtonDialog {
@@ -85,6 +84,7 @@ public class BotConfigTargetHexDialog extends AbstractButtonDialog {
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(enter, OK_ACTION);
         getRootPane().getInputMap(JComponent.WHEN_FOCUSED).put(enter, OK_ACTION);
         getRootPane().getActionMap().put(OK_ACTION, new AbstractAction() {
+            @Serial
             private static final long serialVersionUID = -1060468627937876090L;
 
             @Override
@@ -130,7 +130,7 @@ public class BotConfigTargetHexDialog extends AbstractButtonDialog {
             listLabel.setEnabled(false);
             coordsList.setEnabled(false);
         } else {
-            board.getBuildingsVector().stream().map(Building::getCoordsList).forEach(coordsListModel::addAll);
+            board.getBuildingsVector().stream().map(IBuilding::getCoordsList).forEach(coordsListModel::addAll);
         }
 
         result.add(Box.createVerticalStrut(15));

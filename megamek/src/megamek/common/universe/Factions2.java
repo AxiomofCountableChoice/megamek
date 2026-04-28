@@ -32,24 +32,30 @@
  */
 package megamek.common.universe;
 
+import java.awt.Color;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Collection;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import megamek.MMConstants;
 import megamek.client.ui.dialogs.buttonDialogs.CommonSettingsDialog;
 import megamek.common.annotations.Nullable;
-import megamek.common.jacksonadapters.ColorDeserializer;
+import megamek.common.jacksonAdapters.ColorDeserializer;
 import megamek.common.preference.PreferenceManager;
 import megamek.logging.MMLogger;
-
-import java.awt.Color;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.*;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * This class manages the unified Faction2 class that combines MHQ's Faction and the RATGenerator's FactionRecord and
@@ -99,6 +105,8 @@ public final class Factions2 {
     private static final MMLogger LOGGER = MMLogger.create(Factions2.class);
     private static Factions2 instance;
 
+    private static final String TEST_DIR = "testresources/data/universe/factions";
+
     private final Map<String, Faction2> factions = new HashMap<>();
 
     private Factions2() {
@@ -106,16 +114,20 @@ public final class Factions2 {
     }
 
     public static synchronized Factions2 getInstance() {
+        return getInstance(false);
+    }
+
+    public static synchronized Factions2 getInstance(boolean useTestDirectory) {
         if (instance == null) {
-            instance = new Factions2();
+            instance = useTestDirectory ? new Factions2(TEST_DIR) : new Factions2();
         }
 
         return instance;
     }
 
     /**
-     * This constructor is intended for unit testing only and will load factions *only* from the provided path. The
-     * path is used as it is.
+     * This constructor is intended for unit testing only and will load factions *only* from the provided path. The path
+     * is used as it is.
      *
      * @param factionsDataPath The path to load factions data from
      */
@@ -134,6 +146,7 @@ public final class Factions2 {
 
     /**
      * @param factionCode The faction's key such as LA, HL, CGS or LA.DG
+     *
      * @return The faction for the given faction code, if any.
      */
     public Optional<Faction2> getFaction(@Nullable String factionCode) {
@@ -154,7 +167,7 @@ public final class Factions2 {
             loadFactionsFromDirectory(new File(userDir, MMConstants.FACTIONS_DIR).toString(), mapper);
             loadFactionsFromDirectory(new File(userDir, MMConstants.COMMANDS_DIR).toString(), mapper);
         }
-        LOGGER.info(String.format("Loaded a total of %d factions and commands", factions.size()));
+        LOGGER.info("Loaded a total of {} factions and commands", factions.size());
     }
 
     /**
@@ -178,8 +191,7 @@ public final class Factions2 {
         Objects.requireNonNull(factionsPath);
         File dir = new File(factionsPath);
         if (!dir.isDirectory()) {
-            LOGGER.warn(
-                  "Cannot load factions from %s (directory not present or not a directory)".formatted(factionsPath));
+            LOGGER.warn("Cannot load factions from {} (directory not present or not a directory)", factionsPath);
             return;
         }
 
@@ -188,7 +200,7 @@ public final class Factions2 {
                 loadFaction(fis, mapper);
             } catch (Exception ex) {
                 // Ignore this file then
-                LOGGER.error("Exception trying to parse %s - ignoring.".formatted(factionFile), ex);
+                LOGGER.error(ex, "Exception trying to parse {} - ignoring.", factionFile);
             }
         }
 
@@ -203,13 +215,12 @@ public final class Factions2 {
                             loadFaction(inputStream, mapper);
                         } catch (Exception ex) {
                             // Ignore this file then
-                            LOGGER.error(
-                                  "Exception trying to parse zip entry %s - ignoring.".formatted(entry.getName()), ex);
+                            LOGGER.error(ex, "Exception trying to parse zip entry {} - ignoring.", entry.getName());
                         }
                     }
                 }
             } catch (Exception ex) {
-                LOGGER.error(String.format("Exception trying to read the zip file %s - ignoring.", factionZipFile), ex);
+                LOGGER.error(ex, "Exception trying to read the zip file {} - ignoring.", factionZipFile);
             }
         }
     }
