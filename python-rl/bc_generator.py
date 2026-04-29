@@ -6,34 +6,40 @@ import threading
 import torch
 import glob
 import random
-import time
+import numpy as np
+import concurrent.futures
 
 from env import MegaMekEnvironment
 
 # Set up relative bounds for meks
-MEKFILES_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek", "data", "mekfiles", "meks"))
+MEKFILES_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "mm-data", "data", "mekfiles", "meks"))
 
 def get_random_meks(all_meks, num=1):
     if not all_meks:
         return ""
     return ",".join(random.choices(all_meks, k=num))
 
-def run_megamek_episode(all_meks):
-    p1_meks = get_random_meks(all_meks, num=2)
-    p2_meks = get_random_meks(all_meks, num=2)
+def run_megamek_episode(all_meks, server_port):
+    p1_meks = get_random_meks(all_meks, num=4)
+    p2_meks = get_random_meks(all_meks, num=4)
     
-    print(f"[bc_generator] Starting Episode with Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
+    print(f"[bc_generator] Starting Episode on Port {server_port} | Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
     
     cmd = [
-        "build/install/MegaMek/bin/MegaMek", 
+        "build/install/MegaMek/bin/megamek", 
         "-rlexport", "-autogen", "-randomMap", 
         "-p1meks", p1_meks, 
         "-p2meks", p2_meks
     ]
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
     
+    # Isolate log4j files so multiple parallel instances don't throw NoSuchFileException
+    env = os.environ.copy()
+    env["MEGAMEK_OPTS"] = f"-DlogPath=logs/server_{server_port}"
+    env["RL_SERVER_PORT"] = str(server_port)
+    
     # Launch subprocess. Wait for it to boot.
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     
     # Start a thread to stream server output to python stdout
     import threading
@@ -74,7 +80,6 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
             if payload.get("context") == "TOPOLOGY":
                 nodes = payload.get("hex_nodes", [])
                 edges = payload.get("hex_edges", [])
-                import numpy as np
                 if nodes:
                     env.static_hex_features = torch.tensor(nodes, dtype=torch.float32)
                 else:
@@ -112,22 +117,24 @@ if __name__ == "__main__":
     
     print("Pre-fetching all valid MTF Mek files...")
     all_mtf_files = glob.glob(os.path.join(MEKFILES_ROOT, "**", "*.mtf"), recursive=True)
-    all_meks = [os.path.relpath(f, MEKFILES_ROOT) for f in all_mtf_files]
+    all_meks = [os.path.abspath(f) for f in all_mtf_files]
     print(f"Loaded {len(all_meks)} available mechs for procedural generation.")
     
     device = torch.device('cpu') # Always accumulate Dataset on CPU!
     print(f"Using compute device: {device} to avoid VRAM exhaustion")
     
     master_dataset = []
+    dataset_lock = threading.Lock()
     
-    for ep in range(args.episodes):
+    def run_single_episode(ep_idx, server_port):
         print(f"\n=======================")
-        print(f"Initiating Episode {ep+1}/{args.episodes}")
+        print(f"Initiating Episode {ep_idx+1}/{args.episodes} on port {server_port}")
         
-        proc = run_megamek_episode(all_meks)
+        proc = run_megamek_episode(all_meks, server_port)
         
-        t1 = threading.Thread(target=collect_trajectories, args=(8001, args.episodes, master_dataset))
-        t2 = threading.Thread(target=collect_trajectories, args=(8002, args.episodes, master_dataset))
+        local_dataset = []
+        t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset))
+        t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset))
         
         t1.start()
         t2.start()
@@ -136,13 +143,25 @@ if __name__ == "__main__":
             t1.join(timeout=180) # 3 min max
             t2.join(timeout=180)
         finally:
-            print("[bc_generator] Terminating Headless Server...")
+            print(f"[bc_generator] Terminating Headless Server on port {server_port}...")
             proc.terminate()
             proc.wait(timeout=5)
             if proc.poll() is None:
                 proc.kill()
         
-        print(f"Episode {ep+1} complete. Total Trajectories so far: {len(master_dataset)}")
+        with dataset_lock:
+            master_dataset.extend(local_dataset)
+            print(f"Episode {ep_idx+1} complete. Total Trajectories so far: {len(master_dataset)}")
+            
+    # Run in parallel using ThreadPoolExecutor
+    max_workers = min(args.episodes, 4) # cap at 4 parallel matches
+    base_port = 2346
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = []
+        for ep in range(args.episodes):
+            futures.append(executor.submit(run_single_episode, ep, base_port + ep))
+        concurrent.futures.wait(futures)
     
     # Save dataset natively
     if master_dataset:

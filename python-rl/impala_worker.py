@@ -15,19 +15,19 @@ class ImpalaWorker:
     def __init__(self, agent, host='localhost', port=4000, device='cpu'):
         self.agent = agent
         self.device = device
-        self.env = MegaMekEnvironment(port=port)
+        self.env = MegaMekEnvironment(port=port, device=self.device)
         self.optimizer = Adam(self.agent.parameters(), lr=1e-4)
         
     def collect_trajectory(self, max_steps=50):
         trajectory = []
-        state_graph, mask = self.env.reset(device=self.device)
+        state_graph, mask = self.env.reset()
         self.agent.eval()
         
         step_idx = 0
         while not getattr(self.env, "done", False) and step_idx < max_steps:
             if state_graph is None or 'action' not in state_graph.node_types or state_graph['action'].x is None or state_graph['action'].x.size(0) == 0:
                 action_dict = {"selected_path_index": -1}
-                state_graph, mask, done = self.env.step(action_dict, device=self.device)
+                state_graph, mask, done = self.env.step(action_dict)
                 if done: break
                 continue
 
@@ -45,7 +45,7 @@ class ImpalaWorker:
                     "mu_log_prob": log_prob.item()
                 })
                 
-            state_graph, mask, done = self.env.step(action_dict, device=self.device)
+            state_graph, mask, done = self.env.step(action_dict)
             if done: break
             step_idx += 1
             

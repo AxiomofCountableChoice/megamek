@@ -17,7 +17,11 @@ DEFAULT_METADATA = (
         ('hex', 'hexAdj_5', 'hex'),
         ('unit', 'occupies', 'hex'),
         ('weapon', 'equips', 'unit'),
-        ('unit', 'moveTypeTMM', 'hex'),
+        ('unit', 'moveTypeTMM_0', 'hex'),
+        ('unit', 'moveTypeTMM_1', 'hex'),
+        ('unit', 'moveTypeTMM_2', 'hex'),
+        ('unit', 'moveTypeTMM_3', 'hex'),
+        ('unit', 'moveTypeTMM_4', 'hex'),
         ('unit', 'movementThreat', 'hex'),
         ('unit', 'LOSThreat', 'hex'),
         ('unit', 'LOSTarget', 'unit'),
@@ -30,10 +34,13 @@ class MegaMekHGTEncoder(nn.Module):
     Heterogeneous Graph Transformer (HGT) Encoder defined in ARCHITECTURE.md (Section 3a & 3b).
     Takes a PyG HeteroData object (topology + deltas) and yields a global latent state z.
     """
-    def __init__(self, hidden_dim=128, metadata=DEFAULT_METADATA):
+    def __init__(self, hidden_dim=128, metadata=DEFAULT_METADATA, feature_dims=None):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.metadata = metadata
+        
+        if feature_dims is None:
+            feature_dims = {'hex': 14, 'unit': 37, 'weapon': 10}
 
         # 1. Node Linear Embeddings
         # Assumes input features for hexes and units are projected into a shared latent space.
@@ -41,9 +48,9 @@ class MegaMekHGTEncoder(nn.Module):
         # so 'action' nodes and their projection are decoupled from this network.
         # Using LazyLinear (-1) or predefined sizes. HGTConv natively expects projection first.
         self.node_proj = nn.ModuleDict({
-            'hex': nn.Linear(14, hidden_dim),
-            'unit': nn.Linear(36, hidden_dim), 
-            'weapon': nn.Linear(10, hidden_dim)
+            'hex': nn.Linear(feature_dims.get('hex', 14), hidden_dim),
+            'unit': nn.Linear(feature_dims.get('unit', 37), hidden_dim), 
+            'weapon': nn.Linear(feature_dims.get('weapon', 10), hidden_dim)
         })
         
         # 2. HGT Layers (Edge-Type Specific Message Formulation)

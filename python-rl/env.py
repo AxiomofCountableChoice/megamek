@@ -5,13 +5,7 @@ import time
 import torch
 import numpy as np
 
-# We conditionally import torch_geometric so it doesn't crash if not installed yet.
-try:
-    from torch_geometric.data import HeteroData
-    HAS_PYG = True
-except ImportError:
-    HAS_PYG = False
-    print("Warning: torch_geometric not found. Please install PyTorch Geometric for full functionality.")
+from torch_geometric.data import HeteroData
 
 class MegaMekEnvironment:
     """
@@ -19,21 +13,30 @@ class MegaMekEnvironment:
     It synchronously maintains a connection and parses MessagePack state payloads
     into PyTorch Geometric HeteroData objects.
     """
-    def __init__(self, host='localhost', port=12346):
+    def __init__(self, host='localhost', port=12346, device=None):
         self.host = host
         self.port = port
         self.sock = None
         self._connected = False
-        
+        self.device = device
+        self._max_attempts = 50
         # Static Topology Cache
         # Populated once per game match to prevent redundant IPC overhead
         self.static_hex_features = None 
         self.static_hex_adjacency_edges = None
+        
+        # Connect immediately
+        self.connect()
 
     def connect(self):
+        if self._connected:
+            return
+
+        # If not already connected proceed to connect 
         print(f"Connecting to MegaMek RLServer at {self.host}:{self.port}...")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        while True:
+        attempt = 0
+        while attempt < self._max_attempts:
             try:
                 self.sock.connect((self.host, self.port))
                 self._connected = True
@@ -42,11 +45,14 @@ class MegaMekEnvironment:
             except ConnectionRefusedError:
                 print("Waiting for MegaMek server to start...")
                 time.sleep(2)
+            attempt += 1
+        if attempt == self._max_attempts:
+            raise ConnectionError("Failed to connect to MegaMek server.")
                 
-    def reset(self, device=None):
+    def reset(self):
         """
         Wait for the next match state payload and return the initial state.
-        If device is provided (e.g. 'cuda:0' or a torch.device object), moves the parsed HeteroData graph and its tensors to this device.
+        If self.device is provided (e.g. 'cuda:0' or a torch.device object), moves the parsed HeteroData graph and its tensors to this device.
         """
         if not self._connected:
             self.connect()
@@ -58,23 +64,22 @@ class MegaMekEnvironment:
             
         if payload.get("context") == "TOPOLOGY":
             self.board_width = payload.get('width', 0)
+            self.feature_dims = payload.get('feature_dims', {"hex": 14, "unit": 37, "weapon": 10})
             print(f"Received TOPOLOGY payload. Parsing Board shape ({payload.get('width')}x{payload.get('height')})...")
-            if HAS_PYG:
-                nodes = payload.get("hex_nodes", [])
-                edges = payload.get("hex_edges", [])
+            nodes = payload.get("hex_nodes", [])
+            edges = payload.get("hex_edges", [])
+            
+            if nodes:
+                t = torch.tensor(nodes, dtype=torch.float32)
+                self.static_hex_features = t
+            else:
+                self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
                 
-                if nodes:
-                    t = torch.tensor(nodes, dtype=torch.float32)
-                    self.static_hex_features = t
-                else:
-                    self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
-                    
-                if edges:
-                    import numpy as np
-                    edge_array = np.array(edges, dtype=np.int64)
-                    self.static_hex_adjacency_edges = edge_array
-                else:
-                    self.static_hex_adjacency_edges = None
+            if edges:
+                edge_array = np.array(edges, dtype=np.int64)
+                self.static_hex_adjacency_edges = edge_array
+            else:
+                self.static_hex_adjacency_edges = None
                     
             print("Topology cached. Awaiting actual initial state...")
             payload = self._receive_payload()
@@ -82,17 +87,18 @@ class MegaMekEnvironment:
                  raise ConnectionError("Server disconnected while waiting for STATE.")
                     
         data_graph, mask = self._parse_to_heterodata(payload)
-        if device is not None and HAS_PYG:
-            data_graph = data_graph.to(device)
-            self.static_hex_features = self.static_hex_features.to(device)
-            self.static_hex_adjacency_edges = self.static_hex_adjacency_edges.to(device)
+        if self.device is not None:
+            data_graph = data_graph.to(self.device)
+            self.static_hex_features = self.static_hex_features.to(self.device)
+            if self.static_hex_adjacency_edges is not None:
+                self.static_hex_adjacency_edges = self.static_hex_adjacency_edges.to(self.device)
             
         return data_graph, mask
 
-    def step(self, action_dict, device=None):
+    def step(self, action_dict):
         """
         Submit an action dict (e.g. {"selected_path_index": 0}) and await the next state.
-        Optional device parameter dynamically shifts the next payload onto GPU natively.
+        Dynamically shifts the next payload onto self.device natively if set.
         """
         res_bytes = msgpack.packb(action_dict, use_bin_type=True)
         self.sock.sendall(struct.pack('>I', len(res_bytes)))
@@ -105,8 +111,8 @@ class MegaMekEnvironment:
             return None, None, True 
             
         state, mask = self._parse_to_heterodata(payload)
-        if device is not None and HAS_PYG and state is not None:
-            state = state.to(device)
+        if (self.device is not None) and (state is not None):
+            state = state.to(self.device)
             
         # Using dummy reward/done for now
         return state, mask, False
@@ -139,10 +145,6 @@ class MegaMekEnvironment:
         mask_raw = payload.get("mask", {})
         mask = mask_raw if isinstance(mask_raw, dict) else {}
         
-        if not HAS_PYG:
-            # Fallback for compilation testing before library installs
-            return {"raw_state": raw_state, "context": context}, mask
-            
         data = HeteroData()
         
         # 1. Global Phase Features ($p \rightarrow z_{context}$)
@@ -154,52 +156,40 @@ class MegaMekEnvironment:
         
         # 2. Dynamic Entity Nodes ($V_U$)
         raw_entities = raw_state.get("entities", [])
+        unit_dim = getattr(self, 'feature_dims', {}).get("unit", 37)
         if raw_entities:
             t = torch.tensor(raw_entities, dtype=torch.float32)
-            pad = torch.zeros((t.size(0), 36 - t.size(1)), dtype=torch.float32)
+            pad = torch.zeros((t.size(0), unit_dim - t.size(1)), dtype=torch.float32)
             data['unit'].x = torch.cat([t, pad], dim=1)
         else:
-            # Padded to 36 covariates based on ARCHITECTURE.md specifications
-            data['unit'].x = torch.empty((0, 36), dtype=torch.float32)
+            data['unit'].x = torch.empty((0, unit_dim), dtype=torch.float32)
         
         # 3. Static Hex/Topology Cache ($V_H$ and $E_{adj}$)
         if self.static_hex_features is not None:
-            t = self.static_hex_features
-            if t.size(0) > 0:
-                pad = torch.zeros((t.size(0), 14 - t.size(1)), dtype=torch.float32)
-                data['hex'].x = torch.cat([t, pad], dim=1)
-            else:
-                data['hex'].x = torch.empty((0, 14), dtype=torch.float32)
+            data['hex'].x = self.static_hex_features
+        else:
+            hex_dim = getattr(self, 'feature_dims', {}).get("hex", 14)
+            data['hex'].x = torch.empty((0, hex_dim), dtype=torch.float32)
         
         if self.static_hex_adjacency_edges is not None:
             edge_arr = self.static_hex_adjacency_edges
-            if len(edge_arr.shape) > 1 and edge_arr.shape[1] == 3:
-                for dir_idx in range(6):
-                    dir_mask = edge_arr[:, 2] == dir_idx
-                    if dir_mask.any():
-                        data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.tensor(edge_arr[dir_mask, :2].T, dtype=torch.long)
-                    else:
-                        data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
-            else:
-                # Legacy, fallback to undirected edge mapping for index 0
-                edge_t = torch.tensor(edge_arr.T, dtype=torch.long) if len(edge_arr.shape) > 1 else torch.empty((2,0), dtype=torch.long)
-                data['hex', 'hexAdj_0', 'hex'].edge_index = edge_t
-                for dir_idx in range(1, 6):
-                    data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
+            for dir_idx in range(6):
+                dir_mask = edge_arr[:, 2] == dir_idx
+                data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = edge_arr[dir_mask, :2].T.detach().clone().to(torch.long)
         else:
             for dir_idx in range(6):
                 data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
             
-        # 3.5 Weapon Nodes ($V_W$)
-        weapons = raw_state.get("weapons", [])
-        if weapons:
-            data['weapon'].x = torch.tensor(weapons, dtype=torch.float32)
+        # 4. Weapon Nodes ($V_W$)
+        raw_weapons = raw_state.get("weapons", [])
+        weapon_dim = getattr(self, 'feature_dims', {}).get("weapon", 10)
+        if raw_weapons:
+            data['weapon'].x = torch.tensor(raw_weapons, dtype=torch.float32)
         else:
-            data['weapon'].x = torch.empty((0, 10), dtype=torch.float32)
+            data['weapon'].x = torch.empty((0, weapon_dim), dtype=torch.float32)
             
         equips = raw_state.get("equips_edges", [])
         if equips:
-            import numpy as np
             e_arr = np.array(equips, dtype=np.int64).T
             data['weapon', 'equips', 'unit'].edge_index = torch.tensor(e_arr, dtype=torch.long)
         else:
@@ -226,7 +216,6 @@ class MegaMekEnvironment:
         def add_ephemeral_edges(key, src, dst, out_type):
             edges = raw_state.get(key, [])
             if edges:
-                import numpy as np
                 e_arr = np.array(edges, dtype=np.int64).T
                 data[src, out_type, dst].edge_index = torch.tensor(e_arr, dtype=torch.long)
             else:
@@ -236,6 +225,8 @@ class MegaMekEnvironment:
         add_ephemeral_edges("los_threat_edges", "unit", "hex", "LOSThreat")
         add_ephemeral_edges("partial_cover_edges", "unit", "hex", "partialCover")
         add_ephemeral_edges("movement_threat_edges", "unit", "hex", "movementThreat")
+        for tmm in range(5):
+            add_ephemeral_edges(f"move_type_tmm_{tmm}_edges", "unit", "hex", f"moveTypeTMM_{tmm}")
 
         # 5. Dynamic Action Nodes ($V_A$) for Autoregressive Trees
         valid_paths = mask.get("valid_paths", [])
@@ -323,6 +314,119 @@ class MegaMekEnvironment:
                 data['action'].step_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
+                
+        elif "valid_twists" in mask and context == "WEAPON_BC":
+            valid_twists = mask.get("valid_twists", [])
+            target_action = payload.get("target_action", {})
+            chosen_attacks = target_action.get("attacks", [])
+            chosen_twist = target_action.get("torso_twist", 0) # Default to 0
+            
+            action_features = []
+            action_target_hex_idx = []
+            action_source_unit_idx = []
+            action_type_flags = [] # 0: Twist, 1: Target, 2: Weapon, 3: END
+            action_twist_context = [] # Store which twist this node belongs to
+            
+            # Action nodes:
+            # 1. Torso Twist Nodes (always 3: -1, 0, 1)
+            # 2. Target nodes (tied to a twist)
+            # 3. Weapon nodes (tied to a target and twist)
+            # 4. END node
+            
+            twist_values = [-1, 0, 1]
+            twist_node_indices = {}
+            for tv in twist_values:
+                twist_node_indices[tv] = len(action_features)
+                action_features.append([tv, 0.0, 0.0]) # Torso Twist Feature
+                action_target_hex_idx.append(-1)
+                action_source_unit_idx.append(-1)
+                action_type_flags.append(0)
+                action_twist_context.append(tv)
+            
+            for twist_mask in valid_twists:
+                tv = twist_mask.get("twist", 0)
+                valid_targets = twist_mask.get("valid_targets", [])
+                
+                for tm in valid_targets:
+                    target_entity_index = tm.get("target_entity_index", -1)
+                    
+                    # Append Target Node
+                    action_features.append([1.0, 0.0, 0.0]) # Target Feature
+                    action_target_hex_idx.append(-1)
+                    action_source_unit_idx.append(target_entity_index)
+                    action_type_flags.append(1)
+                    action_twist_context.append(tv)
+                    
+                    valid_weapons = tm.get("valid_weapons", [])
+                    for wm in valid_weapons:
+                        weapon_id = wm.get("weapon_id", -1)
+                        to_hit = float(wm.get("to_hit", 0.0))
+                        
+                        # Append Weapon Node
+                        action_features.append([0.0, 1.0, to_hit]) # Weapon Feature
+                        action_target_hex_idx.append(-1)
+                        action_source_unit_idx.append(weapon_id)
+                        action_type_flags.append(2)
+                        action_twist_context.append(tv)
+                    
+            # Append END node
+            end_node_idx = len(action_features)
+            action_features.append([0.0, 0.0, 1.0]) # END Feature
+            action_target_hex_idx.append(-1)
+            action_source_unit_idx.append(-1)
+            action_type_flags.append(3)
+            action_twist_context.append(-99) # End applies everywhere
+            
+            # Map chosen attacks to node sequence
+            true_sequence_indices = []
+            if target_action: # Only build sequence if we have ground truth
+                # Step 0: Torso Twist
+                true_sequence_indices.append(twist_node_indices.get(chosen_twist, twist_node_indices[0]))
+                
+                if chosen_attacks:
+                    # Group by target
+                    target_to_weapons = {}
+                    for att in chosen_attacks:
+                        t_idx = att.get("target_entity_index", -1)
+                        w_id = att.get("weapon_id", -1)
+                        if t_idx not in target_to_weapons:
+                            target_to_weapons[t_idx] = []
+                        target_to_weapons[t_idx].append(w_id)
+                    
+                    # Reconstruct sequence Target -> W1 -> W2 -> Target -> W3 -> END
+                    for t_idx, w_ids in target_to_weapons.items():
+                        # Find Target Node Index in the correct twist context
+                        try:
+                            t_node_idx = next(i for i, (type_flag, src_idx, ctx) in enumerate(zip(action_type_flags, action_source_unit_idx, action_twist_context)) 
+                                            if type_flag == 1 and src_idx == t_idx and ctx == chosen_twist)
+                            true_sequence_indices.append(t_node_idx)
+                            
+                            # Find Weapon Node Indices in the correct twist context
+                            for w_id in w_ids:
+                                w_node_idx = next(i for i, (type_flag, src_idx, ctx) in enumerate(zip(action_type_flags, action_source_unit_idx, action_twist_context)) 
+                                                if type_flag == 2 and src_idx == w_id and ctx == chosen_twist)
+                                true_sequence_indices.append(w_node_idx)
+                        except StopIteration:
+                            continue
+                
+                # END node is always the last action
+                true_sequence_indices.append(end_node_idx)
+            
+            if action_features:
+                data['action'].x = torch.tensor(action_features, dtype=torch.float32)
+                # Step indices don't make sense statically here because it's variable length
+                data['action'].step_idx = torch.zeros((len(action_features),), dtype=torch.long)
+                data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
+                data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)
+                
+                if true_sequence_indices and target_action: # Only append y_sequence if we have a teacher action
+                    data.y_sequence = torch.tensor(true_sequence_indices, dtype=torch.long)
+            else:
+                data['action'].x = torch.empty((0, 3), dtype=torch.float32)
+                data['action'].step_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
+
         else:
             data['action'].x = torch.empty((0, 3), dtype=torch.float32)
             data['action'].step_idx = torch.empty((0,), dtype=torch.long)

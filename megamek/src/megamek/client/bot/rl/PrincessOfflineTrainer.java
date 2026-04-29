@@ -23,7 +23,7 @@ import java.io.File;
 import megamek.common.commandLine.AbstractCommandLineParser;
 import megamek.common.commandLine.ClientServerCommandLineParser;
 import megamek.client.HeadlessClient;
-import megamek.common.preference.PreferenceManager;
+
 import megamek.logging.MMLogger;
 import megamek.server.Server;
 import megamek.server.totalWarfare.TWGameManager;
@@ -63,9 +63,16 @@ public class PrincessOfflineTrainer {
             logger.error("Incorrect arguments:" + e.getMessage() + '\n' + parser.help());
         }
 
+        int port = megamek.common.preference.PreferenceManager.getClientPreferences().getLastServerPort();
+        System.out.println("DEBUG: RL_SERVER_PORT env var is: " + System.getenv("RL_SERVER_PORT"));
+        if (System.getenv("RL_SERVER_PORT") != null) {
+            port = Integer.parseInt(System.getenv("RL_SERVER_PORT"));
+        }
+        System.out.println("DEBUG: Chosen server port is: " + port);
+
         ClientServerCommandLineParser.Resolver resolver = parser.getResolver(
                 null,
-                PreferenceManager.getClientPreferences().getLastServerPort(),
+                port,
                 null, null);
 
         // kick off a RNG check
@@ -99,8 +106,8 @@ public class PrincessOfflineTrainer {
         Princess p1 = null;
         Princess p2 = null;
         try {
-            p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, 8001);
-            p2 = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, 8002);
+            p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, resolver.port + 1000);
+            p2 = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
             
             p1.connect();
             p2.connect();

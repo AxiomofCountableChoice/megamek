@@ -105,47 +105,6 @@ public class RLBotClient extends BotClient {
         return null;
     }
 
-    private List<RLActionMask.RLTargetMask> buildFiringMask(Entity shooter) {
-        List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
-        
-        for (Entity target : game.getEntitiesVector()) {
-            if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) {
-                continue;
-            }
-            
-            List<RLActionMask.RLWeaponMask> validWeapons = new ArrayList<>();
-            for (megamek.common.equipment.WeaponMounted wm : shooter.getWeaponList()) {
-                if (!wm.canFire() || (wm.getLinkedAmmo() != null && wm.getLinkedAmmo().getUsableShotsLeft() == 0)) {
-                    continue;
-                }
-
-                // Leverage the game's actual attack resolution engine
-                megamek.common.ToHitData toHit = megamek.common.actions.WeaponAttackAction.toHit(
-                        game, shooter.getId(), target, shooter.getEquipmentNum(wm), false);
-                
-                if (toHit.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE 
-                        && toHit.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
-                    
-                    RLActionMask.RLWeaponMask wData = new RLActionMask.RLWeaponMask();
-                    wData.weapon_id = shooter.getEquipmentNum(wm);
-                    wData.weapon_name = wm.getName();
-                    wData.to_hit = toHit.getValue();
-                    validWeapons.add(wData);
-                }
-            }
-            
-            if (!validWeapons.isEmpty()) {
-                RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
-                int targetIndex = game.getEntitiesVector().indexOf(target);
-                tm.target_entity_index = targetIndex;
-                tm.valid_weapons = validWeapons;
-                targetsMask.add(tm);
-            }
-        }
-        
-        return targetsMask;
-    }
-
     @Override
     protected void calculateFiringTurn() {
         Entity shooter = game.getFirstEntity(getMyTurn());
@@ -156,7 +115,7 @@ public class RLBotClient extends BotClient {
 
         RLActionMask maskData = new RLActionMask();
         maskData.active_entity = shooter.getId();
-        maskData.valid_targets = buildFiringMask(shooter);
+        maskData.valid_twists = dataPipeline.buildFiringMask(shooter);
 
         RLActionResponse response = dataPipeline.queryPython("FIRING", maskData, RLActionResponse.class);
 

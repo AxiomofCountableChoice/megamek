@@ -52,14 +52,23 @@ public class RLDataCollectionPrincess extends Princess {
     }
 
     @Override
-    protected void calculateDeployment() {
-        megamek.common.game.GameTurn myTurn = getGame().getTurnForPlayer(getLocalPlayer().getId());
-        if (myTurn == null) {
-            sendDone(true);
-            return;
+    public void sendAttackData(int aen, java.util.Vector<megamek.common.actions.EntityAction> attacks) {
+        if (getGame().getPhase() == megamek.common.enums.GamePhase.FIRING) {
+             Entity shooter = getGame().getEntity(aen);
+             if (shooter != null && dataPipeline.isConnected()) {
+                 int chosenTwist = 0;
+                 for (megamek.common.actions.EntityAction ea : attacks) {
+                     if (ea instanceof megamek.common.actions.TorsoTwistAction) {
+                         megamek.common.actions.TorsoTwistAction tta = (megamek.common.actions.TorsoTwistAction) ea;
+                         int diff = tta.getFacing() - shooter.getFacing();
+                         if (diff > 3) diff -= 6;
+                         if (diff < -3) diff += 6;
+                         chosenTwist = diff;
+                     }
+                 }
+                 dataPipeline.sendWeaponBehavioralCloningTrajectory(shooter, attacks, chosenTwist);
+             }
         }
-
-        super.calculateDeployment();
+        super.sendAttackData(aen, attacks);
     }
-    
 }

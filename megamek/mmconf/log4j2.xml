@@ -7,8 +7,8 @@
 
     <Appenders>
         <RollingFile name="UnifiedLog"
-                     fileName="logs/unified_log.log"
-                     filePattern="logs/unified_log_%i.log.gz"
+                     fileName="${sys:logPath:-logs}/unified_log.log"
+                     filePattern="${sys:logPath:-logs}/unified_log_%i.log.gz"
                      append="true"
                      bufferedIO="false">
             <PatternLayout pattern="${layout}" />
@@ -18,15 +18,15 @@
             </Policies>
 
             <DefaultRolloverStrategy max="10">
-                <Delete basePath="logs" maxDepth="1">
+                <Delete basePath="${sys:logPath:-logs}" maxDepth="1">
                     <IfFileName regex="(unified_log|bot_path_ranker)_\d+\.log(\.gz)?$" />
                     <IfAccumulatedFileSize exceeds="15MB" />
                 </Delete>
             </DefaultRolloverStrategy>
         </RollingFile>
         <RollingFile name="BotLog"
-                     fileName="logs/bot_path_ranker.log"
-                     filePattern="logs/bot_path_ranker_%i.log.gz"
+                     fileName="${sys:logPath:-logs}/bot_path_ranker.log"
+                     filePattern="${sys:logPath:-logs}/bot_path_ranker_%i.log.gz"
                      append="true"
                      bufferedIO="false">
             <PatternLayout pattern="${tsvLayout}" />
@@ -36,19 +36,19 @@
             </Policies>
 
             <DefaultRolloverStrategy max="5">
-                <Delete basePath="logs" maxDepth="1">
+                <Delete basePath="${sys:logPath:-logs}" maxDepth="1">
                     <IfFileName regex="(unified_log|bot_path_ranker)_\d+\.log(\.gz)?$" />
                     <IfAccumulatedFileSize exceeds="15MB" />
                 </Delete>
             </DefaultRolloverStrategy>
         </RollingFile>
-        <File name="MegaMekLog" fileName="logs/megamek.log" append="false">
+        <File name="MegaMekLog" fileName="${sys:logPath:-logs}/megamek.log" append="false">
             <PatternLayout pattern="${layout}" />
         </File>
-        <File name="MegaMekLabLog" fileName="logs/megameklab.log" append="false">
+        <File name="MegaMekLabLog" fileName="${sys:logPath:-logs}/megameklab.log" append="false">
             <PatternLayout pattern="${layout}" />
         </File>
-        <File name="MekHQLog" fileName="logs/mekhq.log" append="false">
+        <File name="MekHQLog" fileName="${sys:logPath:-logs}/mekhq.log" append="false">
             <PatternLayout pattern="${layout}" />
         </File>
         <Console name="dev">
