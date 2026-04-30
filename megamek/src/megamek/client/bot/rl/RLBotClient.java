@@ -22,7 +22,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Vector;
 import java.util.List;
-import java.util.ArrayList;
+
 
 import megamek.client.bot.BotClient;
 import megamek.client.bot.PhysicalOption;
@@ -137,66 +137,6 @@ public class RLBotClient extends BotClient {
         sendDone(true);
     }
 
-    private List<RLActionMask.RLTargetMask> buildPhysicalMask(Entity shooter) {
-        List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
-        
-        for (Entity target : game.getEntitiesVector()) {
-            if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) continue;
-            
-            List<RLActionMask.RLPhysicalMask> validAttacks = new ArrayList<>();
-            
-            // Try PUNCH
-            for (int i = 0; i < 2; i++) {
-                int arm = (i == 0) ? megamek.common.actions.PunchAttackAction.LEFT : megamek.common.actions.PunchAttackAction.RIGHT;
-                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.PUNCH_LEFT : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
-                
-                megamek.common.ToHitData th = megamek.common.actions.PunchAttackAction.toHit(
-                        game, shooter.getId(), target, arm, false);
-                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
-                    RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
-                    att.action_type = poType;
-                    att.name = (i==0) ? "PUNCH_LEFT" : "PUNCH_RIGHT";
-                    att.to_hit = th.getValue();
-                    validAttacks.add(att);
-                }
-            }
-            
-            // Try KICK
-            for (int i = 0; i < 2; i++) {
-                int leg = (i == 0) ? megamek.common.actions.KickAttackAction.LEFT : megamek.common.actions.KickAttackAction.RIGHT;
-                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.KICK_LEFT : megamek.client.bot.PhysicalOption.KICK_RIGHT;
-                
-                megamek.common.ToHitData th = megamek.common.actions.KickAttackAction.toHit(
-                        game, shooter.getId(), target, leg);
-                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
-                    RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
-                    att.action_type = poType;
-                    att.name = (i==0) ? "KICK_LEFT" : "KICK_RIGHT";
-                    att.to_hit = th.getValue();
-                    validAttacks.add(att);
-                }
-            }
-            
-            // Try PUSH
-            megamek.common.ToHitData pushTh = megamek.common.actions.PushAttackAction.toHit(game, shooter.getId(), target);
-            if (pushTh.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && pushTh.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
-                RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
-                att.action_type = megamek.client.bot.PhysicalOption.PUSH_ATTACK;
-                att.name = "PUSH";
-                att.to_hit = pushTh.getValue();
-                validAttacks.add(att);
-            }
-            
-            if (!validAttacks.isEmpty()) {
-                RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
-                tm.target_entity_id = target.getId();
-                tm.valid_attacks = validAttacks;
-                targetsMask.add(tm);
-            }
-        }
-        return targetsMask;
-    }
-
     @Override
     protected PhysicalOption calculatePhysicalTurn() {
         Entity shooter = game.getFirstEntity(getMyTurn());
@@ -206,7 +146,7 @@ public class RLBotClient extends BotClient {
 
         RLActionMask maskData = new RLActionMask();
         maskData.active_entity = shooter.getId();
-        maskData.valid_targets = buildPhysicalMask(shooter);
+        maskData.valid_targets = dataPipeline.buildPhysicalMask(shooter);
 
         RLActionResponse response = dataPipeline.queryPython("PHYSICAL", maskData, RLActionResponse.class);
         

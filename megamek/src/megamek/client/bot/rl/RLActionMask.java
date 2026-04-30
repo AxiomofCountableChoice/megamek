@@ -68,5 +68,6 @@ public class RLActionMask {
     public static class RLAttack {
         public Integer target_entity_index;
         public Integer weapon_id;
+        public Integer physical_action_type;
     }
 }

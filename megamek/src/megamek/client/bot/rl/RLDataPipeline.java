@@ -717,4 +717,123 @@ public class RLDataPipeline {
             logger.error("RLDataPipeline: Failed to send Weapon BC trajectory", e);
         }
     }
+
+    public List<RLActionMask.RLTargetMask> buildPhysicalMask(Entity shooter) {
+        List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
+        megamek.common.game.Game game = baseClient.getGame();
+        
+        for (Entity target : game.getEntitiesVector()) {
+            if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) continue;
+            
+            List<RLActionMask.RLPhysicalMask> validAttacks = new ArrayList<>();
+            
+            // Try PUNCH
+            for (int i = 0; i < 2; i++) {
+                int arm = (i == 0) ? megamek.common.actions.PunchAttackAction.LEFT : megamek.common.actions.PunchAttackAction.RIGHT;
+                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.PUNCH_LEFT : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
+                
+                megamek.common.ToHitData th = megamek.common.actions.PunchAttackAction.toHit(
+                        game, shooter.getId(), target, arm, false);
+                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                    RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
+                    att.action_type = poType;
+                    att.name = (i==0) ? "PUNCH_LEFT" : "PUNCH_RIGHT";
+                    att.to_hit = th.getValue();
+                    validAttacks.add(att);
+                }
+            }
+            
+            // Try KICK
+            for (int i = 0; i < 2; i++) {
+                int leg = (i == 0) ? megamek.common.actions.KickAttackAction.LEFT : megamek.common.actions.KickAttackAction.RIGHT;
+                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.KICK_LEFT : megamek.client.bot.PhysicalOption.KICK_RIGHT;
+                
+                megamek.common.ToHitData th = megamek.common.actions.KickAttackAction.toHit(
+                        game, shooter.getId(), target, leg);
+                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                    RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
+                    att.action_type = poType;
+                    att.name = (i==0) ? "KICK_LEFT" : "KICK_RIGHT";
+                    att.to_hit = th.getValue();
+                    validAttacks.add(att);
+                }
+            }
+            
+            // Try PUSH
+            megamek.common.ToHitData pushTh = megamek.common.actions.PushAttackAction.toHit(game, shooter.getId(), target);
+            if (pushTh.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && pushTh.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
+                att.action_type = megamek.client.bot.PhysicalOption.PUSH_ATTACK;
+                att.name = "PUSH";
+                att.to_hit = pushTh.getValue();
+                validAttacks.add(att);
+            }
+            
+            if (!validAttacks.isEmpty()) {
+                RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
+                tm.target_entity_index = game.getEntitiesVector().indexOf(target);
+                tm.target_entity_id = target.getId();
+                tm.valid_attacks = validAttacks;
+                targetsMask.add(tm);
+            }
+        }
+        
+        return targetsMask;
+    }
+
+    public void sendPhysicalBehavioralCloningTrajectory(Entity shooter, java.util.Vector<megamek.common.actions.EntityAction> attacks) {
+        if (!isConnected())
+            return;
+            
+        ensureTopologySent();
+
+        try {
+            RLActionMask maskData = new RLActionMask();
+            int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(shooter);
+            maskData.active_entity_index = activeIndex;
+            maskData.valid_targets = buildPhysicalMask(shooter);
+            
+            RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
+            targetAction.attacks = new ArrayList<>();
+            
+            for (megamek.common.actions.EntityAction ea : attacks) {
+                if (ea instanceof megamek.common.actions.PhysicalAttackAction || ea instanceof megamek.common.actions.PushAttackAction) {
+                    megamek.common.actions.AbstractAttackAction paa = (megamek.common.actions.AbstractAttackAction) ea;
+                    Entity target = baseClient.getGame().getEntity(paa.getTargetId());
+                    
+                    if (target != null) {
+                        RLActionMask.RLAttack att = new RLActionMask.RLAttack();
+                        att.target_entity_index = baseClient.getGame().getEntitiesVector().indexOf(target);
+                        // Map physical actions back to the constants used in the mask
+                        if (paa instanceof megamek.common.actions.PunchAttackAction) {
+                            att.physical_action_type = (((megamek.common.actions.PunchAttackAction)paa).getArm() == megamek.common.actions.PunchAttackAction.LEFT) ? megamek.client.bot.PhysicalOption.PUNCH_LEFT : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
+                        } else if (paa instanceof megamek.common.actions.KickAttackAction) {
+                            att.physical_action_type = (((megamek.common.actions.KickAttackAction)paa).getLeg() == megamek.common.actions.KickAttackAction.LEFT) ? megamek.client.bot.PhysicalOption.KICK_LEFT : megamek.client.bot.PhysicalOption.KICK_RIGHT;
+                        } else if (paa instanceof megamek.common.actions.PushAttackAction) {
+                            att.physical_action_type = megamek.client.bot.PhysicalOption.PUSH_ATTACK;
+                        } else if (paa instanceof megamek.common.actions.ClubAttackAction) {
+                            att.physical_action_type = megamek.client.bot.PhysicalOption.USE_CLUB;
+                        }
+                        
+                        if (att.physical_action_type != null) {
+                            targetAction.attacks.add(att);
+                        }
+                    }
+                }
+            }
+            
+            maskData.target_action = targetAction;
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("context", "PHYSICAL_BC");
+            payload.put("state", serializeGameState());
+            payload.put("mask", maskData);
+            payload.put("target_action", targetAction);
+
+            sendPayload(payload);
+
+        } catch (Exception e) {
+            logger.error("RLDataPipeline: Failed to send Physical BC trajectory", e);
+        }
+    }
 }

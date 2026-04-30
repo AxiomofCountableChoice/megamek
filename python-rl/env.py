@@ -146,6 +146,7 @@ class MegaMekEnvironment:
         mask = mask_raw if isinstance(mask_raw, dict) else {}
         
         data = HeteroData()
+        data.context = context
         
         # 1. Global Phase Features ($p \rightarrow z_{context}$)
         phase_str = raw_state.get('phase_main', "UNKNOWN")
@@ -415,6 +416,91 @@ class MegaMekEnvironment:
             if action_features:
                 data['action'].x = torch.tensor(action_features, dtype=torch.float32)
                 # Step indices don't make sense statically here because it's variable length
+                data['action'].step_idx = torch.zeros((len(action_features),), dtype=torch.long)
+                data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
+                data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)
+                
+                if true_sequence_indices and target_action: # Only append y_sequence if we have a teacher action
+                    data.y_sequence = torch.tensor(true_sequence_indices, dtype=torch.long)
+            else:
+                data['action'].x = torch.empty((0, 3), dtype=torch.float32)
+                data['action'].step_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
+
+        elif "valid_targets" in mask and context == "PHYSICAL_BC":
+            valid_targets = mask.get("valid_targets", [])
+            target_action = payload.get("target_action", {})
+            chosen_attacks = target_action.get("attacks", [])
+            
+            action_features = []
+            action_target_hex_idx = []
+            action_source_unit_idx = []
+            action_type_flags = [] # 1: Target, 2: Physical Attack, 3: END
+            
+            # Action nodes: Target -> Physical Action -> END
+            
+            for tm in valid_targets:
+                target_entity_index = tm.get("target_entity_index", -1)
+                
+                # Append Target Node
+                action_features.append([1.0, 0.0, 0.0]) # Target Feature
+                action_target_hex_idx.append(-1)
+                action_source_unit_idx.append(target_entity_index)
+                action_type_flags.append(1)
+                
+                valid_attacks = tm.get("valid_attacks", [])
+                for am in valid_attacks:
+                    action_type = am.get("action_type", -1)
+                    to_hit = float(am.get("to_hit", 0.0))
+                    
+                    # Append Physical Action Node
+                    action_features.append([0.0, 1.0, to_hit]) # Physical Action Feature
+                    action_target_hex_idx.append(-1)
+                    action_source_unit_idx.append(action_type) # Store action type here
+                    action_type_flags.append(2)
+                    
+            # Append END node
+            end_node_idx = len(action_features)
+            action_features.append([0.0, 0.0, 1.0]) # END Feature
+            action_target_hex_idx.append(-1)
+            action_source_unit_idx.append(-1)
+            action_type_flags.append(3)
+            
+            # Map chosen attacks to node sequence
+            true_sequence_indices = []
+            if target_action: # Only build sequence if we have ground truth
+                if chosen_attacks:
+                    # Physical phase typically only allows 1 attack against 1 target, but we'll loop just in case
+                    # We will output Target -> Action -> Target -> Action -> END
+                    for att in chosen_attacks:
+                        t_idx = att.get("target_entity_index", -1)
+                        p_action = att.get("physical_action_type", -1)
+                        
+                        try:
+                            # Find Target Node
+                            t_node_idx = next(i for i, (type_flag, src_idx) in enumerate(zip(action_type_flags, action_source_unit_idx)) 
+                                            if type_flag == 1 and src_idx == t_idx)
+                            true_sequence_indices.append(t_node_idx)
+                            
+                            # Find Physical Action Node
+                            a_node_idx = next(i for i, (type_flag, src_idx) in enumerate(zip(action_type_flags, action_source_unit_idx)) 
+                                            if type_flag == 2 and src_idx == p_action)
+                            # Note: The search above might conflict if two targets have the same valid action type.
+                            # It's better to verify the target context. But for simplicity, assuming they are consecutive or we can just find the correct one by offset from t_node_idx.
+                            # Since physical actions follow their targets, let's search after t_node_idx
+                            a_node_idx_refined = next(i for i in range(t_node_idx+1, len(action_type_flags))
+                                            if action_type_flags[i] == 2 and action_source_unit_idx[i] == p_action)
+                            
+                            true_sequence_indices.append(a_node_idx_refined)
+                        except StopIteration:
+                            continue
+                            
+                # END node is always the last action
+                true_sequence_indices.append(end_node_idx)
+            
+            if action_features:
+                data['action'].x = torch.tensor(action_features, dtype=torch.float32)
                 data['action'].step_idx = torch.zeros((len(action_features),), dtype=torch.long)
                 data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
                 data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)

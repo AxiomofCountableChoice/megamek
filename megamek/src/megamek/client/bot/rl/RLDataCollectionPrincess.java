@@ -68,6 +68,11 @@ public class RLDataCollectionPrincess extends Princess {
                  }
                  dataPipeline.sendWeaponBehavioralCloningTrajectory(shooter, attacks, chosenTwist);
              }
+        } else if (getGame().getPhase() == megamek.common.enums.GamePhase.PHYSICAL) {
+             Entity shooter = getGame().getEntity(aen);
+             if (shooter != null && dataPipeline.isConnected()) {
+                 dataPipeline.sendPhysicalBehavioralCloningTrajectory(shooter, attacks);
+             }
         }
         super.sendAttackData(aen, attacks);
     }

@@ -20,8 +20,8 @@ def get_random_meks(all_meks, num=1):
     return ",".join(random.choices(all_meks, k=num))
 
 def run_megamek_episode(all_meks, server_port):
-    p1_meks = get_random_meks(all_meks, num=4)
-    p2_meks = get_random_meks(all_meks, num=4)
+    p1_meks = get_random_meks(all_meks, num=1)
+    p2_meks = get_random_meks(all_meks, num=1)
     
     print(f"[bc_generator] Starting Episode on Port {server_port} | Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
     
@@ -91,7 +91,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                     env.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
                 continue
                 
-            if payload.get("context") == "MOVEMENT_BC":
+            if payload.get("context") in ["MOVEMENT_BC", "WEAPON_BC", "PHYSICAL_BC"]:
                 # Ensure all parsing remains on CPU for dataset preparation
                 state_graph, mask = env._parse_to_heterodata(payload)
                 if state_graph is not None:
@@ -100,6 +100,9 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                     if getattr(state_graph, 'y_sequence', None) is not None:
                         collected_dataset.append(state_graph)
                         collected_this_episode += 1
+                        
+                        if payload.get("context") in ["WEAPON_BC", "PHYSICAL_BC"]:
+                            print(f"[Worker {port}] Successfully extracted {payload.get('context')}! Nodes: {state_graph['action'].x.shape}")
                         
                         if len(collected_dataset) % 10 == 0:
                             print(f"[Worker {port}] Global Collection count: {len(collected_dataset)} valid actions...")
