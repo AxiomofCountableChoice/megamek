@@ -125,9 +125,11 @@ class MegaMekHGTEncoder(nn.Module):
         flat_nodes = torch.cat([x_dict['hex'], x_dict['unit'], x_dict['weapon']], dim=0)
         
         # batch tensor handles disconnected subgraphs in PyG, defaulting to 0 for a single graph
-        batch = torch.zeros(flat_nodes.size(0), dtype=torch.long, device=flat_nodes.device)
-        
-        z_graph = self.global_pool(flat_nodes, batch)
+        if flat_nodes.size(0) > 0:
+            batch = torch.zeros(flat_nodes.size(0), dtype=torch.long, device=flat_nodes.device)
+            z_graph = self.global_pool(flat_nodes, batch)
+        else:
+            z_graph = torch.zeros((1, self.hidden_dim), device=flat_nodes.device)
         
         # 4. Context processing
         z_context = self.context_mlp(hetero_data.global_context.unsqueeze(0))

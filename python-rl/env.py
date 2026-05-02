@@ -148,6 +148,15 @@ class MegaMekEnvironment:
         data = HeteroData()
         data.context = context
         
+        if context == "MOVEMENT_BC":
+            phase_type = 0.0
+        elif context == "WEAPON_BC":
+            phase_type = 1.0
+        elif context == "PHYSICAL_BC":
+            phase_type = 2.0
+        else:
+            phase_type = -1.0
+        
         # 1. Global Phase Features ($p \rightarrow z_{context}$)
         phase_str = raw_state.get('phase_main', "UNKNOWN")
         turn = raw_state.get('turn_number', 0)
@@ -254,6 +263,8 @@ class MegaMekEnvironment:
             # Formulate Tier 0 candidates
             action_features = []
             action_target_hex_idx = []
+            action_target_unit_idx = []
+            action_target_weapon_idx = []
             action_source_unit_idx = []
             step_indices = []
             
@@ -271,9 +282,11 @@ class MegaMekEnvironment:
                 step_indices.append(0) # k=0
                 
                 # Abstract representation for "Hex Selection". Feature values are 0 since the spatial target edge provides context.
-                action_features.append([0.0, 0.0, 0.0])
+                action_features.append([0.0, 0.0, 0.0, 0.0, 0.0, phase_type])
                 
                 action_target_hex_idx.append(dest_idx if dest_idx != -1 else -1)
+                action_target_unit_idx.append(-1)
+                action_target_weapon_idx.append(-1)
                 action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                     
                 if dest_idx == true_dest_index:
@@ -292,10 +305,12 @@ class MegaMekEnvironment:
                     facing = float(p_dict.get("dest_facing", 0))
                     mp_used = float(p_dict.get("mp_used", 0))
                     is_jump = 1.0 if p_dict.get("is_jump", False) else 0.0
-                    action_features.append([mp_used, facing, is_jump])
+                    action_features.append([mp_used, facing, is_jump, 0.0, 1.0, phase_type])
                     
                     # Target is still the hex to ground it spatially
                     action_target_hex_idx.append(true_dest_index)
+                    action_target_unit_idx.append(-1)
+                    action_target_weapon_idx.append(-1)
                     action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                         
                     if raw_path_idx == true_selected_idx:
@@ -306,14 +321,18 @@ class MegaMekEnvironment:
                 data['action'].x = torch.tensor(action_features, dtype=torch.float32)
                 data['action'].step_idx = torch.tensor(step_indices, dtype=torch.long)
                 data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
+                data['action'].target_unit_idx = torch.tensor(action_target_unit_idx, dtype=torch.long)
+                data['action'].target_weapon_idx = torch.tensor(action_target_weapon_idx, dtype=torch.long)
                 data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)
                 
                 if true_a0_idx != -1 and true_a1_idx != -1:
                     data.y_sequence = torch.tensor([true_a0_idx, true_a1_idx], dtype=torch.long)
             else:
-                data['action'].x = torch.empty((0, 3), dtype=torch.float32)
+                data['action'].x = torch.empty((0, 6), dtype=torch.float32)
                 data['action'].step_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_unit_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
                 
         elif "valid_twists" in mask and context == "WEAPON_BC":
@@ -324,6 +343,8 @@ class MegaMekEnvironment:
             
             action_features = []
             action_target_hex_idx = []
+            action_target_unit_idx = []
+            action_target_weapon_idx = []
             action_source_unit_idx = []
             action_type_flags = [] # 0: Twist, 1: Target, 2: Weapon, 3: END
             action_twist_context = [] # Store which twist this node belongs to
@@ -338,9 +359,11 @@ class MegaMekEnvironment:
             twist_node_indices = {}
             for tv in twist_values:
                 twist_node_indices[tv] = len(action_features)
-                action_features.append([tv, 0.0, 0.0]) # Torso Twist Feature
+                action_features.append([tv, 0.0, 0.0, 0.0, 0.0, phase_type]) # Torso Twist Feature
                 action_target_hex_idx.append(-1)
-                action_source_unit_idx.append(-1)
+                action_target_unit_idx.append(-1)
+                action_target_weapon_idx.append(-1)
+                action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                 action_type_flags.append(0)
                 action_twist_context.append(tv)
             
@@ -352,9 +375,11 @@ class MegaMekEnvironment:
                     target_entity_index = tm.get("target_entity_index", -1)
                     
                     # Append Target Node
-                    action_features.append([1.0, 0.0, 0.0]) # Target Feature
+                    action_features.append([1.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
                     action_target_hex_idx.append(-1)
-                    action_source_unit_idx.append(target_entity_index)
+                    action_target_unit_idx.append(target_entity_index)
+                    action_target_weapon_idx.append(-1)
+                    action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                     action_type_flags.append(1)
                     action_twist_context.append(tv)
                     
@@ -364,17 +389,21 @@ class MegaMekEnvironment:
                         to_hit = float(wm.get("to_hit", 0.0))
                         
                         # Append Weapon Node
-                        action_features.append([0.0, 1.0, to_hit]) # Weapon Feature
+                        action_features.append([0.0, 1.0, to_hit, 0.0, 2.0, phase_type]) # Weapon Feature
                         action_target_hex_idx.append(-1)
-                        action_source_unit_idx.append(weapon_id)
+                        action_target_unit_idx.append(-1)
+                        action_target_weapon_idx.append(weapon_id)
+                        action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                         action_type_flags.append(2)
                         action_twist_context.append(tv)
                     
             # Append END node
             end_node_idx = len(action_features)
-            action_features.append([0.0, 0.0, 1.0]) # END Feature
+            action_features.append([0.0, 0.0, 1.0, 0.0, 3.0, phase_type]) # END Feature
             action_target_hex_idx.append(-1)
-            action_source_unit_idx.append(-1)
+            action_target_unit_idx.append(-1)
+            action_target_weapon_idx.append(-1)
+            action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
             action_type_flags.append(3)
             action_twist_context.append(-99) # End applies everywhere
             
@@ -398,14 +427,14 @@ class MegaMekEnvironment:
                     for t_idx, w_ids in target_to_weapons.items():
                         # Find Target Node Index in the correct twist context
                         try:
-                            t_node_idx = next(i for i, (type_flag, src_idx, ctx) in enumerate(zip(action_type_flags, action_source_unit_idx, action_twist_context)) 
-                                            if type_flag == 1 and src_idx == t_idx and ctx == chosen_twist)
+                            t_node_idx = next(i for i, (type_flag, tgt_idx, ctx) in enumerate(zip(action_type_flags, action_target_unit_idx, action_twist_context)) 
+                                            if type_flag == 1 and tgt_idx == t_idx and ctx == chosen_twist)
                             true_sequence_indices.append(t_node_idx)
                             
                             # Find Weapon Node Indices in the correct twist context
                             for w_id in w_ids:
-                                w_node_idx = next(i for i, (type_flag, src_idx, ctx) in enumerate(zip(action_type_flags, action_source_unit_idx, action_twist_context)) 
-                                                if type_flag == 2 and src_idx == w_id and ctx == chosen_twist)
+                                w_node_idx = next(i for i, (type_flag, tgt_w_idx, ctx) in enumerate(zip(action_type_flags, action_target_weapon_idx, action_twist_context)) 
+                                                if type_flag == 2 and tgt_w_idx == w_id and ctx == chosen_twist)
                                 true_sequence_indices.append(w_node_idx)
                         except StopIteration:
                             continue
@@ -418,14 +447,18 @@ class MegaMekEnvironment:
                 # Step indices don't make sense statically here because it's variable length
                 data['action'].step_idx = torch.zeros((len(action_features),), dtype=torch.long)
                 data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
+                data['action'].target_unit_idx = torch.tensor(action_target_unit_idx, dtype=torch.long)
+                data['action'].target_weapon_idx = torch.tensor(action_target_weapon_idx, dtype=torch.long)
                 data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)
                 
                 if true_sequence_indices and target_action: # Only append y_sequence if we have a teacher action
                     data.y_sequence = torch.tensor(true_sequence_indices, dtype=torch.long)
             else:
-                data['action'].x = torch.empty((0, 3), dtype=torch.float32)
+                data['action'].x = torch.empty((0, 6), dtype=torch.float32)
                 data['action'].step_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_unit_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
 
         elif "valid_targets" in mask and context == "PHYSICAL_BC":
@@ -435,8 +468,11 @@ class MegaMekEnvironment:
             
             action_features = []
             action_target_hex_idx = []
+            action_target_unit_idx = []
+            action_target_weapon_idx = []
             action_source_unit_idx = []
             action_type_flags = [] # 1: Target, 2: Physical Attack, 3: END
+            action_type_context = [] # Store physical action type for lookup
             
             # Action nodes: Target -> Physical Action -> END
             
@@ -444,10 +480,13 @@ class MegaMekEnvironment:
                 target_entity_index = tm.get("target_entity_index", -1)
                 
                 # Append Target Node
-                action_features.append([1.0, 0.0, 0.0]) # Target Feature
+                action_features.append([1.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
                 action_target_hex_idx.append(-1)
-                action_source_unit_idx.append(target_entity_index)
+                action_target_unit_idx.append(target_entity_index)
+                action_target_weapon_idx.append(-1)
+                action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
                 action_type_flags.append(1)
+                action_type_context.append(-1)
                 
                 valid_attacks = tm.get("valid_attacks", [])
                 for am in valid_attacks:
@@ -455,17 +494,23 @@ class MegaMekEnvironment:
                     to_hit = float(am.get("to_hit", 0.0))
                     
                     # Append Physical Action Node
-                    action_features.append([0.0, 1.0, to_hit]) # Physical Action Feature
+                    action_features.append([0.0, 1.0, to_hit, float(action_type), 2.0, phase_type]) # Physical Action Feature encodes action_type
                     action_target_hex_idx.append(-1)
-                    action_source_unit_idx.append(action_type) # Store action type here
+                    action_target_unit_idx.append(-1)
+                    action_target_weapon_idx.append(-1)
+                    action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1) 
                     action_type_flags.append(2)
+                    action_type_context.append(action_type)
                     
             # Append END node
             end_node_idx = len(action_features)
-            action_features.append([0.0, 0.0, 1.0]) # END Feature
+            action_features.append([0.0, 0.0, 1.0, 0.0, 3.0, phase_type]) # END Feature
             action_target_hex_idx.append(-1)
-            action_source_unit_idx.append(-1)
+            action_target_unit_idx.append(-1)
+            action_target_weapon_idx.append(-1)
+            action_source_unit_idx.append(active_entity_idx if active_entity_idx != -1 else -1)
             action_type_flags.append(3)
+            action_type_context.append(-1)
             
             # Map chosen attacks to node sequence
             true_sequence_indices = []
@@ -479,18 +524,13 @@ class MegaMekEnvironment:
                         
                         try:
                             # Find Target Node
-                            t_node_idx = next(i for i, (type_flag, src_idx) in enumerate(zip(action_type_flags, action_source_unit_idx)) 
-                                            if type_flag == 1 and src_idx == t_idx)
+                            t_node_idx = next(i for i, (type_flag, tgt_idx) in enumerate(zip(action_type_flags, action_target_unit_idx)) 
+                                            if type_flag == 1 and tgt_idx == t_idx)
                             true_sequence_indices.append(t_node_idx)
                             
-                            # Find Physical Action Node
-                            a_node_idx = next(i for i, (type_flag, src_idx) in enumerate(zip(action_type_flags, action_source_unit_idx)) 
-                                            if type_flag == 2 and src_idx == p_action)
-                            # Note: The search above might conflict if two targets have the same valid action type.
-                            # It's better to verify the target context. But for simplicity, assuming they are consecutive or we can just find the correct one by offset from t_node_idx.
-                            # Since physical actions follow their targets, let's search after t_node_idx
+                            # Find Physical Action Node (using action_type_context)
                             a_node_idx_refined = next(i for i in range(t_node_idx+1, len(action_type_flags))
-                                            if action_type_flags[i] == 2 and action_source_unit_idx[i] == p_action)
+                                            if action_type_flags[i] == 2 and action_type_context[i] == p_action)
                             
                             true_sequence_indices.append(a_node_idx_refined)
                         except StopIteration:
@@ -503,20 +543,26 @@ class MegaMekEnvironment:
                 data['action'].x = torch.tensor(action_features, dtype=torch.float32)
                 data['action'].step_idx = torch.zeros((len(action_features),), dtype=torch.long)
                 data['action'].target_hex_idx = torch.tensor(action_target_hex_idx, dtype=torch.long)
+                data['action'].target_unit_idx = torch.tensor(action_target_unit_idx, dtype=torch.long)
+                data['action'].target_weapon_idx = torch.tensor(action_target_weapon_idx, dtype=torch.long)
                 data['action'].source_unit_idx = torch.tensor(action_source_unit_idx, dtype=torch.long)
                 
                 if true_sequence_indices and target_action: # Only append y_sequence if we have a teacher action
                     data.y_sequence = torch.tensor(true_sequence_indices, dtype=torch.long)
             else:
-                data['action'].x = torch.empty((0, 3), dtype=torch.float32)
+                data['action'].x = torch.empty((0, 6), dtype=torch.float32)
                 data['action'].step_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_unit_idx = torch.empty((0,), dtype=torch.long)
+                data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
 
         else:
-            data['action'].x = torch.empty((0, 3), dtype=torch.float32)
+            data['action'].x = torch.empty((0, 6), dtype=torch.float32)
             data['action'].step_idx = torch.empty((0,), dtype=torch.long)
             data['action'].target_hex_idx = torch.empty((0,), dtype=torch.long)
+            data['action'].target_unit_idx = torch.empty((0,), dtype=torch.long)
+            data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
             data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
 
         return data, mask

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class ActionConditionedPointer(nn.Module):
-    def __init__(self, hidden_dim=128, action_feature_dim=3):
+    def __init__(self, hidden_dim=128, action_feature_dim=6):
         super().__init__()
         
         # e_action = ActionMLP( H_unit (+) H_target_node (+) X_action_node )

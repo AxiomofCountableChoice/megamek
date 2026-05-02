@@ -39,6 +39,8 @@ def test_parsing():
     print(f"y_sequence: {getattr(data_w, 'y_sequence', None)}")
     print(f"Action features: {data_w['action'].x}")
     print(f"Action sources: {data_w['action'].source_unit_idx}")
+    print(f"Action target units: {data_w['action'].target_unit_idx}")
+    print(f"Action target weapons: {data_w['action'].target_weapon_idx}")
     
     
     # Test PHYSICAL_BC
@@ -67,6 +69,8 @@ def test_parsing():
     print(f"y_sequence: {getattr(data_p, 'y_sequence', None)}")
     print(f"Action features: {data_p['action'].x}")
     print(f"Action sources: {data_p['action'].source_unit_idx}")
+    print(f"Action target units: {data_p['action'].target_unit_idx}")
+    print(f"Action target weapons: {data_p['action'].target_weapon_idx}")
 
 if __name__ == "__main__":
     test_parsing()

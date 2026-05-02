@@ -9,7 +9,7 @@ def train():
     device = torch.device('cpu')
     print(f"Using compute device: {device}")
     
-    dataset_path = '../bc_dataset_master_padded.pt'
+    dataset_path = '../bc_dataset_master.pt'
     if not os.path.exists(dataset_path):
         print(f"Dataset not found at {dataset_path}. Please run bc_generator.py first.")
         return
@@ -58,12 +58,19 @@ def train():
             
             # 3. Autoregressive sequence execution (Teacher Forcing)
             for k in range(seq_len):
-                # Isolate candidates for this tier
-                valid_mask = (step_indices == k)
+                target_idx = y_seq[k].item()
+                
+                # Dynamic Tier Masking based on Phase and Ground Truth Type
+                if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
+                    valid_mask = (step_indices == k)
+                else:
+                    # Use the 5th dimension (node_type_flag) of the target to isolate candidates
+                    target_type = batch['action'].x[target_idx, 4].item()
+                    valid_mask = (batch['action'].x[:, 4] == target_type)
+                    
                 if not valid_mask.any():
                     break
                     
-                target_idx = y_seq[k].item()
                 if not valid_mask[target_idx]:
                     # Target node isn't in this tier (structural mismatch)
                     break 
