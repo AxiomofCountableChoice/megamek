@@ -35,6 +35,12 @@ def run_megamek_episode(all_meks, server_port):
     
     # Isolate log4j files so multiple parallel instances don't throw NoSuchFileException
     env = os.environ.copy()
+    
+    # Force Java 21 to prevent UnsupportedClassVersionError (Java 65.0)
+    java_home = os.path.abspath(os.path.join(cwd, "..", "jdk-21.0.2"))
+    env["JAVA_HOME"] = java_home
+    env["PATH"] = f"{os.path.join(java_home, 'bin')}:{env.get('PATH', '')}"
+    
     env["MEGAMEK_OPTS"] = f"-DlogPath=logs/server_{server_port}"
     env["RL_SERVER_PORT"] = str(server_port)
     
@@ -136,15 +142,15 @@ if __name__ == "__main__":
         proc = run_megamek_episode(all_meks, server_port)
         
         local_dataset = []
-        t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset))
-        t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset))
+        t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset), daemon=True)
+        t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset), daemon=True)
         
         t1.start()
         t2.start()
         
         try:
-            t1.join(timeout=180) # 3 min max
-            t2.join(timeout=180)
+            t1.join(timeout=60) # 1 min max
+            t2.join(timeout=60)
         finally:
             print(f"[bc_generator] Terminating Headless Server on port {server_port}...")
             proc.terminate()
@@ -160,11 +166,14 @@ if __name__ == "__main__":
     max_workers = min(args.episodes, 4) # cap at 4 parallel matches
     base_port = 2346
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for ep in range(args.episodes):
-            futures.append(executor.submit(run_single_episode, ep, base_port + ep))
-        concurrent.futures.wait(futures)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            for ep in range(args.episodes):
+                futures.append(executor.submit(run_single_episode, ep, base_port + ep))
+            concurrent.futures.wait(futures)
+    except KeyboardInterrupt:
+        print("\n[bc_generator] Interrupted by user. Saving whatever we have so far...")
     
     # Save dataset natively
     if master_dataset:

@@ -17,6 +17,21 @@ def train():
     dataset = torch.load(dataset_path, weights_only=False, map_location='cpu')
     print(f"Loaded {len(dataset)} trajectories for Behavioral Cloning.")
     
+    # Feature Inspection
+    for key in ['hex', 'unit', 'weapon', 'action']:
+        all_x = []
+        for data in dataset:
+            if 'weapon' in data.node_types and hasattr(data['weapon'], 'x') and data['weapon'].x.size(0) > 0:
+                data['weapon'].x[data['weapon'].x < -1000.0] = 0.0
+            
+            if key in data.node_types and hasattr(data[key], 'x') and data[key].x.size(0) > 0:
+                all_x.append(data[key].x)
+        if all_x:
+            all_x = torch.cat(all_x, dim=0)
+            print(f'[{key}] shape: {all_x.shape}, min: {all_x.min().item():.4f}, max: {all_x.max().item():.4f}, mean: {all_x.mean().item():.4f}')
+        else:
+            print(f'[{key}] empty')
+            
     # We use batch_size=1 initially due to the dynamic length of the autoregressive action trees 
     # per trajectory without complex custom padding collators.
     loader = DataLoader(dataset, batch_size=1, shuffle=True)

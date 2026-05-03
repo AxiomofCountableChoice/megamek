@@ -194,7 +194,11 @@ class MegaMekEnvironment:
         raw_weapons = raw_state.get("weapons", [])
         weapon_dim = getattr(self, 'feature_dims', {}).get("weapon", 10)
         if raw_weapons:
-            data['weapon'].x = torch.tensor(raw_weapons, dtype=torch.float32)
+            w_tensor = torch.tensor(raw_weapons, dtype=torch.float32)
+            # MegaMek uses Integer.MIN_VALUE for WeaponType.DAMAGE_NA, RANGE_NA, etc.
+            # We must mask these out to prevent exploding gradients.
+            w_tensor[w_tensor < -1000.0] = 0.0
+            data['weapon'].x = w_tensor
         else:
             data['weapon'].x = torch.empty((0, weapon_dim), dtype=torch.float32)
             
