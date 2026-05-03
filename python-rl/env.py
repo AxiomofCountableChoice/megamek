@@ -148,11 +148,11 @@ class MegaMekEnvironment:
         data = HeteroData()
         data.context = context
         
-        if context == "MOVEMENT_BC":
+        if context.startswith("MOVEMENT"):
             phase_type = 0.0
-        elif context == "WEAPON_BC":
+        elif context.startswith("WEAPON"):
             phase_type = 1.0
-        elif context == "PHYSICAL_BC":
+        elif context.startswith("PHYSICAL"):
             phase_type = 2.0
         else:
             phase_type = -1.0
@@ -246,7 +246,7 @@ class MegaMekEnvironment:
         valid_paths = mask.get("valid_paths", [])
         active_entity_idx = mask.get("active_entity_index", -1)
         
-        if valid_paths and context == "MOVEMENT_BC":
+        if valid_paths and context.startswith("MOVEMENT"):
             # Extract target action logically if provided by the Offline pipeline
             target_action = payload.get("target_action", {})
             true_selected_idx = target_action.get("selected_path_index", -1)
@@ -339,7 +339,7 @@ class MegaMekEnvironment:
                 data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
                 
-        elif "valid_twists" in mask and context == "WEAPON_BC":
+        elif "valid_twists" in mask and context.startswith("WEAPON"):
             valid_twists = mask.get("valid_twists", [])
             target_action = payload.get("target_action", {})
             chosen_attacks = target_action.get("attacks", [])
@@ -465,7 +465,7 @@ class MegaMekEnvironment:
                 data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
                 data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
 
-        elif "valid_targets" in mask and context == "PHYSICAL_BC":
+        elif "valid_targets" in mask and context.startswith("PHYSICAL"):
             valid_targets = mask.get("valid_targets", [])
             target_action = payload.get("target_action", {})
             chosen_attacks = target_action.get("attacks", [])

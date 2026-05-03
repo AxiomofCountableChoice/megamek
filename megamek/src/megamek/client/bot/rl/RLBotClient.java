@@ -87,7 +87,7 @@ public class RLBotClient extends BotClient {
             List<MovePath> calculatedPaths = dataPipeline.buildMovementMask(entity, serializedMask);
             maskData.valid_paths = serializedMask;
 
-            RLActionResponse response = dataPipeline.queryPython("MOVEMENT", maskData, RLActionResponse.class);
+            RLActionResponse response = dataPipeline.queryPython("MOVEMENT_INFERENCE", maskData, RLActionResponse.class);
             
             if (response != null && response.selected_path_index != null) {
                 int idx = response.selected_path_index;
@@ -117,7 +117,7 @@ public class RLBotClient extends BotClient {
         maskData.active_entity = shooter.getId();
         maskData.valid_twists = dataPipeline.buildFiringMask(shooter);
 
-        RLActionResponse response = dataPipeline.queryPython("FIRING", maskData, RLActionResponse.class);
+        RLActionResponse response = dataPipeline.queryPython("WEAPON_INFERENCE", maskData, RLActionResponse.class);
 
         Vector<megamek.common.actions.EntityAction> actions = new Vector<>();
         if (response != null && response.attacks != null) {
@@ -148,7 +148,7 @@ public class RLBotClient extends BotClient {
         maskData.active_entity = shooter.getId();
         maskData.valid_targets = dataPipeline.buildPhysicalMask(shooter);
 
-        RLActionResponse response = dataPipeline.queryPython("PHYSICAL", maskData, RLActionResponse.class);
+        RLActionResponse response = dataPipeline.queryPython("PHYSICAL_INFERENCE", maskData, RLActionResponse.class);
         
         if (response != null && response.attack != null) {
             RLActionResponse.RLPhysicalAttack att = response.attack;

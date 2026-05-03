@@ -23,6 +23,7 @@ import java.io.File;
 import megamek.common.commandLine.AbstractCommandLineParser;
 import megamek.common.commandLine.ClientServerCommandLineParser;
 import megamek.client.HeadlessClient;
+import megamek.client.bot.BotClient;
 
 import megamek.logging.MMLogger;
 import megamek.server.Server;
@@ -103,11 +104,16 @@ public class PrincessOfflineTrainer {
         watcher.connect();
 
         // Connect the Princess bots to the local server
-        Princess p1 = null;
-        Princess p2 = null;
+        BotClient p1 = null;
+        BotClient p2 = null;
         try {
-            p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, resolver.port + 1000);
-            p2 = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
+            if (autoGen) {
+                p1 = new RLBotClient("RL_Agent", "localhost", resolver.port, resolver.port + 1000);
+                p2 = new Princess("Princess_Beta", "localhost", resolver.port);
+            } else {
+                p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, resolver.port + 1000);
+                p2 = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
+            }
             
             p1.connect();
             p2.connect();
@@ -149,7 +155,7 @@ public class PrincessOfflineTrainer {
                 while ((player1 == null || player2 == null) && attempts < 20) {
                     for (megamek.common.Player p : game.getPlayersList()) {
                         System.out.println("Found player: " + p.getName());
-                        if (p.getName().equals("Princess_Alpha")) player1 = p;
+                        if (p.getName().equals("RL_Agent") || p.getName().equals("Princess_Alpha")) player1 = p;
                         if (p.getName().equals("Princess_Beta")) player2 = p;
                     }
                     if (player1 == null || player2 == null) {
