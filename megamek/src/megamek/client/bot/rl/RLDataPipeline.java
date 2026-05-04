@@ -183,6 +183,7 @@ public class RLDataPipeline {
             payload.put("context", actionContext);
             payload.put("state", serializeGameState());
             payload.put("mask", mask);
+            payload.put("rewards", calculateRewards());
 
             sendPayload(payload);
 
@@ -202,11 +203,63 @@ public class RLDataPipeline {
         }
     }
 
+    public Map<String, Object> calculateRewards() {
+        Game game = (Game) baseClient.getGame();
+        Map<String, Object> rewards = new HashMap<>();
+
+        // Compute current BV for Player 1 and Player 2
+        double bv1 = 0;
+        double bv2 = 0;
+        double vp1 = 0;
+        double vp2 = 0;
+        double tp1 = 0;
+        double tp2 = 0;
+
+        for (Player p : game.getPlayersList()) {
+            double bv = 0;
+            double tp = 0;
+            for (Entity e : game.getEntitiesVector()) {
+                if (e.getOwnerId() == p.getId()) {
+                    if (!e.isDestroyed()) {
+                        bv += e.calculateBattleValue();
+                    }
+                    // TP calculation
+                    if (e.getHeat() >= 5)
+                        tp += 1; // movement penalty
+                    if (e.getHeat() >= 8)
+                        tp += 1; // accuracy penalty
+                    if (e.getHeat() >= 14)
+                        tp += 1; // shutdown check
+                    if (e.getHeat() >= 19 && e.getAmmo().size() > 0)
+                        tp += 1; // ammo explosion
+                }
+            }
+            if (baseClient.getLocalPlayer() != null && p.getId() == baseClient.getLocalPlayer().getId()) {
+                bv1 = bv;
+                vp1 = 0; // VP calculation omitted for now
+                tp1 = tp;
+            } else {
+                bv2 = bv;
+                vp2 = 0; // VP calculation omitted for now
+                tp2 = tp;
+            }
+        }
+
+        rewards.put("bv1", bv1);
+        rewards.put("bv2", bv2);
+        rewards.put("vp1", vp1);
+        rewards.put("vp2", vp2);
+        rewards.put("tp1", tp1);
+        rewards.put("tp2", tp2);
+
+        return rewards;
+    }
+
     public float[] extractEntityFeatures(Entity e) {
         Game game = (Game) baseClient.getGame();
         Player localPlayer = baseClient.getLocalPlayer();
 
-        float isMine = (localPlayer != null && e.getOwnerId() == localPlayer.getId()) ? 1f : 0f;
+        float isFriendly = (localPlayer != null && e.getOwnerId() == localPlayer.getId()) ? 1f : 0f;
         float x = e.getPosition() != null ? e.getPosition().getX() : -1f;
         float y = e.getPosition() != null ? e.getPosition().getY() : -1f;
         float sinFacing = (float) Math.sin(e.getFacing() * Math.PI / 3.0);
@@ -240,7 +293,7 @@ public class RLDataPipeline {
         float height = (float) e.getHeight();
 
         float[] features = new float[37];
-        features[0] = isMine;
+        features[0] = isFriendly;
         features[1] = x;
         features[2] = y;
         features[3] = sinFacing;
@@ -375,7 +428,8 @@ public class RLDataPipeline {
                         for (megamek.common.moves.MovePath p : spfGround.getAllComputedPathsUncategorized()) {
                             if (p.getFinalCoords() != null) {
                                 int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
-                                int tmm = megamek.common.compute.Compute.getTargetMovementModifier(p.getHexesMoved(), p.isJumping(), airborneNonAerospace, game).getValue();
+                                int tmm = megamek.common.compute.Compute.getTargetMovementModifier(p.getHexesMoved(),
+                                        p.isJumping(), airborneNonAerospace, game).getValue();
                                 if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
                                     reachableHexes.put(hexIdx, tmm);
                                 }
@@ -391,7 +445,8 @@ public class RLDataPipeline {
                         for (megamek.common.moves.MovePath p : spfJump.getAllComputedPathsUncategorized()) {
                             if (p.getFinalCoords() != null) {
                                 int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
-                                int tmm = megamek.common.compute.Compute.getTargetMovementModifier(p.getHexesMoved(), p.isJumping(), airborneNonAerospace, game).getValue();
+                                int tmm = megamek.common.compute.Compute.getTargetMovementModifier(p.getHexesMoved(),
+                                        p.isJumping(), airborneNonAerospace, game).getValue();
                                 if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
                                     reachableHexes.put(hexIdx, tmm);
                                 }
@@ -458,14 +513,19 @@ public class RLDataPipeline {
             for (java.util.Map.Entry<Integer, Integer> entry : entityReachableHexes.get(i).entrySet()) {
                 int hexIdx = entry.getKey();
                 int tmm = entry.getValue();
-                
+
                 if (isFriendly) {
                     int[] edge = new int[] { i, hexIdx };
-                    if (tmm <= 0) moveTypeTMM0Edges.add(edge);
-                    else if (tmm == 1) moveTypeTMM1Edges.add(edge);
-                    else if (tmm == 2) moveTypeTMM2Edges.add(edge);
-                    else if (tmm == 3) moveTypeTMM3Edges.add(edge);
-                    else moveTypeTMM4Edges.add(edge);
+                    if (tmm <= 0)
+                        moveTypeTMM0Edges.add(edge);
+                    else if (tmm == 1)
+                        moveTypeTMM1Edges.add(edge);
+                    else if (tmm == 2)
+                        moveTypeTMM2Edges.add(edge);
+                    else if (tmm == 3)
+                        moveTypeTMM3Edges.add(edge);
+                    else
+                        moveTypeTMM4Edges.add(edge);
                 } else {
                     movementThreatEdges.add(new int[] { i, hexIdx });
                 }
@@ -596,6 +656,7 @@ public class RLDataPipeline {
             payload.put("context", "MOVEMENT_BC");
             payload.put("state", serializeGameState());
             payload.put("mask", maskData);
+            payload.put("rewards", calculateRewards());
 
             Map<String, Object> targetAction = new HashMap<>();
             targetAction.put("selected_path_index", subsetChoiceIndex);
@@ -613,35 +674,36 @@ public class RLDataPipeline {
     public List<RLActionMask.RLTwistMask> buildFiringMask(Entity shooter) {
         List<RLActionMask.RLTwistMask> validTwists = new ArrayList<>();
         megamek.common.game.Game game = baseClient.getGame();
-        
+
         int originalFacing = shooter.getSecondaryFacing();
-        List<Integer> facingChanges = new ArrayList<>(megamek.client.bot.princess.FireControl.getValidFacingChanges(shooter));
+        List<Integer> facingChanges = new ArrayList<>(
+                megamek.client.bot.princess.FireControl.getValidFacingChanges(shooter));
         facingChanges.add(0); // "no facing change"
-        
+
         for (int twist : facingChanges) {
             // Apply the twist temporarily
             int newFacing = megamek.client.bot.princess.FireControl.correctFacing(originalFacing + twist);
             shooter.setSecondaryFacing(newFacing, false);
-            
+
             List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
             for (Entity target : game.getEntitiesVector()) {
                 if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) {
                     continue;
                 }
-                
+
                 List<RLActionMask.RLWeaponMask> validWeapons = new ArrayList<>();
                 for (megamek.common.equipment.WeaponMounted wm : shooter.getWeaponList()) {
                     if (!wm.canFire() || (wm.getLinkedAmmo() != null && wm.getLinkedAmmo().getUsableShotsLeft() == 0)) {
                         continue;
                     }
-                    
+
                     // Leverage the game's actual attack resolution engine
                     megamek.common.ToHitData toHit = megamek.common.actions.WeaponAttackAction.toHit(
                             game, shooter.getId(), target, shooter.getEquipmentNum(wm), false);
-                    
-                    if (toHit.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE 
+
+                    if (toHit.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE
                             && toHit.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
-                        
+
                         RLActionMask.RLWeaponMask wData = new RLActionMask.RLWeaponMask();
                         wData.weapon_id = shooter.getEquipmentNum(wm);
                         wData.weapon_name = wm.getName();
@@ -649,7 +711,7 @@ public class RLDataPipeline {
                         validWeapons.add(wData);
                     }
                 }
-                
+
                 if (!validWeapons.isEmpty()) {
                     RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
                     int targetIndex = game.getEntitiesVector().indexOf(target);
@@ -658,25 +720,26 @@ public class RLDataPipeline {
                     targetsMask.add(tm);
                 }
             }
-            
+
             if (!targetsMask.isEmpty()) {
                 RLActionMask.RLTwistMask twistMask = new RLActionMask.RLTwistMask();
                 twistMask.twist = twist;
                 twistMask.valid_targets = targetsMask;
                 validTwists.add(twistMask);
             }
-            
+
             // Revert the twist
             shooter.setSecondaryFacing(originalFacing, false);
         }
-        
+
         return validTwists;
     }
 
-    public void sendWeaponBehavioralCloningTrajectory(Entity shooter, java.util.Vector<megamek.common.actions.EntityAction> attacks, int chosenTwist) {
+    public void sendWeaponBehavioralCloningTrajectory(Entity shooter,
+            java.util.Vector<megamek.common.actions.EntityAction> attacks, int chosenTwist) {
         if (!isConnected())
             return;
-            
+
         ensureTopologySent();
 
         try {
@@ -684,16 +747,16 @@ public class RLDataPipeline {
             int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(shooter);
             maskData.active_entity_index = activeIndex;
             maskData.valid_twists = buildFiringMask(shooter);
-            
+
             RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
             targetAction.torso_twist = chosenTwist;
             targetAction.attacks = new ArrayList<>();
-            
+
             for (megamek.common.actions.EntityAction ea : attacks) {
                 if (ea instanceof megamek.common.actions.WeaponAttackAction) {
                     megamek.common.actions.WeaponAttackAction waa = (megamek.common.actions.WeaponAttackAction) ea;
                     Entity target = baseClient.getGame().getEntity(waa.getTargetId());
-                    
+
                     if (target != null) {
                         RLActionMask.RLAttack att = new RLActionMask.RLAttack();
                         att.target_entity_index = baseClient.getGame().getEntitiesVector().indexOf(target);
@@ -702,13 +765,14 @@ public class RLDataPipeline {
                     }
                 }
             }
-            
+
             maskData.target_action = targetAction;
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", "WEAPON_BC");
             payload.put("state", serializeGameState());
             payload.put("mask", maskData);
+            payload.put("rewards", calculateRewards());
             payload.put("target_action", targetAction);
 
             sendPayload(payload);
@@ -721,54 +785,63 @@ public class RLDataPipeline {
     public List<RLActionMask.RLTargetMask> buildPhysicalMask(Entity shooter) {
         List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
         megamek.common.game.Game game = baseClient.getGame();
-        
+
         for (Entity target : game.getEntitiesVector()) {
-            if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) continue;
-            
+            if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter))
+                continue;
+
             List<RLActionMask.RLPhysicalMask> validAttacks = new ArrayList<>();
-            
+
             // Try PUNCH
             for (int i = 0; i < 2; i++) {
-                int arm = (i == 0) ? megamek.common.actions.PunchAttackAction.LEFT : megamek.common.actions.PunchAttackAction.RIGHT;
-                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.PUNCH_LEFT : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
-                
+                int arm = (i == 0) ? megamek.common.actions.PunchAttackAction.LEFT
+                        : megamek.common.actions.PunchAttackAction.RIGHT;
+                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.PUNCH_LEFT
+                        : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
+
                 megamek.common.ToHitData th = megamek.common.actions.PunchAttackAction.toHit(
                         game, shooter.getId(), target, arm, false);
-                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE
+                        && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
                     RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
                     att.action_type = poType;
-                    att.name = (i==0) ? "PUNCH_LEFT" : "PUNCH_RIGHT";
+                    att.name = (i == 0) ? "PUNCH_LEFT" : "PUNCH_RIGHT";
                     att.to_hit = th.getValue();
                     validAttacks.add(att);
                 }
             }
-            
+
             // Try KICK
             for (int i = 0; i < 2; i++) {
-                int leg = (i == 0) ? megamek.common.actions.KickAttackAction.LEFT : megamek.common.actions.KickAttackAction.RIGHT;
-                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.KICK_LEFT : megamek.client.bot.PhysicalOption.KICK_RIGHT;
-                
+                int leg = (i == 0) ? megamek.common.actions.KickAttackAction.LEFT
+                        : megamek.common.actions.KickAttackAction.RIGHT;
+                int poType = (i == 0) ? megamek.client.bot.PhysicalOption.KICK_LEFT
+                        : megamek.client.bot.PhysicalOption.KICK_RIGHT;
+
                 megamek.common.ToHitData th = megamek.common.actions.KickAttackAction.toHit(
                         game, shooter.getId(), target, leg);
-                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                if (th.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE
+                        && th.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
                     RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
                     att.action_type = poType;
-                    att.name = (i==0) ? "KICK_LEFT" : "KICK_RIGHT";
+                    att.name = (i == 0) ? "KICK_LEFT" : "KICK_RIGHT";
                     att.to_hit = th.getValue();
                     validAttacks.add(att);
                 }
             }
-            
+
             // Try PUSH
-            megamek.common.ToHitData pushTh = megamek.common.actions.PushAttackAction.toHit(game, shooter.getId(), target);
-            if (pushTh.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE && pushTh.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+            megamek.common.ToHitData pushTh = megamek.common.actions.PushAttackAction.toHit(game, shooter.getId(),
+                    target);
+            if (pushTh.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE
+                    && pushTh.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
                 RLActionMask.RLPhysicalMask att = new RLActionMask.RLPhysicalMask();
                 att.action_type = megamek.client.bot.PhysicalOption.PUSH_ATTACK;
                 att.name = "PUSH";
                 att.to_hit = pushTh.getValue();
                 validAttacks.add(att);
             }
-            
+
             if (!validAttacks.isEmpty()) {
                 RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
                 tm.target_entity_index = game.getEntitiesVector().indexOf(target);
@@ -777,14 +850,15 @@ public class RLDataPipeline {
                 targetsMask.add(tm);
             }
         }
-        
+
         return targetsMask;
     }
 
-    public void sendPhysicalBehavioralCloningTrajectory(Entity shooter, java.util.Vector<megamek.common.actions.EntityAction> attacks) {
+    public void sendPhysicalBehavioralCloningTrajectory(Entity shooter,
+            java.util.Vector<megamek.common.actions.EntityAction> attacks) {
         if (!isConnected())
             return;
-            
+
         ensureTopologySent();
 
         try {
@@ -792,42 +866,50 @@ public class RLDataPipeline {
             int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(shooter);
             maskData.active_entity_index = activeIndex;
             maskData.valid_targets = buildPhysicalMask(shooter);
-            
+
             RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
             targetAction.attacks = new ArrayList<>();
-            
+
             for (megamek.common.actions.EntityAction ea : attacks) {
-                if (ea instanceof megamek.common.actions.PhysicalAttackAction || ea instanceof megamek.common.actions.PushAttackAction) {
+                if (ea instanceof megamek.common.actions.PhysicalAttackAction
+                        || ea instanceof megamek.common.actions.PushAttackAction) {
                     megamek.common.actions.AbstractAttackAction paa = (megamek.common.actions.AbstractAttackAction) ea;
                     Entity target = baseClient.getGame().getEntity(paa.getTargetId());
-                    
+
                     if (target != null) {
                         RLActionMask.RLAttack att = new RLActionMask.RLAttack();
                         att.target_entity_index = baseClient.getGame().getEntitiesVector().indexOf(target);
                         // Map physical actions back to the constants used in the mask
                         if (paa instanceof megamek.common.actions.PunchAttackAction) {
-                            att.physical_action_type = (((megamek.common.actions.PunchAttackAction)paa).getArm() == megamek.common.actions.PunchAttackAction.LEFT) ? megamek.client.bot.PhysicalOption.PUNCH_LEFT : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
+                            att.physical_action_type = (((megamek.common.actions.PunchAttackAction) paa)
+                                    .getArm() == megamek.common.actions.PunchAttackAction.LEFT)
+                                            ? megamek.client.bot.PhysicalOption.PUNCH_LEFT
+                                            : megamek.client.bot.PhysicalOption.PUNCH_RIGHT;
                         } else if (paa instanceof megamek.common.actions.KickAttackAction) {
-                            att.physical_action_type = (((megamek.common.actions.KickAttackAction)paa).getLeg() == megamek.common.actions.KickAttackAction.LEFT) ? megamek.client.bot.PhysicalOption.KICK_LEFT : megamek.client.bot.PhysicalOption.KICK_RIGHT;
+                            att.physical_action_type = (((megamek.common.actions.KickAttackAction) paa)
+                                    .getLeg() == megamek.common.actions.KickAttackAction.LEFT)
+                                            ? megamek.client.bot.PhysicalOption.KICK_LEFT
+                                            : megamek.client.bot.PhysicalOption.KICK_RIGHT;
                         } else if (paa instanceof megamek.common.actions.PushAttackAction) {
                             att.physical_action_type = megamek.client.bot.PhysicalOption.PUSH_ATTACK;
                         } else if (paa instanceof megamek.common.actions.ClubAttackAction) {
                             att.physical_action_type = megamek.client.bot.PhysicalOption.USE_CLUB;
                         }
-                        
+
                         if (att.physical_action_type != null) {
                             targetAction.attacks.add(att);
                         }
                     }
                 }
             }
-            
+
             maskData.target_action = targetAction;
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", "PHYSICAL_BC");
             payload.put("state", serializeGameState());
             payload.put("mask", maskData);
+            payload.put("rewards", calculateRewards());
             payload.put("target_action", targetAction);
 
             sendPayload(payload);

@@ -222,20 +222,25 @@ class ImpalaLearner:
 
     def run(self):
         print(f"Starting IMPALA Learner on {self.device}...")
-        while True:
-            loaded = self.load_new_trajectories()
-            if loaded > 0:
-                print(f"Loaded {loaded} new trajectories. Buffer size: {len(self.buffer)}")
-                self.writer.add_scalar("System/Buffer_Size", len(self.buffer), self.global_step)
-                
-            # Perform optimization step if we have enough data
-            if self.learn_step(batch_size=8):
-                if self.global_step % 10 == 0:
-                    self.save_checkpoint()
-                    print(f"Step {self.global_step}: Saved checkpoint.")
-            else:
-                # Wait for workers to generate data
-                time.sleep(2)
+        try:
+            while True:
+                loaded = self.load_new_trajectories()
+                if loaded > 0:
+                    print(f"Loaded {loaded} new trajectories. Buffer size: {len(self.buffer)}")
+                    self.writer.add_scalar("System/Buffer_Size", len(self.buffer), self.global_step)
+                    
+                # Perform optimization step if we have enough data
+                if self.learn_step(batch_size=8):
+                    if self.global_step % 10 == 0:
+                        self.save_checkpoint()
+                        print(f"Step {self.global_step}: Saved checkpoint.")
+                else:
+                    # Wait for workers to generate data
+                    time.sleep(2)
+        except KeyboardInterrupt:
+            print("\nKeyboardInterrupt received. Gracefully shutting down Master...")
+            self.save_checkpoint()
+            print("Final checkpoint saved. Exiting.")
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

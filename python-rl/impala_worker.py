@@ -2,7 +2,7 @@ import os
 import time
 import torch
 import uuid
-
+import argparse
 from models.agent import MegaMekAgent
 from env import MegaMekEnvironment
 
@@ -49,14 +49,19 @@ class ImpalaWorker:
             topology_payload = getattr(self.env, 'topology_payload', None)
             trajectory = []
             
+            # Tracking for dense rewards
+            prev_bv1, prev_bv2 = None, None
+            prev_tp1, prev_tp2 = 0, 0
+            total_match_bv = 1.0 # fallback to prevent div by zero
+            
+            beta_bv = 1.0
+            beta_tp = 0.01
+            
             step_idx = 0
             while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
                 # Fallback action if no valid actions
-                if state_graph is None or 'action' not in state_graph.node_types or state_graph['action'].x is None or state_graph['action'].x.size(0) == 0:
+                if (state_graph is None) or ('action' not in state_graph.node_types) or (state_graph['action'].x is None) or (state_graph['action'].x.size(0) == 0):
                     action_dict = {"selected_path_index": -1}
-                    state_graph, mask, done, current_payload = self.env.step(action_dict)
-                    if done: break
-                    continue
 
                 with torch.no_grad():
                     # Forward pass
@@ -67,21 +72,53 @@ class ImpalaWorker:
                 if selected_action != -1:
                     log_prob = torch.log(probs[selected_action] + 1e-10).item()
                     
+                    # Calculate Dense Reward
+                    reward = 0.0
+                    if current_payload and "rewards" in current_payload:
+                        rew_dict = current_payload["rewards"]
+                        bv1 = rew_dict.get("bv1", 0)
+                        bv2 = rew_dict.get("bv2", 0)
+                        tp1 = rew_dict.get("tp1", 0)
+                        tp2 = rew_dict.get("tp2", 0)
+                        
+                        if prev_bv1 is None:
+                            prev_bv1, prev_bv2 = bv1, bv2
+                            total_match_bv = max(bv1 + bv2, 1.0)
+                            
+                        delta_bv1 = bv1 - prev_bv1
+                        delta_bv2 = bv2 - prev_bv2
+                        
+                        # Note: TPs are absolute counts per turn, not deltas. 
+                        # We penalize current TP state.
+                        reward_bv = beta_bv * ((delta_bv1 - delta_bv2) / total_match_bv)
+                        reward_tp = beta_tp * (tp2 - tp1)
+                        
+                        reward = reward_bv + reward_tp
+                        
+                        prev_bv1, prev_bv2 = bv1, bv2
+                        prev_tp1, prev_tp2 = tp1, tp2
+
                     trajectory.append({
                         "raw_payload": current_payload,
                         "action_idx": selected_action,
                         "mu_log_prob": log_prob,
-                        "reward": 0.0 # Standard zero reward placeholder (can be updated post-episode)
+                        "reward": reward
                     })
-                    
+
                 state_graph, mask, done, current_payload = self.env.step(action_dict)
-                if done: break
-                step_idx += 1
+
+                if done:
+                    break
                 
+                step_idx += 1
+
             if len(trajectory) > 0:
-                # Assign final reward if episode ends with a win/loss
-                # For now, simplistic reward
-                trajectory[-1]["reward"] = 1.0 if getattr(self.env, "done", False) else 0.0
+                # Assign final win/loss reward if episode ends
+                if getattr(self.env, "done", False):
+                    # Simplistic win/loss: assume positive if P1 has more BV left than P2?
+                    # MegaMek doesn't strictly define done except game over.
+                    # For now, we can just leave the dense rewards or add a +1 / -1
+                    pass
                 
                 # Save to disk
                 traj_data = {
@@ -94,8 +131,12 @@ class ImpalaWorker:
                 print(f"Worker {self.worker_id}: Saved trajectory of length {len(trajectory)} to {traj_file}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
+    args = parser.parse_args()
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Initializing IMPALA Worker on {device}...")
+    print(f"Initializing IMPALA Worker on {device} (Port: {args.port})...")
     
     agent = MegaMekAgent(hidden_dim=128, ensemble_size=8).to(device)
     
@@ -105,5 +146,5 @@ if __name__ == "__main__":
         print(f"Bootstrapping worker from BC weights: {bc_model_path}")
         agent.load_state_dict(torch.load(bc_model_path, map_location=device))
         
-    worker = ImpalaWorker(agent, device=device)
+    worker = ImpalaWorker(agent, port=args.port, device=device)
     worker.run()
