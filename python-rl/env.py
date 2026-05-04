@@ -13,7 +13,7 @@ class MegaMekEnvironment:
     It synchronously maintains a connection and parses MessagePack state payloads
     into PyTorch Geometric HeteroData objects.
     """
-    def __init__(self, host='localhost', port=12346, device=None):
+    def __init__(self, host='localhost', port=12346, device=None, connect_on_init=True):
         self.host = host
         self.port = port
         self.sock = None
@@ -25,8 +25,9 @@ class MegaMekEnvironment:
         self.static_hex_features = None 
         self.static_hex_adjacency_edges = None
         
-        # Connect immediately
-        self.connect()
+        # Connect immediately if requested
+        if connect_on_init:
+            self.connect()
 
     def connect(self):
         if self._connected:
@@ -63,6 +64,7 @@ class MegaMekEnvironment:
             raise ConnectionError("Server disconnected during reset.")
             
         if payload.get("context") == "TOPOLOGY":
+            self.topology_payload = payload
             self.board_width = payload.get('width', 0)
             self.feature_dims = payload.get('feature_dims', {"hex": 14, "unit": 37, "weapon": 10})
             print(f"Received TOPOLOGY payload. Parsing Board shape ({payload.get('width')}x{payload.get('height')})...")
@@ -93,7 +95,7 @@ class MegaMekEnvironment:
             if self.static_hex_adjacency_edges is not None:
                 self.static_hex_adjacency_edges = self.static_hex_adjacency_edges.to(self.device)
             
-        return data_graph, mask
+        return data_graph, mask, payload
 
     def step(self, action_dict):
         """
@@ -108,14 +110,14 @@ class MegaMekEnvironment:
         payload = self._receive_payload()
         if payload is None:
             # Done True
-            return None, None, True 
+            return None, None, True, None 
             
         state, mask = self._parse_to_heterodata(payload)
         if (self.device is not None) and (state is not None):
             state = state.to(self.device)
             
         # Using dummy reward/done for now
-        return state, mask, False
+        return state, mask, False, payload
 
     def _receive_payload(self):
         # Read 4-byte length prefix

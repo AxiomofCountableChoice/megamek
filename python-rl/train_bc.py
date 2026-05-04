@@ -132,5 +132,11 @@ def train():
         avg_loss = total_loss / valid_batches if valid_batches > 0 else 0
         print(f"Epoch {epoch+1}/{epochs} | Avg BC Loss: {avg_loss:.4f} | Samples: {valid_batches}")
 
+    # Save the bootstrapped weights
+    os.makedirs('models', exist_ok=True)
+    save_path = 'models/bc_agent.pt'
+    torch.save(agent.state_dict(), save_path)
+    print(f"Saved trained BC model to {save_path}")
+
 if __name__ == "__main__":
     train()
