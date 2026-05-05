@@ -2,6 +2,8 @@ import os
 import time
 import torch
 import uuid
+import sys
+import signal
 import argparse
 from models.agent import MegaMekAgent
 from env import MegaMekEnvironment
@@ -134,6 +136,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
     args = parser.parse_args()
+
+    worker = None
+    
+    def signal_handler(sig, frame):
+        print(f"\nWorker received signal {sig}, shutting down gracefully...")
+        if worker is not None and getattr(worker.env, 'sock', None) is not None:
+            try:
+                worker.env.sock.close()
+            except Exception:
+                pass
+        sys.exit(0)
+        
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Initializing IMPALA Worker on {device} (Port: {args.port})...")

@@ -92,8 +92,6 @@ class MegaMekEnvironment:
         if self.device is not None:
             data_graph = data_graph.to(self.device)
             self.static_hex_features = self.static_hex_features.to(self.device)
-            if self.static_hex_adjacency_edges is not None:
-                self.static_hex_adjacency_edges = self.static_hex_adjacency_edges.to(self.device)
             
         return data_graph, mask, payload
 
@@ -121,9 +119,12 @@ class MegaMekEnvironment:
 
     def _receive_payload(self):
         # Read 4-byte length prefix
-        length_buf = self.sock.recv(4)
-        if not length_buf:
-            return None
+        length_buf = b''
+        while len(length_buf) < 4:
+            packet = self.sock.recv(4 - len(length_buf))
+            if not packet:
+                return None
+            length_buf += packet
         
         payload_len = struct.unpack('>I', length_buf)[0]
         
@@ -135,7 +136,8 @@ class MegaMekEnvironment:
                 return None
             data += packet
             
-        return msgpack.unpackb(data, raw=False)
+        payload = msgpack.unpackb(data, raw=False)
+        return payload
 
     def _parse_to_heterodata(self, payload):
         """
@@ -187,7 +189,7 @@ class MegaMekEnvironment:
             edge_arr = self.static_hex_adjacency_edges
             for dir_idx in range(6):
                 dir_mask = edge_arr[:, 2] == dir_idx
-                data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = edge_arr[dir_mask, :2].T.detach().clone().to(torch.long)
+                data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.tensor(edge_arr[dir_mask, :2].T, dtype=torch.long)
         else:
             for dir_idx in range(6):
                 data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
@@ -246,7 +248,9 @@ class MegaMekEnvironment:
 
         # 5. Dynamic Action Nodes ($V_A$) for Autoregressive Trees
         valid_paths = mask.get("valid_paths", [])
-        active_entity_idx = mask.get("active_entity_index", -1)
+        active_entity_idx = mask.get("active_entity_index")
+        if active_entity_idx is None:
+            active_entity_idx = -1
         
         if valid_paths and context.startswith("MOVEMENT"):
             # Extract target action logically if provided by the Offline pipeline

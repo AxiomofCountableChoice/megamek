@@ -83,6 +83,17 @@ public class RLDataPipeline {
         return pythonSocket != null && pythonSocket.isConnected();
     }
 
+    public void close() {
+        try {
+            if (pythonIn != null) pythonIn.close();
+            if (pythonOut != null) pythonOut.close();
+            if (pythonSocket != null) pythonSocket.close();
+            if (pythonServerSocket != null) pythonServerSocket.close();
+        } catch (Exception e) {
+            logger.error(e, "Error closing RLDataPipeline sockets");
+        }
+    }
+
     public void ensureTopologySent() {
         if (!hasSentTopology && baseClient.getGame() != null && baseClient.getGame().getBoard() != null
                 && isConnected()) {
@@ -157,10 +168,25 @@ public class RLDataPipeline {
             payload.put("feature_dims", featureDims);
 
             sendPayload(payload);
-            System.err.println("RLDataPipeline: Topology payload sent.");
         } catch (Exception e) {
-            System.err.println("RLDataPipeline: Failed to send topology " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("RLDataPipeline: Failed to send topology: " + e.getMessage());
+            e.printStackTrace(System.err);
+            logger.error(e, "RLDataPipeline: Failed to send topology");
+        }
+    }
+
+    public void broadcastStartGame() {
+        if (!isConnected()) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("context", "START_GAME");
+            sendPayload(payload);
+        } catch (Exception e) {
+            System.err.println("RLDataPipeline: Failed to broadcast START_GAME: " + e.getMessage());
+            e.printStackTrace(System.err);
+            logger.error(e, "RLDataPipeline: Failed to broadcast START_GAME");
         }
     }
 
@@ -198,7 +224,9 @@ public class RLDataPipeline {
 
             return msgpackMapper.readValue(dataBytes, responseType);
         } catch (Exception e) {
-            logger.error("RLDataPipeline: Python query failed: " + e.toString());
+            System.err.println("RLDataPipeline: Python query failed: " + e.getMessage());
+            e.printStackTrace(System.err);
+            logger.error(e, "RLDataPipeline: Python query failed");
             return null;
         }
     }
@@ -398,7 +426,6 @@ public class RLDataPipeline {
 
         int weaponNodeId = 0;
         int boardWidth = game.getBoard().getWidth();
-        int boardHeight = game.getBoard().getHeight();
 
         // Pass 1: Compute reachable hexes for all entities
         java.util.Map<Integer, java.util.Map<Integer, Integer>> entityReachableHexes = new java.util.HashMap<>();

@@ -91,19 +91,36 @@ class ActionConditionedPointer(nn.Module):
             tgt_idx = hetero_data['action'].target_hex_idx
             valid_mask = tgt_idx >= 0
             if valid_mask.any():
-                H_targets[valid_mask] = node_embeddings_dict['hex'][tgt_idx[valid_mask]]
+                max_hex = node_embeddings_dict['hex'].size(0) - 1
+                valid_tgt_idx = tgt_idx[valid_mask]
+                if (valid_tgt_idx > max_hex).any() or (valid_tgt_idx < 0).any():
+                    print(f"WARNING: Out of bounds hex index! Max allowed: {max_hex}. Got min: {valid_tgt_idx.min()}, max: {valid_tgt_idx.max()}")
+                    valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_hex)
+                H_targets[valid_mask] = node_embeddings_dict['hex'][valid_tgt_idx]
                 
         if hasattr(hetero_data['action'], 'target_unit_idx'):
             tgt_idx = hetero_data['action'].target_unit_idx
             valid_mask = tgt_idx >= 0
             if valid_mask.any():
-                H_targets[valid_mask] = node_embeddings_dict['unit'][tgt_idx[valid_mask]]
+                max_unit = node_embeddings_dict['unit'].size(0) - 1
+                valid_tgt_idx = tgt_idx[valid_mask]
+                if max_unit < 0:
+                    H_targets[valid_mask] = 0.0 # No units available
+                else:
+                    valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_unit)
+                    H_targets[valid_mask] = node_embeddings_dict['unit'][valid_tgt_idx]
                 
         if hasattr(hetero_data['action'], 'target_weapon_idx'):
             tgt_idx = hetero_data['action'].target_weapon_idx
             valid_mask = tgt_idx >= 0
             if valid_mask.any():
-                H_targets[valid_mask] = node_embeddings_dict['weapon'][tgt_idx[valid_mask]]
+                max_weapon = node_embeddings_dict['weapon'].size(0) - 1
+                valid_tgt_idx = tgt_idx[valid_mask]
+                if max_weapon < 0:
+                    H_targets[valid_mask] = 0.0 # No weapons available
+                else:
+                    valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_weapon)
+                    H_targets[valid_mask] = node_embeddings_dict['weapon'][valid_tgt_idx]
         
         # Source Units
         H_units = torch.zeros((num_actions, node_embeddings_dict['unit'].size(-1)), device=device)
@@ -111,7 +128,13 @@ class ActionConditionedPointer(nn.Module):
             src_idx = hetero_data['action'].source_unit_idx
             valid_mask = src_idx >= 0
             if valid_mask.any():
-                H_units[valid_mask] = node_embeddings_dict['unit'][src_idx[valid_mask]]
+                max_unit = node_embeddings_dict['unit'].size(0) - 1
+                valid_src_idx = src_idx[valid_mask]
+                if max_unit < 0:
+                    H_units[valid_mask] = 0.0
+                else:
+                    valid_src_idx = torch.clamp(valid_src_idx, 0, max_unit)
+                    H_units[valid_mask] = node_embeddings_dict['unit'][valid_src_idx]
         
         # Concat: H_unit (+) H_target_node (+) X_action_node
         fused_inputs = torch.cat([H_units, H_targets, action_features], dim=-1)

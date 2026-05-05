@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import HGTConv, Linear
-from torch_geometric.nn.glob import GlobalAttention
+from torch_geometric.nn.aggr import AttentionalAggregation
 import torch.nn.functional as F
 
 # Default structural graph metadata
@@ -68,7 +68,7 @@ class MegaMekHGTEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1)
         )
-        self.global_pool = GlobalAttention(gate_nn=self.gate_nn)
+        self.global_pool = AttentionalAggregation(gate_nn=self.gate_nn)
         
         # 4. Context MLP (Phase Metadata -> z_context)
         self.context_mlp = nn.Sequential(

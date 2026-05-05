@@ -36,6 +36,7 @@ public class PrincessOfflineTrainer {
     public static void start(String[] args) {
         System.out.println("PrincessOfflineTrainer start() called! autoGen check incoming...");
         boolean autoGen = false;
+        boolean selfPlay = false;
         boolean randomMap = false;
         String p1Meks = "";
         String p2Meks = "";
@@ -44,6 +45,9 @@ public class PrincessOfflineTrainer {
         for (int i = 0; i < args.length; i++) {
             if (args[i].equalsIgnoreCase("-autogen")) {
                 autoGen = true;
+            } else if (args[i].equalsIgnoreCase("-selfplay")) {
+                selfPlay = true;
+                autoGen = true; // selfPlay implies we auto-generate the match
             } else if (args[i].equalsIgnoreCase("-randomMap")) {
                 randomMap = true;
             } else if (args[i].equalsIgnoreCase("-p1meks")) {
@@ -107,7 +111,10 @@ public class PrincessOfflineTrainer {
         BotClient p1 = null;
         BotClient p2 = null;
         try {
-            if (autoGen) {
+            if (selfPlay) {
+                p1 = new RLBotClient("RL_Agent_Alpha", "localhost", resolver.port, resolver.port + 1000);
+                p2 = new RLBotClient("RL_Agent_Beta", "localhost", resolver.port, resolver.port + 1001);
+            } else if (autoGen) {
                 p1 = new RLBotClient("RL_Agent", "localhost", resolver.port, resolver.port + 1000);
                 p2 = new Princess("Princess_Beta", "localhost", resolver.port);
             } else {
@@ -155,8 +162,8 @@ public class PrincessOfflineTrainer {
                 while ((player1 == null || player2 == null) && attempts < 20) {
                     for (megamek.common.Player p : game.getPlayersList()) {
                         System.out.println("Found player: " + p.getName());
-                        if (p.getName().equals("RL_Agent") || p.getName().equals("Princess_Alpha")) player1 = p;
-                        if (p.getName().equals("Princess_Beta")) player2 = p;
+                        if (p.getName().equals("RL_Agent") || p.getName().equals("Princess_Alpha") || p.getName().equals("RL_Agent_Alpha")) player1 = p;
+                        if (p.getName().equals("Princess_Beta") || p.getName().equals("RL_Agent_Beta")) player2 = p;
                     }
                     if (player1 == null || player2 == null) {
                         System.out.println("Missing a Princess, sleeping...");

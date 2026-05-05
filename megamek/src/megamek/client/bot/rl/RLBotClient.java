@@ -97,12 +97,12 @@ public class RLBotClient extends BotClient {
             }
             
             // If no path given, command the entity to stand still / end turn
-            sendDone(true);
+            return new MovePath(game, entity);
         } catch (Throwable t) {
             System.err.println("RLBOTCLIENT FATAL THROWABLE in continueMovementFor: " + t.toString());
             t.printStackTrace();
         }
-        return null;
+        return new MovePath(game, entity);
     }
 
     @Override
@@ -171,10 +171,17 @@ public class RLBotClient extends BotClient {
     @Override
     protected void checkMorale() {}
 
+    private boolean hasStartedGame = false;
+
     @Override
     public void changePhase(megamek.common.enums.GamePhase phase) {
         super.changePhase(phase);
         
+        if (!hasStartedGame && !phase.isLounge()) {
+            dataPipeline.broadcastStartGame();
+            hasStartedGame = true;
+        }
+
         // If we are fully automated and pre-deployed by RLServerManager,
         // we never get a Deployment GameTurn, so we must manually skip the phase here.
         if (phase.isDeployment()) {
@@ -193,4 +200,12 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected void postMovementProcessing() {}
+
+    @Override
+    public synchronized void die() {
+        if (dataPipeline != null) {
+            dataPipeline.close();
+        }
+        super.die();
+    }
 }
