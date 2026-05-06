@@ -37,13 +37,19 @@ public class PrincessOfflineTrainer {
         System.out.println("PrincessOfflineTrainer start() called! autoGen check incoming...");
         boolean autoGen = false;
         boolean selfPlay = false;
+        boolean bcDataGen = false;
         boolean randomMap = false;
         String p1Meks = "";
         String p2Meks = "";
         
         java.util.List<String> cleanArgs = new java.util.ArrayList<>();
+        System.out.println("Args passed to PrincessOfflineTrainer:");
         for (int i = 0; i < args.length; i++) {
+            System.out.println("  " + args[i]);
             if (args[i].equalsIgnoreCase("-autogen")) {
+                autoGen = true;
+            } else if (args[i].equalsIgnoreCase("-bcdatagen")) {
+                bcDataGen = true;
                 autoGen = true;
             } else if (args[i].equalsIgnoreCase("-selfplay")) {
                 selfPlay = true;
@@ -114,10 +120,11 @@ public class PrincessOfflineTrainer {
             if (selfPlay) {
                 p1 = new RLBotClient("RL_Agent_Alpha", "localhost", resolver.port, resolver.port + 1000);
                 p2 = new RLBotClient("RL_Agent_Beta", "localhost", resolver.port, resolver.port + 1001);
-            } else if (autoGen) {
+            } else if (autoGen && !bcDataGen) {
                 p1 = new RLBotClient("RL_Agent", "localhost", resolver.port, resolver.port + 1000);
                 p2 = new Princess("Princess_Beta", "localhost", resolver.port);
             } else {
+                // Used for bcDataGen or default manual operation
                 p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, resolver.port + 1000);
                 p2 = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
             }

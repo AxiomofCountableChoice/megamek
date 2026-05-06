@@ -2,10 +2,10 @@ import time
 from env import MegaMekEnvironment
 
 def main():
-    env = MegaMekEnvironment(host='localhost', port=12346)
+    env = MegaMekEnvironment(host='localhost', port=3346)
     
     print("Initializing environment...")
-    state, mask = env.reset()
+    state, mask, _ = env.reset()
     
     print("\n--- Initial State (HeteroData) parsed successfully! ---")
     if getattr(state, "node_types", None):
@@ -23,14 +23,14 @@ def main():
             # Dummy response logic
             response = {"selected_path_index": 0}
             
-            state, mask, done = env.step(response)
+            state, mask, done, _ = env.step(response)
             
             if done:
                 print("Environment episode finished.")
                 break
                 
             if state is not None and getattr(state, "node_types", None):
-                print(f"Update -> Mechs: {state['mech'].x.shape[0]} nodes | Active Hex Occupancies: {state['mech', 'occupies', 'hex'].edge_index.shape[1]}")
+                print(f"Update -> Mechs: {state['unit'].x.shape[0]} nodes | Active Hex Occupancies: {state['unit', 'occupies', 'hex'].edge_index.shape[1]}")
             
     except KeyboardInterrupt:
         print("\nDummy Actor terminated by user.")

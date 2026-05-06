@@ -95,8 +95,10 @@ public class RLDataPipeline {
     }
 
     public void ensureTopologySent() {
+        System.err.println("RL_SYNC_DEBUG [ensureTopologySent]: Check. hasSent: " + hasSentTopology + ", connected: " + isConnected());
         if (!hasSentTopology && baseClient.getGame() != null && baseClient.getGame().getBoard() != null
                 && isConnected()) {
+            System.err.println("RL_SYNC_DEBUG [ensureTopologySent]: Sending now!");
             sendTopologyToPython();
             hasSentTopology = true;
         }
@@ -197,6 +199,8 @@ public class RLDataPipeline {
         pythonOut.flush();
     }
 
+    public static boolean DEBUG_RL_SYNC = true;
+
     public <T> T queryPython(String actionContext, Object mask, Class<T> responseType) {
         if (!isConnected()) {
             return null;
@@ -204,6 +208,7 @@ public class RLDataPipeline {
 
         ensureTopologySent();
 
+        long startTime = System.currentTimeMillis();
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", actionContext);
@@ -211,7 +216,15 @@ public class RLDataPipeline {
             payload.put("mask", mask);
             payload.put("rewards", calculateRewards());
 
-            sendPayload(payload);
+            byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
+            
+            if (DEBUG_RL_SYNC) {
+                System.err.println("RL_SYNC_DEBUG [queryPython]: Sending payload for context '" + actionContext + "' | Size: " + bytes.length + " bytes");
+            }
+            
+            pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
+            pythonOut.write(bytes);
+            pythonOut.flush();
 
             // Read response
             byte[] lenBytes = new byte[4];
@@ -222,9 +235,25 @@ public class RLDataPipeline {
             byte[] dataBytes = new byte[len];
             dis.readFully(dataBytes);
 
+            long endTime = System.currentTimeMillis();
+            if (DEBUG_RL_SYNC) {
+                System.err.println("RL_SYNC_DEBUG [queryPython]: Received response for '" + actionContext + "' | Size: " + len + " bytes | Time: " + (endTime - startTime) + "ms");
+            }
+
             return msgpackMapper.readValue(dataBytes, responseType);
+        } catch (java.net.SocketTimeoutException e) {
+            System.err.println("RL_SYNC_DEBUG [queryPython]: Socket timeout after " + (System.currentTimeMillis() - startTime) + "ms! Context: " + actionContext);
+            e.printStackTrace(System.err);
+            logger.error(e, "RLDataPipeline: Python query failed due to timeout");
+            return null;
+        } catch (java.net.SocketException e) {
+            System.err.println("RL_SYNC_DEBUG [queryPython]: SocketException (Broken Pipe). Disconnecting python client.");
+            this.close();
+            pythonSocket = null;
+            hasSentTopology = false;
+            return null;
         } catch (Exception e) {
-            System.err.println("RLDataPipeline: Python query failed: " + e.getMessage());
+            System.err.println("RL_SYNC_DEBUG [queryPython]: Failed! Exception: " + e.getClass().getName() + " - " + e.getMessage());
             e.printStackTrace(System.err);
             logger.error(e, "RLDataPipeline: Python query failed");
             return null;

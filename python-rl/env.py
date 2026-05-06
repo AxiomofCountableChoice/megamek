@@ -51,43 +51,37 @@ class MegaMekEnvironment:
             raise ConnectionError("Failed to connect to MegaMek server.")
                 
     def reset(self):
-        """
-        Wait for the next match state payload and return the initial state.
-        If self.device is provided (e.g. 'cuda:0' or a torch.device object), moves the parsed HeteroData graph and its tensors to this device.
-        """
-        if not self._connected:
-            self.connect()
-            
         print("Awaiting initial state payload...")
-        payload = self._receive_payload()
-        if payload is None:
-            raise ConnectionError("Server disconnected during reset.")
-            
-        if payload.get("context") == "TOPOLOGY":
-            self.topology_payload = payload
-            self.board_width = payload.get('width', 0)
-            self.feature_dims = payload.get('feature_dims', {"hex": 14, "unit": 37, "weapon": 10})
-            print(f"Received TOPOLOGY payload. Parsing Board shape ({payload.get('width')}x{payload.get('height')})...")
-            nodes = payload.get("hex_nodes", [])
-            edges = payload.get("hex_edges", [])
-            
-            if nodes:
-                t = torch.tensor(nodes, dtype=torch.float32)
-                self.static_hex_features = t
-            else:
-                self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
-                
-            if edges:
-                edge_array = np.array(edges, dtype=np.int64)
-                self.static_hex_adjacency_edges = edge_array
-            else:
-                self.static_hex_adjacency_edges = None
-                    
-            print("Topology cached. Awaiting actual initial state...")
+        while True:
             payload = self._receive_payload()
             if payload is None:
-                 raise ConnectionError("Server disconnected while waiting for STATE.")
-                    
+                raise ConnectionError("Server disconnected during reset.")
+                
+            ctx = payload.get("context")
+            if ctx == "START_GAME":
+                print("Received START_GAME broadcast. Awaiting actual state...")
+                continue
+            elif ctx == "TOPOLOGY":
+                self.topology_payload = payload
+                self.board_width = payload.get('width', 0)
+                self.feature_dims = payload.get('feature_dims', {"hex": 14, "unit": 37, "weapon": 10})
+                print(f"Received TOPOLOGY payload. Parsing Board shape ({self.board_width}x{payload.get('height')})...")
+                nodes = payload.get("hex_nodes", [])
+                edges = payload.get("hex_edges", [])
+                if nodes:
+                    self.static_hex_features = torch.tensor(nodes, dtype=torch.float32)
+                else:
+                    self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
+                if edges:
+                    self.static_hex_adjacency_edges = np.array(edges, dtype=np.int64)
+                else:
+                    self.static_hex_adjacency_edges = None
+                print("Topology cached.")
+                continue
+            else:
+                # Actual actionable state
+                break
+
         data_graph, mask = self._parse_to_heterodata(payload)
         if self.device is not None:
             data_graph = data_graph.to(self.device)
@@ -199,9 +193,9 @@ class MegaMekEnvironment:
         weapon_dim = getattr(self, 'feature_dims', {}).get("weapon", 10)
         if raw_weapons:
             w_tensor = torch.tensor(raw_weapons, dtype=torch.float32)
-            # MegaMek uses Integer.MIN_VALUE for WeaponType.DAMAGE_NA, RANGE_NA, etc.
+            # MegaMek uses negative values for WeaponType.DAMAGE_NA, RANGE_NA, etc.
             # We must mask these out to prevent exploding gradients.
-            w_tensor[w_tensor < -1000.0] = 0.0
+            w_tensor[w_tensor < 0] = 0.0
             data['weapon'].x = w_tensor
         else:
             data['weapon'].x = torch.empty((0, weapon_dim), dtype=torch.float32)

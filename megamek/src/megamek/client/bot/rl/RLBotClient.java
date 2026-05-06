@@ -65,14 +65,20 @@ public class RLBotClient extends BotClient {
     protected MovePath calculateMoveTurn() {
         // Find an unmoved entity and ask Python for its move
         List<Entity> myUnits = getEntitiesOwned();
-        System.err.println("RLBOTCLIENT: calculateMoveTurn called. Configured entities: " + getGame().getEntitiesVector().size() + ", Owned entities: " + myUnits.size());
+        if (RLDataPipeline.DEBUG_RL_SYNC) {
+            System.err.println("RL_SYNC_DEBUG [calculateMoveTurn]: Configured entities: " + getGame().getEntitiesVector().size() + ", Owned entities: " + myUnits.size());
+        }
         for (Entity e : myUnits) {
             if (e.isSelectableThisTurn()) {
-                System.err.println("RLBOTCLIENT: Picked entity " + e.getDisplayName() + " to move.");
+                if (RLDataPipeline.DEBUG_RL_SYNC) {
+                    System.err.println("RL_SYNC_DEBUG [calculateMoveTurn]: Picked entity " + e.getDisplayName() + " to move. done=" + e.isDone() + " int=" + e.turnWasInterrupted());
+                }
                 return continueMovementFor(e);
             }
         }
-        System.err.println("RLBOTCLIENT: No selectable entities found.");
+        if (RLDataPipeline.DEBUG_RL_SYNC) {
+            System.err.println("RL_SYNC_DEBUG [calculateMoveTurn]: No selectable entities found.");
+        }
         return null;
     }
 
@@ -92,14 +98,25 @@ public class RLBotClient extends BotClient {
             if (response != null && response.selected_path_index != null) {
                 int idx = response.selected_path_index;
                 if (idx >= 0 && idx < calculatedPaths.size()) {
+                    if (RLDataPipeline.DEBUG_RL_SYNC) {
+                        System.err.println("RL_SYNC_DEBUG [continueMovementFor]: Successfully parsed path index " + idx + " out of " + calculatedPaths.size() + " paths.");
+                    }
                     return calculatedPaths.get(idx);
+                } else {
+                    if (RLDataPipeline.DEBUG_RL_SYNC) {
+                        System.err.println("RL_SYNC_DEBUG [continueMovementFor]: WARNING! Python returned an out-of-bounds selected_path_index: " + idx + " (max " + calculatedPaths.size() + "). Defaulting to standing still.");
+                    }
+                }
+            } else {
+                if (RLDataPipeline.DEBUG_RL_SYNC) {
+                    System.err.println("RL_SYNC_DEBUG [continueMovementFor]: WARNING! Python response was null or lacked selected_path_index. Defaulting to standing still.");
                 }
             }
             
             // If no path given, command the entity to stand still / end turn
             return new MovePath(game, entity);
         } catch (Throwable t) {
-            System.err.println("RLBOTCLIENT FATAL THROWABLE in continueMovementFor: " + t.toString());
+            System.err.println("RL_SYNC_DEBUG [continueMovementFor]: FATAL THROWABLE: " + t.toString());
             t.printStackTrace();
         }
         return new MovePath(game, entity);

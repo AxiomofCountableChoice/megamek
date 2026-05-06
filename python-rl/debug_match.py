@@ -1,99 +1,60 @@
+import subprocess
 import os
 import time
-import subprocess
+import signal
+import sys
+
+# Change this to whatever port you'd like the MegaMek RLServer to listen on
+PORT = 2348
+
+# The root megamek repository directory
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
+
+# Mech files are located in mm-data
+mm_data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "mm-data"))
+
+print(f"Starting MegaMek Offline Trainer from CWD: {repo_root}")
+
+cmd = [
+    "build/install/MegaMek/bin/megamek",
+    "-rlexport",
+    "-autogen",
+    "-randomMap",
+    "-p1meks", os.path.join(mm_data_root, "data", "mekfiles", "meks", "3075", "Pariah Prime.mtf"),
+    "-p2meks", os.path.join(mm_data_root, "data", "mekfiles", "meks", "Rec Guides ilClan", "Vol 33", "Gyrfalcon 5.mtf")
+]
+
+# Set environment variable to ensure we connect properly
+env = os.environ.copy()
+env["RL_SERVER_PORT"] = str(PORT)
+
+# Redirect stdout and stderr so we can stream it and see Java crashes
+proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
 import threading
-import torch
-
-from env import MegaMekEnvironment
-
-MEKFILES_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek", "data", "mekfiles", "meks"))
-
-def run_headless():
-    cmd = [
-        "build/install/MegaMek/bin/megamek", 
-        "-rlexport", "-port", "3456", "-autogen", "-randomMap", 
-        "-p1meks", "testresources/megamek/common/units/Charger C.mtf",
-        "-p2meks", "testresources/megamek/common/units/Sagittaire SGT-14D.mtf"
-    ]
-    cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
-    
-    print("[debug] Starting Headless MegaMek Server...")
-    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    
-    # Start a thread to stream server output to python stdout
-    def stream_output(pipe):
+def stream_output(pipe):
+    try:
         for line in iter(pipe.readline, ''):
             print(f"[MegaMek] {line}", end='')
-    threading.Thread(target=stream_output, args=(proc.stdout,), daemon=True).start()
-    
-    return proc
+    except Exception:
+        pass
+threading.Thread(target=stream_output, args=(proc.stdout,), daemon=True).start()
 
-def debug_worker(port, worker_id):
-    env = MegaMekEnvironment(port=port)
-    retries = 15
-    
-    print(f"[Worker {port}] Attempting to connect...")
-    while retries > 0:
-        try:
-            env.connect()
-            break
-        except ConnectionRefusedError:
-            time.sleep(2)
-            retries -= 1
-            
-    if not env.sock:
-        print(f"[Worker {port}] Failed to connect.")
-        return
-        
-    print(f"[Worker {port}] Connected! Awaiting graph data...")
-    
-    state_graph, mask = env.reset()
-    if state_graph is None:
-        print(f"[Worker {port}] Failed to get initial state.")
-        return
-        
-    print(f"\n[Worker {port}] --- INITIAL STATE ---")
-    print(f"Mask Size: {len(mask)}")
-    print("Graph Composition:")
-    for node_type in state_graph.node_types:
-        if getattr(state_graph[node_type], 'x', None) is not None:
-            print(f"  {node_type} nodes: {state_graph[node_type].x.size()}")
-    for edge_type in state_graph.edge_types:
-        if getattr(state_graph[edge_type], 'edge_index', None) is not None:
-            count = state_graph[edge_type].edge_index.size(1)
-            print(f"  {edge_type} edges: {count}")
-            
-    step_count = 0
-    while step_count < 25:
-        # Take a dummy action to trigger next step
-        action_dict = {"selected_path_index": 0} if len(mask) > 0 else {"selected_path_index": -1}
-        state_graph, mask, done = env.step(action_dict)
-        
-        if done:
-            print(f"[Worker {port}] Match done.")
-            break
-            
-        step_count += 1
-        print(f"\n[Worker {port}] --- ACTION STEP {step_count} ---")
-        print(f"Mask Size: {len(mask)}")
-        for node_type in state_graph.node_types:
-            if getattr(state_graph[node_type], 'x', None) is not None:
-                print(f"  {node_type} nodes: {state_graph[node_type].x.size()}")
-        for edge_type in state_graph.edge_types:
-            if getattr(state_graph[edge_type], 'edge_index', None) is not None:
-                count = state_graph[edge_type].edge_index.size(1)
-                if count > 0:
-                    print(f"  {edge_type} edges: {count}")
+def signal_handler(sig, frame):
+    print("\nShutting down MegaMek Offline Trainer...")
+    proc.send_signal(signal.SIGTERM)
+    # Also attempt to kill the Java process directly since Gradle script sometimes orphans it
+    subprocess.run(["pkill", "-f", "java.*MegaMek"], stderr=subprocess.DEVNULL)
+    proc.wait(timeout=2)
+    sys.exit(0)
 
-if __name__ == "__main__":
-    proc = run_headless()
-    try:
-        t1 = threading.Thread(target=debug_worker, args=(8001, 1))
-        t2 = threading.Thread(target=debug_worker, args=(8002, 2))
-        t1.start()
-        t2.start()
-        t1.join(timeout=180)
-        t2.join(timeout=180)
-    finally:
-        print("[debug] Terminating Server...")
-        proc.terminate()
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+print(f"MegaMek Started (PID {proc.pid}). Press Ctrl+C to terminate.")
+
+# Wait for it to finish
+try:
+    proc.wait()
+except KeyboardInterrupt:
+    signal_handler(signal.SIGINT, None)
