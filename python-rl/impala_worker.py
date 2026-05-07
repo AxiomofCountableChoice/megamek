@@ -68,12 +68,14 @@ class ImpalaWorker:
                 with torch.no_grad():
                     # Forward pass
                     action_dict, v_mean, probs = self.agent.get_action(state_graph, mask)
+
                     
-                selected_action = action_dict.get("selected_path_index", -1)
-                
-                if selected_action != -1:
-                    log_prob = torch.log(probs[selected_action] + 1e-10).item()
+                # Check if it was a valid action by looking at the default fallback
+                is_valid = True
+                if "selected_path_index" in action_dict and action_dict["selected_path_index"] == -1:
+                    is_valid = False
                     
+                if is_valid:
                     # Calculate Dense Reward
                     reward = 0.0
                     if current_payload and "rewards" in current_payload:
@@ -90,8 +92,6 @@ class ImpalaWorker:
                         delta_bv1 = bv1 - prev_bv1
                         delta_bv2 = bv2 - prev_bv2
                         
-                        # Note: TPs are absolute counts per turn, not deltas. 
-                        # We penalize current TP state.
                         reward_bv = beta_bv * ((delta_bv1 - delta_bv2) / total_match_bv)
                         reward_tp = beta_tp * (tp2 - tp1)
                         
@@ -102,8 +102,7 @@ class ImpalaWorker:
 
                     trajectory.append({
                         "raw_payload": current_payload,
-                        "action_idx": selected_action,
-                        "mu_log_prob": log_prob,
+                        "action_dict": action_dict,
                         "reward": reward
                     })
 

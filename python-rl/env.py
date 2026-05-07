@@ -362,7 +362,8 @@ class MegaMekEnvironment:
             twist_values = [-1, 0, 1]
             twist_node_indices = {}
             for tv in twist_values:
-                twist_node_indices[tv] = len(action_features)
+                idx = len(action_features)
+                twist_node_indices[tv] = idx
                 action_features.append([tv, 0.0, 0.0, 0.0, 0.0, phase_type]) # Torso Twist Feature
                 action_target_hex_idx.append(-1)
                 action_target_unit_idx.append(-1)
@@ -373,12 +374,15 @@ class MegaMekEnvironment:
             
             for twist_mask in valid_twists:
                 tv = twist_mask.get("twist", 0)
+                twist_mask["node_idx"] = twist_node_indices.get(tv, -1)
                 valid_targets = twist_mask.get("valid_targets", [])
                 
                 for tm in valid_targets:
                     target_entity_index = tm.get("target_entity_index", -1)
                     
                     # Append Target Node
+                    idx = len(action_features)
+                    tm["node_idx"] = idx
                     action_features.append([1.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
                     action_target_hex_idx.append(-1)
                     action_target_unit_idx.append(target_entity_index)
@@ -391,9 +395,12 @@ class MegaMekEnvironment:
                     for wm in valid_weapons:
                         weapon_id = wm.get("weapon_id", -1)
                         to_hit = float(wm.get("to_hit", 0.0))
+                        sec_to_hit = float(wm.get("secondary_to_hit", to_hit))
                         
                         # Append Weapon Node
-                        action_features.append([0.0, 1.0, to_hit, 0.0, 2.0, phase_type]) # Weapon Feature
+                        idx = len(action_features)
+                        wm["node_idx"] = idx
+                        action_features.append([0.0, 1.0, to_hit, sec_to_hit, 2.0, phase_type]) # Weapon Feature
                         action_target_hex_idx.append(-1)
                         action_target_unit_idx.append(-1)
                         action_target_weapon_idx.append(weapon_id)
@@ -403,6 +410,7 @@ class MegaMekEnvironment:
                     
             # Append END node
             end_node_idx = len(action_features)
+            mask["end_node_idx"] = end_node_idx
             action_features.append([0.0, 0.0, 1.0, 0.0, 3.0, phase_type]) # END Feature
             action_target_hex_idx.append(-1)
             action_target_unit_idx.append(-1)
@@ -484,6 +492,8 @@ class MegaMekEnvironment:
                 target_entity_index = tm.get("target_entity_index", -1)
                 
                 # Append Target Node
+                idx = len(action_features)
+                tm["node_idx"] = idx
                 action_features.append([1.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
                 action_target_hex_idx.append(-1)
                 action_target_unit_idx.append(target_entity_index)
@@ -498,6 +508,8 @@ class MegaMekEnvironment:
                     to_hit = float(am.get("to_hit", 0.0))
                     
                     # Append Physical Action Node
+                    idx = len(action_features)
+                    am["node_idx"] = idx
                     action_features.append([0.0, 1.0, to_hit, float(action_type), 2.0, phase_type]) # Physical Action Feature encodes action_type
                     action_target_hex_idx.append(-1)
                     action_target_unit_idx.append(-1)
@@ -508,6 +520,7 @@ class MegaMekEnvironment:
                     
             # Append END node
             end_node_idx = len(action_features)
+            mask["end_node_idx"] = end_node_idx
             action_features.append([0.0, 0.0, 1.0, 0.0, 3.0, phase_type]) # END Feature
             action_target_hex_idx.append(-1)
             action_target_unit_idx.append(-1)

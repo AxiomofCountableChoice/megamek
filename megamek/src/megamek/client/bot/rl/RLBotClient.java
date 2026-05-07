@@ -30,6 +30,7 @@ import megamek.common.board.BoardLocation;
 import megamek.common.units.Entity;
 import megamek.common.event.player.GamePlayerChatEvent;
 import megamek.common.moves.MovePath;
+import megamek.common.Report;
 
 public class RLBotClient extends BotClient {
     
@@ -47,7 +48,23 @@ public class RLBotClient extends BotClient {
     }
 
     @Override
-    protected void processChat(GamePlayerChatEvent ge) {}
+    protected void processChat(GamePlayerChatEvent ge) {
+        if (RLDataPipeline.DEBUG_RL_SYNC) {
+            System.err.println("[RLBotClient CHAT] " + ge.getMessage());
+        }
+    }
+
+    @Override
+    public String receiveReport(List<Report> reports) {
+        if (RLDataPipeline.DEBUG_RL_SYNC) {
+            for (Report r : reports) {
+                // Strip HTML tags for clean console logging
+                String cleanText = r.text().replaceAll("<[^>]*>", "");
+                System.err.println("[RLBotClient REPORT] " + cleanText);
+            }
+        }
+        return "";
+    }
 
     @Override
     protected void initMovement() {}

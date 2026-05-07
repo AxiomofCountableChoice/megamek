@@ -747,6 +747,15 @@ public class RLDataPipeline {
                     continue;
                 }
 
+                boolean inFrontArc = megamek.common.compute.ComputeArc.isInArc(shooter.getPosition(), shooter.getSecondaryFacing(), target, shooter.getForwardArc());
+                int secondaryPenalty = 2;
+                if (inFrontArc || shooter instanceof megamek.common.battleArmor.BattleArmor) {
+                    secondaryPenalty = 1;
+                }
+                if (shooter.hasAbility(megamek.common.options.OptionsConstants.GUNNERY_MULTI_TASKER)) {
+                    secondaryPenalty--;
+                }
+
                 List<RLActionMask.RLWeaponMask> validWeapons = new ArrayList<>();
                 for (megamek.common.equipment.WeaponMounted wm : shooter.getWeaponList()) {
                     if (!wm.canFire() || (wm.getLinkedAmmo() != null && wm.getLinkedAmmo().getUsableShotsLeft() == 0)) {
@@ -764,6 +773,7 @@ public class RLDataPipeline {
                         wData.weapon_id = shooter.getEquipmentNum(wm);
                         wData.weapon_name = wm.getName();
                         wData.to_hit = toHit.getValue();
+                        wData.secondary_to_hit = wData.to_hit + secondaryPenalty;
                         validWeapons.add(wData);
                     }
                 }

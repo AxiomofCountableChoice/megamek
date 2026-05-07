@@ -9,7 +9,7 @@ def train():
     device = torch.device('cpu')
     print(f"Using compute device: {device}")
     
-    dataset_path = '../bc_dataset_master.pt'
+    dataset_path = 'bc_dataset_master.pt'
     if not os.path.exists(dataset_path):
         print(f"Dataset not found at {dataset_path}. Please run bc_generator.py first.")
         return

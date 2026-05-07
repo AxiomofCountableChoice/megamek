@@ -51,6 +51,7 @@ public class RLActionMask {
         public Integer weapon_id;
         public String weapon_name;
         public Integer to_hit;
+        public Integer secondary_to_hit;
     }
 
     public static class RLPhysicalMask {

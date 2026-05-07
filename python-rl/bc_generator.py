@@ -27,7 +27,7 @@ def run_megamek_episode(all_meks, server_port):
     
     cmd = [
         "build/install/MegaMek/bin/megamek", 
-        "-rlexport", "-autogen", "-randomMap", 
+        "-rlexport", "-bcdatagen", "-randomMap", 
         "-p1meks", p1_meks, 
         "-p2meks", p2_meks
     ]
@@ -37,7 +37,7 @@ def run_megamek_episode(all_meks, server_port):
     env = os.environ.copy()
     
     # Force Java 21 to prevent UnsupportedClassVersionError (Java 65.0)
-    java_home = os.path.abspath(os.path.join(cwd, "..", "jdk-21.0.2"))
+    java_home = os.environ.get("JAVA_HOME", "/home/stuart_hatzioannou/jdk-21.0.2")
     env["JAVA_HOME"] = java_home
     env["PATH"] = f"{os.path.join(java_home, 'bin')}:{env.get('PATH', '')}"
     
@@ -82,6 +82,9 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
             if payload is None:
                 print(f"[Worker {port}] Disconnected or Match Over.")
                 break
+                
+            if payload.get("context") == "START_GAME":
+                continue
                 
             if payload.get("context") == "TOPOLOGY":
                 nodes = payload.get("hex_nodes", [])
@@ -160,6 +163,9 @@ if __name__ == "__main__":
         
         with dataset_lock:
             master_dataset.extend(local_dataset)
+            if master_dataset:
+                os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
+                torch.save(master_dataset, args.save_path)
             print(f"Episode {ep_idx+1} complete. Total Trajectories so far: {len(master_dataset)}")
             
     # Run in parallel using ThreadPoolExecutor
