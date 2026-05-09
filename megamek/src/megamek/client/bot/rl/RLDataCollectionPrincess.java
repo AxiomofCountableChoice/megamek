@@ -39,6 +39,14 @@ public class RLDataCollectionPrincess extends Princess {
     }
     
     @Override
+    public void die() {
+        if (dataPipeline != null) {
+            dataPipeline.close();
+        }
+        super.die();
+    }
+    
+    @Override
     protected MovePath continueMovementFor(final Entity entity) {
         // Princess natively calculates paths, ranks them, and returns the chosen MovePath
         MovePath chosenPath = super.continueMovementFor(entity);
