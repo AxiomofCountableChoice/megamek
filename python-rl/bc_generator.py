@@ -20,8 +20,8 @@ def get_random_meks(all_meks, num=1):
     return ",".join(random.choices(all_meks, k=num))
 
 def run_megamek_episode(all_meks, server_port):
-    p1_meks = get_random_meks(all_meks, num=1)
-    p2_meks = get_random_meks(all_meks, num=1)
+    p1_meks = get_random_meks(all_meks, num=4)
+    p2_meks = get_random_meks(all_meks, num=4)
     
     print(f"[bc_generator] Starting Episode on Port {server_port} | Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
     
@@ -54,11 +54,11 @@ def run_megamek_episode(all_meks, server_port):
             print(f"[MegaMek Server] {line}", end='')
     threading.Thread(target=stream_output, args=(proc.stdout,), daemon=True).start()
     
-    return proc
+    return proc, p1_meks, p2_meks
 
 def collect_trajectories(port, target_trajectories, collected_dataset):
     env = MegaMekEnvironment(port=port)
-    retries = 10
+    retries = 60
     
     # Simple Wait loop
     while retries > 0:
@@ -94,8 +94,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                 else:
                     env.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
                 if edges:
-                    edge_array = np.array(edges, dtype=np.int64).T
-                    env.static_hex_adjacency_edges = torch.tensor(edge_array, dtype=torch.long)
+                    env.static_hex_adjacency_edges = np.array(edges, dtype=np.int64)
                 else:
                     env.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
                 continue
@@ -121,7 +120,55 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
             
     return collected_this_episode
 
+def run_single_episode(ep_idx, server_port, all_meks):
+    import datetime
+    import os
+    import threading
+    import torch
+    print(f"\n=======================")
+    print(f"Initiating Episode {ep_idx+1} on port {server_port}")
+    
+    proc, p1_meks, p2_meks = run_megamek_episode(all_meks, server_port)
+    
+    local_dataset = []
+    t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset), daemon=True)
+    t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset), daemon=True)
+    
+    t1.start()
+    t2.start()
+    
+    try:
+        # Let matches naturally conclude. No timeout.
+        t1.join()
+        t2.join()
+    finally:
+        print(f"[bc_generator] Terminating Headless Server on port {server_port}...")
+        proc.terminate()
+        proc.wait(timeout=5)
+        if proc.poll() is None:
+            proc.kill()
+    
+    if local_dataset:
+        os.makedirs("bc_dataset", exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"bc_dataset/match_{ep_idx+1}_{timestamp}.pt"
+        
+        payload = {
+            "metadata": {
+                "p1_meks": p1_meks,
+                "p2_meks": p2_meks,
+                "timestamp": timestamp,
+                "map": "Randomized"
+            },
+            "trajectories": local_dataset
+        }
+        torch.save(payload, filename)
+        print(f"Episode {ep_idx+1} complete. Saved {len(local_dataset)} Trajectories to {filename}")
+    else:
+        print(f"Episode {ep_idx+1} complete, but no valid trajectories collected.")
+
 if __name__ == "__main__":
+            
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=10, help="Number of random matches to generate")
     parser.add_argument("--save-path", type=str, default="bc_dataset_master.pt", help="File to serialize data")
@@ -135,55 +182,17 @@ if __name__ == "__main__":
     device = torch.device('cpu') # Always accumulate Dataset on CPU!
     print(f"Using compute device: {device} to avoid VRAM exhaustion")
     
-    master_dataset = []
-    dataset_lock = threading.Lock()
-    
-    def run_single_episode(ep_idx, server_port):
-        print(f"\n=======================")
-        print(f"Initiating Episode {ep_idx+1}/{args.episodes} on port {server_port}")
-        
-        proc = run_megamek_episode(all_meks, server_port)
-        
-        local_dataset = []
-        t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset), daemon=True)
-        t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset), daemon=True)
-        
-        t1.start()
-        t2.start()
-        
-        try:
-            t1.join(timeout=60) # 1 min max
-            t2.join(timeout=60)
-        finally:
-            print(f"[bc_generator] Terminating Headless Server on port {server_port}...")
-            proc.terminate()
-            proc.wait(timeout=5)
-            if proc.poll() is None:
-                proc.kill()
-        
-        with dataset_lock:
-            master_dataset.extend(local_dataset)
-            if master_dataset:
-                os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
-                torch.save(master_dataset, args.save_path)
-            print(f"Episode {ep_idx+1} complete. Total Trajectories so far: {len(master_dataset)}")
-            
-    # Run in parallel using ThreadPoolExecutor
+    # Run in parallel using ProcessPoolExecutor
     max_workers = min(args.episodes, 4) # cap at 4 parallel matches
     base_port = 2346
     
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = []
-            for ep in range(args.episodes):
-                futures.append(executor.submit(run_single_episode, ep, base_port + ep))
-            concurrent.futures.wait(futures)
+        for ep in range(args.episodes):
+            try:
+                run_single_episode(ep, base_port + ep, all_meks)
+            except Exception as e:
+                print(f"Episode Exception: {e}")
     except KeyboardInterrupt:
-        print("\n[bc_generator] Interrupted by user. Saving whatever we have so far...")
+        print("\n[bc_generator] Interrupted by user.")
     
-    # Save dataset natively
-    if master_dataset:
-        torch.save(master_dataset, args.save_path)
-        print(f"\n[Finished] Serialized {len(master_dataset)} graphs to {args.save_path}.")
-    else:
-        print("[Warning] No valid trajectories collected.")
+    print(f"\n[Finished] Generation completed.")

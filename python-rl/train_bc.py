@@ -9,13 +9,19 @@ def train():
     device = torch.device('cpu')
     print(f"Using compute device: {device}")
     
-    dataset_path = 'bc_dataset_master.pt'
-    if not os.path.exists(dataset_path):
-        print(f"Dataset not found at {dataset_path}. Please run bc_generator.py first.")
+    import glob
+    
+    dataset_dir = 'bc_dataset'
+    if not os.path.exists(dataset_dir) or not os.listdir(dataset_dir):
+        print(f"Dataset directory not found or empty at {dataset_dir}. Please run bc_generator.py first.")
         return
         
-    dataset = torch.load(dataset_path, weights_only=False, map_location='cpu')
-    print(f"Loaded {len(dataset)} trajectories for Behavioral Cloning.")
+    dataset = []
+    for f in glob.glob(os.path.join(dataset_dir, '*.pt')):
+        match_data = torch.load(f, weights_only=False, map_location='cpu')
+        dataset.extend(match_data.get('trajectories', []))
+        
+    print(f"Loaded {len(dataset)} trajectories across all matches for Behavioral Cloning.")
     
     # Feature Inspection
     for key in ['hex', 'unit', 'weapon', 'action']:

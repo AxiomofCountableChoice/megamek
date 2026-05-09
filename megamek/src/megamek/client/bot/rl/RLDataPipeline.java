@@ -85,17 +85,22 @@ public class RLDataPipeline {
 
     public void close() {
         try {
-            if (pythonIn != null) pythonIn.close();
-            if (pythonOut != null) pythonOut.close();
-            if (pythonSocket != null) pythonSocket.close();
-            if (pythonServerSocket != null) pythonServerSocket.close();
+            if (pythonIn != null)
+                pythonIn.close();
+            if (pythonOut != null)
+                pythonOut.close();
+            if (pythonSocket != null)
+                pythonSocket.close();
+            if (pythonServerSocket != null)
+                pythonServerSocket.close();
         } catch (Exception e) {
             logger.error(e, "Error closing RLDataPipeline sockets");
         }
     }
 
     public void ensureTopologySent() {
-        System.err.println("RL_SYNC_DEBUG [ensureTopologySent]: Check. hasSent: " + hasSentTopology + ", connected: " + isConnected());
+        System.err.println("RL_SYNC_DEBUG [ensureTopologySent]: Check. hasSent: " + hasSentTopology + ", connected: "
+                + isConnected());
         if (!hasSentTopology && baseClient.getGame() != null && baseClient.getGame().getBoard() != null
                 && isConnected()) {
             System.err.println("RL_SYNC_DEBUG [ensureTopologySent]: Sending now!");
@@ -217,11 +222,12 @@ public class RLDataPipeline {
             payload.put("rewards", calculateRewards());
 
             byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
-            
+
             if (DEBUG_RL_SYNC) {
-                System.err.println("RL_SYNC_DEBUG [queryPython]: Sending payload for context '" + actionContext + "' | Size: " + bytes.length + " bytes");
+                System.err.println("RL_SYNC_DEBUG [queryPython]: Sending payload for context '" + actionContext
+                        + "' | Size: " + bytes.length + " bytes");
             }
-            
+
             pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
             pythonOut.write(bytes);
             pythonOut.flush();
@@ -237,23 +243,27 @@ public class RLDataPipeline {
 
             long endTime = System.currentTimeMillis();
             if (DEBUG_RL_SYNC) {
-                System.err.println("RL_SYNC_DEBUG [queryPython]: Received response for '" + actionContext + "' | Size: " + len + " bytes | Time: " + (endTime - startTime) + "ms");
+                System.err.println("RL_SYNC_DEBUG [queryPython]: Received response for '" + actionContext + "' | Size: "
+                        + len + " bytes | Time: " + (endTime - startTime) + "ms");
             }
 
             return msgpackMapper.readValue(dataBytes, responseType);
         } catch (java.net.SocketTimeoutException e) {
-            System.err.println("RL_SYNC_DEBUG [queryPython]: Socket timeout after " + (System.currentTimeMillis() - startTime) + "ms! Context: " + actionContext);
+            System.err.println("RL_SYNC_DEBUG [queryPython]: Socket timeout after "
+                    + (System.currentTimeMillis() - startTime) + "ms! Context: " + actionContext);
             e.printStackTrace(System.err);
             logger.error(e, "RLDataPipeline: Python query failed due to timeout");
             return null;
         } catch (java.net.SocketException e) {
-            System.err.println("RL_SYNC_DEBUG [queryPython]: SocketException (Broken Pipe). Disconnecting python client.");
+            System.err.println(
+                    "RL_SYNC_DEBUG [queryPython]: SocketException (Broken Pipe). Disconnecting python client.");
             this.close();
             pythonSocket = null;
             hasSentTopology = false;
             return null;
         } catch (Exception e) {
-            System.err.println("RL_SYNC_DEBUG [queryPython]: Failed! Exception: " + e.getClass().getName() + " - " + e.getMessage());
+            System.err.println("RL_SYNC_DEBUG [queryPython]: Failed! Exception: " + e.getClass().getName() + " - "
+                    + e.getMessage());
             e.printStackTrace(System.err);
             logger.error(e, "RLDataPipeline: Python query failed");
             return null;
@@ -467,51 +477,56 @@ public class RLDataPipeline {
             // A unit can always "reach" its own hex (stationary TMM = 0)
             if (e1.getPosition() != null) {
                 reachableHexes.put(e1.getPosition().getY() * boardWidth + e1.getPosition().getX(), 0);
-            }
 
-            try {
-                int groundMove = Math.max(e1.getWalkMP(), e1.getRunMPWithoutMASC());
-                int jumpMove = e1.getAnyTypeMaxJumpMP();
-                int maxMove = Math.max(groundMove, jumpMove);
+                try {
+                    int groundMove = Math.max(e1.getWalkMP(), e1.getRunMPWithoutMASC());
+                    int jumpMove = e1.getAnyTypeMaxJumpMP();
+                    int maxMove = Math.max(groundMove, jumpMove);
 
-                if (maxMove > 0 && !e1.isImmobile()) {
-                    boolean airborneNonAerospace = e1.isAirborneVTOLorWIGE();
-                    // Ground paths
-                    if (groundMove > 0) {
-                        megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
-                                .newInstanceOfOneToAll(groundMove, megamek.common.enums.MoveStepType.FORWARDS, game);
-                        spfGround.run(new megamek.common.moves.MovePath(game, e1, null));
-                        for (megamek.common.moves.MovePath p : spfGround.getAllComputedPathsUncategorized()) {
-                            if (p.getFinalCoords() != null) {
-                                int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
-                                int tmm = megamek.common.compute.Compute.getTargetMovementModifier(p.getHexesMoved(),
-                                        p.isJumping(), airborneNonAerospace, game).getValue();
-                                if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
-                                    reachableHexes.put(hexIdx, tmm);
+                    if (maxMove > 0 && !e1.isImmobile()) {
+                        boolean airborneNonAerospace = e1.isAirborneVTOLorWIGE();
+                        // Ground paths
+                        if (groundMove > 0) {
+                            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
+                                    .newInstanceOfOneToAll(groundMove, megamek.common.enums.MoveStepType.FORWARDS,
+                                            game);
+                            spfGround.run(new megamek.common.moves.MovePath(game, e1, null));
+                            for (megamek.common.moves.MovePath p : spfGround.getAllComputedPathsUncategorized()) {
+                                if (p.getFinalCoords() != null) {
+                                    int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
+                                    int tmm = megamek.common.compute.Compute
+                                            .getTargetMovementModifier(p.getHexesMoved(),
+                                                    p.isJumping(), airborneNonAerospace, game)
+                                            .getValue();
+                                    if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
+                                        reachableHexes.put(hexIdx, tmm);
+                                    }
+                                }
+                            }
+                        }
+                        // Jump paths
+                        if (jumpMove > 0) {
+                            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
+                                    .newInstanceOfOneToAll(jumpMove, megamek.common.enums.MoveStepType.FORWARDS, game);
+                            spfJump.run(new megamek.common.moves.MovePath(game, e1, null)
+                                    .addStep(megamek.common.enums.MoveStepType.START_JUMP));
+                            for (megamek.common.moves.MovePath p : spfJump.getAllComputedPathsUncategorized()) {
+                                if (p.getFinalCoords() != null) {
+                                    int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
+                                    int tmm = megamek.common.compute.Compute
+                                            .getTargetMovementModifier(p.getHexesMoved(),
+                                                    p.isJumping(), airborneNonAerospace, game)
+                                            .getValue();
+                                    if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
+                                        reachableHexes.put(hexIdx, tmm);
+                                    }
                                 }
                             }
                         }
                     }
-                    // Jump paths
-                    if (jumpMove > 0) {
-                        megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
-                                .newInstanceOfOneToAll(jumpMove, megamek.common.enums.MoveStepType.FORWARDS, game);
-                        spfJump.run(new megamek.common.moves.MovePath(game, e1, null)
-                                .addStep(megamek.common.enums.MoveStepType.START_JUMP));
-                        for (megamek.common.moves.MovePath p : spfJump.getAllComputedPathsUncategorized()) {
-                            if (p.getFinalCoords() != null) {
-                                int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
-                                int tmm = megamek.common.compute.Compute.getTargetMovementModifier(p.getHexesMoved(),
-                                        p.isJumping(), airborneNonAerospace, game).getValue();
-                                if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
-                                    reachableHexes.put(hexIdx, tmm);
-                                }
-                            }
-                        }
-                    }
+                } catch (Exception ex) {
+                    // Ignore if pathfinding fails for some entities
                 }
-            } catch (Exception ex) {
-                // Ignore if pathfinding fails for some entities
             }
 
             entityReachableHexes.put(i, reachableHexes);
@@ -747,7 +762,8 @@ public class RLDataPipeline {
                     continue;
                 }
 
-                boolean inFrontArc = megamek.common.compute.ComputeArc.isInArc(shooter.getPosition(), shooter.getSecondaryFacing(), target, shooter.getForwardArc());
+                boolean inFrontArc = megamek.common.compute.ComputeArc.isInArc(shooter.getPosition(),
+                        shooter.getSecondaryFacing(), target, shooter.getForwardArc());
                 int secondaryPenalty = 2;
                 if (inFrontArc || shooter instanceof megamek.common.battleArmor.BattleArmor) {
                     secondaryPenalty = 1;

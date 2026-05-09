@@ -160,6 +160,10 @@ public class PrincessOfflineTrainer {
                     logger.info("Random map generated.");
                 }
                 
+                // Enforce a hard Round/Turn limit so offline bots don't stalemate infinitely
+                game.getOptions().getOption(megamek.common.options.OptionsConstants.VICTORY_USE_GAME_TURN_LIMIT).setValue(true);
+                game.getOptions().getOption(megamek.common.options.OptionsConstants.VICTORY_GAME_TURN_LIMIT).setValue(30);
+                
                 // Get Players
                 System.out.println("Waiting for Princess players to appear in lobby...");
                 logger.info("Waiting for Princess players to appear in lobby...");
