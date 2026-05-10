@@ -245,9 +245,9 @@ class ImpalaLearner:
         self.optimizer.step()
         
         self.writer.add_scalar("Loss/Total", loss.item(), self.global_step)
-        self.writer.add_scalar("Loss/Actor", (total_actor_loss/batch_size).item(), self.global_step)
-        self.writer.add_scalar("Loss/Critic", (total_critic_loss/batch_size).item(), self.global_step)
-        self.writer.add_scalar("Loss/Entropy", (total_entropy_loss/batch_size).item(), self.global_step)
+        self.writer.add_scalar("Loss/Actor", (total_actor_loss/(valid_batches * sequence_length)).item(), self.global_step)
+        self.writer.add_scalar("Loss/Critic", (total_critic_loss/(valid_batches * sequence_length)).item(), self.global_step)
+        self.writer.add_scalar("Loss/Entropy", (total_entropy_loss/(valid_batches * sequence_length)).item(), self.global_step)
         
         self.global_step += 1
         return True

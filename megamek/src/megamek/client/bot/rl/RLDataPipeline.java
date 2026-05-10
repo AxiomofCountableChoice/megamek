@@ -197,7 +197,7 @@ public class RLDataPipeline {
         }
     }
 
-    public void sendPayload(Map<String, Object> payload) throws Exception {
+    public synchronized void sendPayload(Map<String, Object> payload) throws Exception {
         byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
         pythonOut.write(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array());
         pythonOut.write(bytes);

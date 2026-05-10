@@ -348,6 +348,10 @@ public class Precognition implements Runnable {
                 case SCRIPTED_MESSAGE:
                     LOGGER.debug("Intentionally ignoring PacketCommand: {}", c.command().name());
                     break;
+                case UPDATE_CUT_HEXES:
+                case SYNC_TEMPORARY_ECM_FIELDS:
+                    // Ignore these to prevent error logs
+                    break;
                 default:
                     LOGGER.error("Attempted to parse unknown PacketCommand: {}", c.command().name());
                     break;
