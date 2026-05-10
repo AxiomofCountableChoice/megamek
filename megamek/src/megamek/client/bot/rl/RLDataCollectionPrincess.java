@@ -32,8 +32,8 @@ public class RLDataCollectionPrincess extends Princess {
         super(playerName, host, port);
         
         // Disable enhanced targeting and set behavior specifics if required here
-        // ...
-        
+        getBehaviorSettings().setAutoFlee(false);
+        getBehaviorSettings().setForcedWithdrawal(false);        
         this.dataPipeline = new RLDataPipeline(this);
         this.dataPipeline.listenForPython(listenPort);
     }
