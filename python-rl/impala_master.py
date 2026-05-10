@@ -50,6 +50,39 @@ class ImpalaReplayBuffer:
                             print(f"[ReplayBuffer] Error loading {f}: {e}")
             time.sleep(2)
 
+    def sample_batch(self, batch_size=4, sequence_length=16):
+        """
+        Double Coin-Flip Strategy:
+        1. Uniformly sample B trajectories.
+        2. Uniformly sample a starting step to get a chunk of sequence_length.
+        """
+        with self.lock:
+            if len(self.trajectories) < batch_size:
+                return None
+                
+            # Coin-flip 1: sample trajectories
+            sampled_trajs = random.sample(self.trajectories, batch_size)
+            
+        batch_data = []
+        for traj in sampled_trajs:
+            topology = traj.get("topology_payload", None)
+            steps = traj.get("steps", [])
+            
+            if len(steps) == 0:
+                continue
+                
+            if len(steps) <= sequence_length:
+                sampled_steps = steps
+            else:
+                # Coin-flip 2: sample start step
+                max_start = len(steps) - sequence_length
+                start_idx = random.randint(0, max_start)
+                sampled_steps = steps[start_idx : start_idx + sequence_length]
+                
+            batch_data.append((topology, sampled_steps))
+            
+        return batch_data
+
 class ImpalaLearner:
     def __init__(self, device='cpu'):
         self.device = device
@@ -127,13 +160,10 @@ class ImpalaLearner:
             state = state.to(self.device)
         return state, mask
 
-    def learn_step(self, batch_size=4, rho_bar=1.0, c_bar=1.0, gamma=0.99, lam_epistemic=1.0, entropy_coef=0.01):
-        with self.buffer.lock:
-            if len(self.buffer.trajectories) < batch_size:
-                return False
-                
-            # Sample B trajectories (First coin-flip)
-            sampled_trajs = random.sample(self.buffer.trajectories, batch_size)
+    def learn_step(self, batch_size=4, sequence_length=16, rho_bar=1.0, c_bar=1.0, gamma=0.99, lam_epistemic=1.0, entropy_coef=0.01):
+        batch_data = self.buffer.sample_batch(batch_size=batch_size, sequence_length=sequence_length)
+        if not batch_data:
+            return False
             
         self.agent.train()
         self.optimizer.zero_grad()
@@ -141,15 +171,13 @@ class ImpalaLearner:
         total_actor_loss = 0
         total_critic_loss = 0
         total_entropy_loss = 0
+        valid_batches = 0
         
-        for traj_data in sampled_trajs:
-            topology = traj_data.get("topology_payload", None)
-            steps = traj_data.get("steps", [])
+        for topology, steps in batch_data:
             seq_len = len(steps)
             if seq_len == 0: continue
             
-            # Second coin-flip: sample a specific step_i to optimize
-            step_i = random.randint(0, seq_len - 1)
+            valid_batches += 1
             
             rewards = torch.tensor([s["reward"] for s in steps], device=self.device, dtype=torch.float32)
             mu_probs = torch.tensor([torch.exp(torch.tensor(s["mu_log_prob"])) for s in steps], device=self.device, dtype=torch.float32)
@@ -160,8 +188,7 @@ class ImpalaLearner:
             log_pis = torch.zeros(seq_len, device=self.device)
             entropies = torch.zeros(seq_len, device=self.device)
             
-            # For critic loss, we will just use the target value at step_i
-            v_preds_step_i = None
+            v_preds_ensemble = []
             
             # Recompute graph forward pass using CURRENT weights
             for t, s in enumerate(steps):
@@ -176,41 +203,44 @@ class ImpalaLearner:
                 v_means[t] = v_mean[0] if v_mean.numel() > 0 else 0.0
                 v_vars[t] = v_variance[0] if v_variance.numel() > 0 else 0.0
                 
-                if t == step_i:
-                    z, _ = self.agent.encoder(graph)
-                    v_preds_step_i = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
+                z, _ = self.agent.encoder(graph)
+                v_preds = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
+                v_preds_ensemble.append(v_preds)
                 
             vs, v_enhanced, rhos = self.compute_vtrace_targets(
                 rewards, v_means.detach(), v_vars.detach(), mu_probs, pi_probs.detach(), 
                 rho_bar, c_bar, gamma, lam_epistemic
             )
             
-            # Compute loss only on the sampled step_i to satisfy the unbiased Double Coin-Flip strategy
-            if step_i == seq_len - 1:
-                v_enh_next = 0.0
-            else:
-                v_enh_next = v_enhanced[step_i+1]
+            # Sum the loss over all steps in the chunk to utilize the full unrolled V-Trace sequence
+            for t in range(seq_len):
+                if t == seq_len - 1:
+                    v_enh_next = 0.0
+                else:
+                    v_enh_next = v_enhanced[t+1]
+                    
+                advantage = rewards[t] + gamma * v_enh_next - v_means[t].detach()
+                actor_loss = -rhos[t] * log_pis[t] * advantage
                 
-            advantage = rewards[step_i] + gamma * v_enh_next - v_means[step_i].detach()
-            actor_loss = -rhos[step_i] * log_pis[step_i] * advantage
+                v_preds_tensor = v_preds_ensemble[t].unsqueeze(0) # [1, E]
+                vs_target_expanded = vs[t].unsqueeze(0).expand(1, self.agent.ensembles.__len__()) # [1, E]
+                critic_loss = nn.functional.mse_loss(v_preds_tensor, vs_target_expanded.detach())
+                
+                entropy_loss = -entropies[t]
+                
+                total_actor_loss += actor_loss
+                total_critic_loss += critic_loss
+                total_entropy_loss += entropy_loss
+                
+            # Logging the average sequence advantages
+            self.writer.add_scalar("VTrace/Advantage_Mean", (rewards + gamma * torch.cat([v_enhanced[1:], torch.zeros(1, device=self.device)]) - v_means.detach()).mean().item(), self.global_step)
+            self.writer.add_scalar("VTrace/Rho_Mean", rhos.mean().item(), self.global_step)
             
-            # Critic loss
-            v_preds_tensor = v_preds_step_i.unsqueeze(0) # [1, E]
-            vs_target_expanded = vs[step_i].unsqueeze(0).expand(1, self.agent.ensembles.__len__()) # [1, E]
-            critic_loss = nn.functional.mse_loss(v_preds_tensor, vs_target_expanded.detach())
+        if valid_batches == 0:
+            return False
             
-            entropy_loss = -entropies[step_i]
-            
-            total_actor_loss += actor_loss
-            total_critic_loss += critic_loss
-            total_entropy_loss += entropy_loss
-            
-            # Logging
-            self.writer.add_scalar("VTrace/Advantage", advantage.item(), self.global_step)
-            self.writer.add_scalar("VTrace/V_Mean", v_means[step_i].item(), self.global_step)
-            self.writer.add_scalar("VTrace/Rho", rhos[step_i].item(), self.global_step)
-            
-        loss = (total_actor_loss + 0.5 * total_critic_loss + entropy_coef * total_entropy_loss) / batch_size
+        # Normalize the loss by the number of valid batches * sequence length
+        loss = (total_actor_loss + 0.5 * total_critic_loss + entropy_coef * total_entropy_loss) / (valid_batches * sequence_length)
         loss.backward()
         self.optimizer.step()
         
