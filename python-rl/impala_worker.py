@@ -14,12 +14,12 @@ class ImpalaWorker:
     Connects to MegaMek, syncs latest weights, collects raw trajectories,
     and writes them to disk for the Learner.
     """
-    def __init__(self, agent_model, worker_id=None, host='localhost', port=4000, device='cpu'):
+    def __init__(self, agent_model, worker_id=None, host='localhost', port=4000, device='cpu', dataset_dir='rl_sp_dataset'):
         self.agent = agent_model
         self.device = device
         self.env = MegaMekEnvironment(port=port, device=self.device)
         self.worker_id = worker_id or str(uuid.uuid4())[:8]
-        self.traj_dir = os.path.join("data", "trajectories", self.worker_id)
+        self.traj_dir = os.path.join(dataset_dir, self.worker_id)
         os.makedirs(self.traj_dir, exist_ok=True)
         self.latest_model_path = os.path.join("models", "impala_agent_latest.pt")
         
@@ -66,8 +66,8 @@ class ImpalaWorker:
                     action_dict = {"selected_path_index": -1}
 
                 with torch.no_grad():
-                    # Forward pass
-                    action_dict, v_mean, probs = self.agent.get_action(state_graph, mask)
+                    # Forward pass (Training mode: deterministic=False)
+                    action_dict, v_mean, probs, mu_log_prob = self.agent.get_action(state_graph, mask, deterministic=False)
 
                     
                 # Check if it was a valid action by looking at the default fallback
@@ -103,6 +103,7 @@ class ImpalaWorker:
                     trajectory.append({
                         "raw_payload": current_payload,
                         "action_dict": action_dict,
+                        "mu_log_prob": mu_log_prob,
                         "reward": reward
                     })
 
@@ -134,6 +135,7 @@ class ImpalaWorker:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
+    parser.add_argument("--dataset_dir", type=str, default="rl_sp_dataset", help="Directory to save trajectories")
     args = parser.parse_args()
 
     worker = None
@@ -161,5 +163,5 @@ if __name__ == "__main__":
         print(f"Bootstrapping worker from BC weights: {bc_model_path}")
         agent.load_state_dict(torch.load(bc_model_path, map_location=device))
         
-    worker = ImpalaWorker(agent, port=args.port, device=device)
+    worker = ImpalaWorker(agent, port=args.port, device=device, dataset_dir=args.dataset_dir)
     worker.run()

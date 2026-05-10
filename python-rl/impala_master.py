@@ -1,6 +1,7 @@
 import os
 import glob
 import time
+import threading
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -10,6 +11,45 @@ import random
 from models.agent import MegaMekAgent
 from env import MegaMekEnvironment
 
+class ImpalaReplayBuffer:
+    """
+    Monitors dataset directories for new trajectories, loads them into memory,
+    and removes the processed files.
+    """
+    def __init__(self, dataset_dirs=["rl_sp_dataset", "rl_princess_dataset"], max_trajectories=1000):
+        self.dataset_dirs = dataset_dirs
+        self.max_trajectories = max_trajectories
+        self.trajectories = []
+        self.lock = threading.Lock()
+        
+        # Start background worker to ingest trajectories
+        self.ingest_thread = threading.Thread(target=self._ingest_loop, daemon=True)
+        self.ingest_thread.start()
+        
+    def _ingest_loop(self):
+        while True:
+            for d in self.dataset_dirs:
+                if not os.path.exists(d):
+                    continue
+                # Find all worker directories
+                worker_dirs = glob.glob(os.path.join(d, "*"))
+                for wd in worker_dirs:
+                    if not os.path.isdir(wd): continue
+                    
+                    files = glob.glob(os.path.join(wd, "*.pt"))
+                    for f in files:
+                        try:
+                            data = torch.load(f, weights_only=False, map_location='cpu')
+                            with self.lock:
+                                self.trajectories.append(data)
+                                if len(self.trajectories) > self.max_trajectories:
+                                    self.trajectories.pop(0) # FIFO
+                            # Archive or delete
+                            os.remove(f)
+                        except Exception as e:
+                            print(f"[ReplayBuffer] Error loading {f}: {e}")
+            time.sleep(2)
+
 class ImpalaLearner:
     def __init__(self, device='cpu'):
         self.device = device
@@ -17,10 +57,7 @@ class ImpalaLearner:
         self.optimizer = Adam(self.agent.parameters(), lr=1e-4)
         self.writer = SummaryWriter(log_dir="runs/impala_master")
         
-        # Replay buffer: stores loaded trajectory dicts
-        self.buffer = []
-        self.max_buffer_size = 1000
-        self.processed_files = set()
+        self.buffer = ImpalaReplayBuffer()
         
         self.global_step = 0
         
@@ -29,7 +66,6 @@ class ImpalaLearner:
         bc_model_path = os.path.join("models", "bc_agent.pt")
         
         os.makedirs("models", exist_ok=True)
-        os.makedirs("data/trajectories", exist_ok=True)
         
         if os.path.exists(self.latest_model_path):
             print(f"Resuming from {self.latest_model_path}")
@@ -45,38 +81,6 @@ class ImpalaLearner:
 
     def save_checkpoint(self):
         torch.save(self.agent.state_dict(), self.latest_model_path)
-        
-    def load_new_trajectories(self):
-        search_pattern = os.path.join("data", "trajectories", "*", "*.pt")
-        files = glob.glob(search_pattern)
-        
-        new_files = [f for f in files if f not in self.processed_files]
-        if not new_files:
-            return 0
-            
-        # Sort by creation time to process sequentially
-        new_files.sort(key=os.path.getctime)
-        
-        loaded = 0
-        for file in new_files:
-            try:
-                traj_data = torch.load(file, map_location='cpu')
-                self.buffer.append((file, traj_data))
-                self.processed_files.add(file)
-                loaded += 1
-            except Exception as e:
-                print(f"Failed to load {file}: {e}")
-                
-        # Trim buffer
-        while len(self.buffer) > self.max_buffer_size:
-            old_file, _ = self.buffer.pop(0)
-            try:
-                os.remove(old_file) # Optional: delete old files to save disk space
-                self.processed_files.remove(old_file)
-            except:
-                pass
-                
-        return loaded
         
     def compute_vtrace_targets(self, rewards, v_means, v_vars, mu_probs, pi_probs, 
                                rho_bar=1.0, c_bar=1.0, gamma=0.99, lam_epistemic=1.0):
@@ -107,7 +111,10 @@ class ImpalaLearner:
         v_enhanced = vs + lam_epistemic * sigma
         return vs, v_enhanced, rhos
 
-    def parse_state(self, raw_payload, topology_payload):
+    def parse_state(self, raw_payload, target_action, topology_payload):
+        # Inject target_action back into payload so _parse_to_heterodata reconstructs y_sequence
+        raw_payload["target_action"] = target_action
+        
         # Inject topology if not already present
         if getattr(self.env, "static_hex_features", None) is None and topology_payload is not None:
             nodes = topology_payload.get("hex_nodes", [])
@@ -121,8 +128,12 @@ class ImpalaLearner:
         return state, mask
 
     def learn_step(self, batch_size=4, rho_bar=1.0, c_bar=1.0, gamma=0.99, lam_epistemic=1.0, entropy_coef=0.01):
-        if len(self.buffer) < batch_size:
-            return False
+        with self.buffer.lock:
+            if len(self.buffer.trajectories) < batch_size:
+                return False
+                
+            # Sample B trajectories (First coin-flip)
+            sampled_trajs = random.sample(self.buffer.trajectories, batch_size)
             
         self.agent.train()
         self.optimizer.zero_grad()
@@ -131,18 +142,13 @@ class ImpalaLearner:
         total_critic_loss = 0
         total_entropy_loss = 0
         
-        # Sample B trajectories (First coin-flip)
-        sampled_trajs = random.sample(self.buffer, batch_size)
-        
-        for file_path, traj_data in sampled_trajs:
+        for traj_data in sampled_trajs:
             topology = traj_data.get("topology_payload", None)
-            steps = traj_data["steps"]
+            steps = traj_data.get("steps", [])
             seq_len = len(steps)
             if seq_len == 0: continue
             
             # Second coin-flip: sample a specific step_i to optimize
-            # But to calculate V-Trace for step_i, we need forward pass from step_i to T
-            # For simplicity, we run the forward pass for the whole trajectory, then slice it.
             step_i = random.randint(0, seq_len - 1)
             
             rewards = torch.tensor([s["reward"] for s in steps], device=self.device, dtype=torch.float32)
@@ -153,29 +159,26 @@ class ImpalaLearner:
             v_vars = torch.zeros(seq_len, device=self.device)
             log_pis = torch.zeros(seq_len, device=self.device)
             entropies = torch.zeros(seq_len, device=self.device)
-            v_preds_ensemble = []
+            
+            # For critic loss, we will just use the target value at step_i
+            v_preds_step_i = None
             
             # Recompute graph forward pass using CURRENT weights
             for t, s in enumerate(steps):
-                graph, mask = self.parse_state(s["raw_payload"], topology)
-                idx = s["action_idx"]
+                graph, mask = self.parse_state(s["raw_payload"], s.get("action_dict", {}), topology)
                 
-                z, x_dict = self.agent.encoder(graph)
-                v_preds = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1)
-                v_preds_ensemble.append(v_preds.squeeze(0).squeeze(0))
+                # Evaluate the true sequence taken
+                pi_log_prob, entropy, v_mean, v_variance = self.agent.evaluate_actions(graph)
                 
-                v_means[t] = v_preds.mean()
-                v_vars[t] = v_preds.var(unbiased=False)
+                pi_probs[t] = torch.exp(pi_log_prob[0]) if pi_log_prob.numel() > 0 else 1.0
+                log_pis[t] = pi_log_prob[0] if pi_log_prob.numel() > 0 else 0.0
+                entropies[t] = entropy[0] if entropy.numel() > 0 else 0.0
+                v_means[t] = v_mean[0] if v_mean.numel() > 0 else 0.0
+                v_vars[t] = v_variance[0] if v_variance.numel() > 0 else 0.0
                 
-                e_actions = self.agent.actor_pointer.compute_action_embeddings(x_dict, graph)
-                s_k = self.agent.actor_pointer.decode_sequence(z, None) 
-                batch_idx = graph['action'].batch if hasattr(graph['action'], 'batch') and getattr(graph['action'], 'batch') is not None else None
-                logits = self.agent.actor_pointer.score_actions(s_k, e_actions, batch_idx)
-                
-                probs = torch.softmax(logits, dim=-1)
-                pi_probs[t] = probs[idx] + 1e-10
-                log_pis[t] = torch.log(probs[idx] + 1e-10)
-                entropies[t] = -(probs * torch.log(probs + 1e-10)).sum()
+                if t == step_i:
+                    z, _ = self.agent.encoder(graph)
+                    v_preds_step_i = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
                 
             vs, v_enhanced, rhos = self.compute_vtrace_targets(
                 rewards, v_means.detach(), v_vars.detach(), mu_probs, pi_probs.detach(), 
@@ -191,9 +194,8 @@ class ImpalaLearner:
             advantage = rewards[step_i] + gamma * v_enh_next - v_means[step_i].detach()
             actor_loss = -rhos[step_i] * log_pis[step_i] * advantage
             
-            # Critic loss over the entire trajectory is generally fine for sample efficiency, 
-            # but we can restrict to step_i for purity
-            v_preds_tensor = v_preds_ensemble[step_i].unsqueeze(0) # [1, E]
+            # Critic loss
+            v_preds_tensor = v_preds_step_i.unsqueeze(0) # [1, E]
             vs_target_expanded = vs[step_i].unsqueeze(0).expand(1, self.agent.ensembles.__len__()) # [1, E]
             critic_loss = nn.functional.mse_loss(v_preds_tensor, vs_target_expanded.detach())
             
@@ -224,10 +226,10 @@ class ImpalaLearner:
         print(f"Starting IMPALA Learner on {self.device}...")
         try:
             while True:
-                loaded = self.load_new_trajectories()
-                if loaded > 0:
-                    print(f"Loaded {loaded} new trajectories. Buffer size: {len(self.buffer)}")
-                    self.writer.add_scalar("System/Buffer_Size", len(self.buffer), self.global_step)
+                with self.buffer.lock:
+                    buf_size = len(self.buffer.trajectories)
+                
+                self.writer.add_scalar("System/Buffer_Size", buf_size, self.global_step)
                     
                 # Perform optimization step if we have enough data
                 if self.learn_step(batch_size=8):

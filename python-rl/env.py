@@ -226,6 +226,9 @@ class MegaMekEnvironment:
 
         # 4.5 Ephemeral Threat and LOS Edges
         def add_ephemeral_edges(key, src, dst, out_type):
+            if getattr(self, 'ablate_ephemeral', False):
+                data[src, out_type, dst].edge_index = torch.empty((2, 0), dtype=torch.long)
+                return
             edges = raw_state.get(key, [])
             if edges:
                 e_arr = np.array(edges, dtype=np.int64).T
