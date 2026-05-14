@@ -135,7 +135,7 @@ class MegaMekAgent(nn.Module):
             else:
                 dist = torch.distributions.Categorical(probs)
                 idx = dist.sample().item()
-                log_prob = dist.log_prob(torch.tensor(idx)).item()
+                log_prob = dist.log_prob(torch.tensor(idx, device=probs.device)).item()
                 
             return valid_options[idx], log_prob
 
@@ -167,7 +167,7 @@ class MegaMekAgent(nn.Module):
                 else:
                     dist = torch.distributions.Categorical(probs)
                     action_idx = dist.sample().item()
-                    mu_log_prob = dist.log_prob(torch.tensor(action_idx)).item()
+                    mu_log_prob = dist.log_prob(torch.tensor(action_idx, device=probs.device)).item()
             else:
                 action_idx = -1
                 probs = torch.empty((0,))

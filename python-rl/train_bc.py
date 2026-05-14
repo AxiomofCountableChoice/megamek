@@ -45,7 +45,10 @@ def train():
     agent = MegaMekAgent(hidden_dim=128).to(device)
     optimizer = Adam(agent.parameters(), lr=1e-3)
     
-    epochs = 10
+    epochs = 2
+    
+    os.makedirs('models', exist_ok=True)
+    save_path = 'models/bc_agent.pt'
     
     for epoch in range(epochs):
         agent.train()
@@ -137,6 +140,10 @@ def train():
                 
         avg_loss = total_loss / valid_batches if valid_batches > 0 else 0
         print(f"Epoch {epoch+1}/{epochs} | Avg BC Loss: {avg_loss:.4f} | Samples: {valid_batches}")
+        
+        # Save checkpoint after each epoch
+        torch.save(agent.state_dict(), save_path)
+        print(f"Saved checkpoint to {save_path}")
 
     # Save the bootstrapped weights
     os.makedirs('models', exist_ok=True)

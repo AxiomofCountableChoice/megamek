@@ -115,6 +115,7 @@ class ImpalaLearner:
     def save_checkpoint(self):
         torch.save(self.agent.state_dict(), self.latest_model_path)
         
+    @torch.no_grad()
     def compute_vtrace_targets(self, rewards, v_means, v_vars, mu_probs, pi_probs, 
                                rho_bar=1.0, c_bar=1.0, gamma=0.99, lam_epistemic=1.0):
         seq_len = len(rewards)
@@ -125,18 +126,14 @@ class ImpalaLearner:
         
         sigma = torch.sqrt(v_vars + 1e-8)
         
-        v_next = 0.0
+        # Precompute v_mean_next and delta_V using vectorized operations
+        # Bootstrap the last step with the final value estimate if the episode isn't done.
+        v_means_next = torch.cat([v_means[1:], v_means[-1:]])
+        delta_Vs = rhos * (rewards + gamma * v_means_next - v_means)
+        
+        v_next = v_means[-1]
         for t in reversed(range(seq_len)):
-            v_mean_t = v_means[t]
-            r_t = rewards[t]
-            
-            if t == seq_len - 1:
-                v_mean_next = 0.0
-            else:
-                v_mean_next = v_means[t+1]
-                
-            delta_V = rhos[t] * (r_t + gamma * v_mean_next - v_mean_t)
-            v_s = v_mean_t + delta_V + gamma * cs[t] * (v_next - v_mean_next)
+            v_s = v_means[t] + delta_Vs[t] + gamma * cs[t] * (v_next - v_means_next[t])
             
             vs[t] = v_s
             v_next = v_s
@@ -215,7 +212,7 @@ class ImpalaLearner:
             # Sum the loss over all steps in the chunk to utilize the full unrolled V-Trace sequence
             for t in range(seq_len):
                 if t == seq_len - 1:
-                    v_enh_next = 0.0
+                    v_enh_next = v_enhanced[-1]
                 else:
                     v_enh_next = v_enhanced[t+1]
                     
@@ -233,7 +230,7 @@ class ImpalaLearner:
                 total_entropy_loss += entropy_loss
                 
             # Logging the average sequence advantages
-            self.writer.add_scalar("VTrace/Advantage_Mean", (rewards + gamma * torch.cat([v_enhanced[1:], torch.zeros(1, device=self.device)]) - v_means.detach()).mean().item(), self.global_step)
+            self.writer.add_scalar("VTrace/Advantage_Mean", (rewards + gamma * torch.cat([v_enhanced[1:], v_enhanced[-1:]]) - v_means.detach()).mean().item(), self.global_step)
             self.writer.add_scalar("VTrace/Rho_Mean", rhos.mean().item(), self.global_step)
             
         if valid_batches == 0:

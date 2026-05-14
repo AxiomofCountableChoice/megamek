@@ -136,6 +136,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
     parser.add_argument("--dataset_dir", type=str, default="rl_sp_dataset", help="Directory to save trajectories")
+    parser.add_argument("--test", action="store_true", help="Run in test mode (small limits)")
     args = parser.parse_args()
 
     worker = None
@@ -164,4 +165,7 @@ if __name__ == "__main__":
         agent.load_state_dict(torch.load(bc_model_path, map_location=device))
         
     worker = ImpalaWorker(agent, port=args.port, device=device, dataset_dir=args.dataset_dir)
-    worker.run()
+    if args.test:
+        worker.run(max_episodes=1, max_steps_per_episode=15)
+    else:
+        worker.run()

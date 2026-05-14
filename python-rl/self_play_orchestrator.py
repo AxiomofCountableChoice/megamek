@@ -65,7 +65,7 @@ def python_worker_runner(port, dataset_dir, shutdown_event):
     
     while not shutdown_event.is_set():
         print(f"[Worker {port}] Starting...")
-        proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(cmd, cwd=cwd)
         
         while proc.poll() is None:
             if shutdown_event.is_set():

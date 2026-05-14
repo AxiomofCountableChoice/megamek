@@ -5,7 +5,7 @@ import signal
 import sys
 
 # Change this to whatever port you'd like the MegaMek RLServer to listen on
-PORT = 2348
+PORT = 2388
 
 # The root megamek repository directory
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
