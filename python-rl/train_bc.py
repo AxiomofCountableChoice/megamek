@@ -2,14 +2,82 @@ import torch
 from torch.optim import Adam
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
+from torch.utils.data import random_split
+from torch.utils.tensorboard import SummaryWriter
 from models.agent import MegaMekAgent
 import os
+import glob
+
+def process_batch(agent, batch, device, optimizer=None):
+    batch = batch.to(device)
+    if optimizer:
+        optimizer.zero_grad()
+        
+    if getattr(batch, 'y_sequence', None) is None:
+        return 0.0, 0, 0, False
+        
+    y_seq = batch.y_sequence
+    seq_len = y_seq.size(0)
+    
+    z, x_dict = agent.encoder(batch)
+    e_actions = agent.actor_pointer.compute_action_embeddings(x_dict, batch)
+    
+    if e_actions.size(0) == 0:
+        return 0.0, 0, 0, False
+        
+    step_indices = batch['action'].step_idx
+    
+    seq_loss = 0
+    correct = 0
+    steps = 0
+    chosen_embeddings = []
+    
+    for k in range(seq_len):
+        target_idx = y_seq[k].item()
+        
+        if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
+            valid_mask = (step_indices == k)
+        else:
+            target_type = batch['action'].x[target_idx, 4].item()
+            valid_mask = (batch['action'].x[:, 4] == target_type)
+            
+        if not valid_mask.any() or not valid_mask[target_idx]:
+            break
+            
+        history_tensor = None if len(chosen_embeddings) == 0 else torch.stack(chosen_embeddings).unsqueeze(0)
+        s_k = agent.actor_pointer.decode_sequence(z, history_tensor)
+        
+        e_tier = e_actions[valid_mask]
+        tier_batch_idx = batch['action'].batch[valid_mask] if hasattr(batch['action'], 'batch') and getattr(batch['action'], 'batch') is not None else None
+        
+        logits = agent.actor_pointer.score_actions(s_k, e_tier, tier_batch_idx)
+        
+        global_indices = torch.where(valid_mask)[0]
+        relative_target = (global_indices == target_idx).nonzero(as_tuple=True)[0]
+        
+        if relative_target.numel() == 0:
+            break
+            
+        loss_k = F.cross_entropy(logits.unsqueeze(0), relative_target)
+        seq_loss += loss_k
+        
+        if logits.argmax(dim=-1) == relative_target[0]:
+            correct += 1
+        steps += 1
+        
+        chosen_embeddings.append(e_actions[target_idx])
+        
+    if type(seq_loss) != int and seq_loss > 0:
+        if optimizer:
+            seq_loss.backward()
+            optimizer.step()
+        return seq_loss.item(), correct, steps, True
+        
+    return 0.0, 0, 0, False
 
 def train():
     device = torch.device('cpu')
     print(f"Using compute device: {device}")
-    
-    import glob
     
     dataset_dir = 'bc_dataset'
     if not os.path.exists(dataset_dir) or not os.listdir(dataset_dir):
@@ -23,132 +91,78 @@ def train():
         
     print(f"Loaded {len(dataset)} trajectories across all matches for Behavioral Cloning.")
     
-    # Feature Inspection
     for key in ['hex', 'unit', 'weapon', 'action']:
         all_x = []
         for data in dataset:
             if 'weapon' in data.node_types and hasattr(data['weapon'], 'x') and data['weapon'].x.size(0) > 0:
                 data['weapon'].x[data['weapon'].x < -1000.0] = 0.0
-            
             if key in data.node_types and hasattr(data[key], 'x') and data[key].x.size(0) > 0:
                 all_x.append(data[key].x)
         if all_x:
             all_x = torch.cat(all_x, dim=0)
             print(f'[{key}] shape: {all_x.shape}, min: {all_x.min().item():.4f}, max: {all_x.max().item():.4f}, mean: {all_x.mean().item():.4f}')
-        else:
-            print(f'[{key}] empty')
             
-    # We use batch_size=1 initially due to the dynamic length of the autoregressive action trees 
-    # per trajectory without complex custom padding collators.
-    loader = DataLoader(dataset, batch_size=1, shuffle=True)
+    val_size = int(len(dataset) * 0.2)
+    train_size = len(dataset) - val_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    
+    print(f"Dataset split: {train_size} training samples, {val_size} validation samples.")
+    
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    
+    writer = SummaryWriter(log_dir='runs/bc_training_logs')
     
     agent = MegaMekAgent(hidden_dim=128).to(device)
     optimizer = Adam(agent.parameters(), lr=1e-3)
     
-    epochs = 2
-    
+    epochs = 15
     os.makedirs('models', exist_ok=True)
     save_path = 'models/bc_agent.pt'
     
     for epoch in range(epochs):
         agent.train()
-        total_loss = 0.0
-        valid_batches = 0
+        total_train_loss = 0.0
+        total_train_correct = 0
+        total_train_steps = 0
+        valid_train_batches = 0
         
-        for batch in loader:
-            batch = batch.to(device)
-            optimizer.zero_grad()
-            
-            # Requires ground-truth sequence target
-            if getattr(batch, 'y_sequence', None) is None:
-                continue
+        for batch in train_loader:
+            loss_val, correct, steps, valid = process_batch(agent, batch, device, optimizer)
+            if valid:
+                total_train_loss += loss_val
+                total_train_correct += correct
+                total_train_steps += steps
+                valid_train_batches += 1
                 
-            y_seq = batch.y_sequence  # e.g. [true_a0, true_a1]
-            seq_len = y_seq.size(0)
-            
-            # 1. Forward Graph Component
-            z, x_dict = agent.encoder(batch)
-            
-            # 2. Extract valid tree options
-            e_actions = agent.actor_pointer.compute_action_embeddings(x_dict, batch)
-            
-            if e_actions.size(0) == 0:
-                continue
-                
-            step_indices = batch['action'].step_idx # Denotes which tier the action belongs to
-            
-            seq_loss = 0
-            chosen_embeddings = []
-            
-            # 3. Autoregressive sequence execution (Teacher Forcing)
-            for k in range(seq_len):
-                target_idx = y_seq[k].item()
-                
-                # Dynamic Tier Masking based on Phase and Ground Truth Type
-                if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
-                    valid_mask = (step_indices == k)
-                else:
-                    # Use the 5th dimension (node_type_flag) of the target to isolate candidates
-                    target_type = batch['action'].x[target_idx, 4].item()
-                    valid_mask = (batch['action'].x[:, 4] == target_type)
-                    
-                if not valid_mask.any():
-                    break
-                    
-                if not valid_mask[target_idx]:
-                    # Target node isn't in this tier (structural mismatch)
-                    break 
-                    
-                # Get sequence context s_k
-                if len(chosen_embeddings) == 0:
-                    history_tensor = None
-                else:
-                    # history_tensor: (1, seq_len, hidden_dim) since batch_size=1
-                    history_tensor = torch.stack(chosen_embeddings).unsqueeze(0) 
-                    
-                s_k = agent.actor_pointer.decode_sequence(z, history_tensor) # (1, hidden_dim)
-                
-                # Score all valid candidates in this tier
-                # Using only candidates in tier k
-                e_tier = e_actions[valid_mask]
-                tier_batch_idx = batch['action'].batch[valid_mask] if hasattr(batch['action'], 'batch') and getattr(batch['action'], 'batch') is not None else None
-                
-                # Score
-                logits = agent.actor_pointer.score_actions(s_k, e_tier, tier_batch_idx) # (num_tier_actions,)
-                
-                # The target_idx is global for the action tensor. We need its relative index in the tier.
-                # (find the position of the True value in the masked slice)
-                global_indices = torch.where(valid_mask)[0]
-                relative_target = (global_indices == target_idx).nonzero(as_tuple=True)[0]
-                
-                if relative_target.numel() == 0:
-                    break
-                    
-                # Cross Entropy Loss
-                # F.cross_entropy expects logits (1, C) and target (1,)
-                loss_k = F.cross_entropy(logits.unsqueeze(0), relative_target)
-                seq_loss += loss_k
-                
-                # Teacher forcing: append the TRUE action embedding for the next sequence step
-                chosen_embeddings.append(e_actions[target_idx])
-                
-            if seq_loss > 0:
-                seq_loss.backward()
-                optimizer.step()
-                total_loss += seq_loss.item()
-                valid_batches += 1
-                
-        avg_loss = total_loss / valid_batches if valid_batches > 0 else 0
-        print(f"Epoch {epoch+1}/{epochs} | Avg BC Loss: {avg_loss:.4f} | Samples: {valid_batches}")
+        avg_train_loss = total_train_loss / valid_train_batches if valid_train_batches > 0 else 0
+        train_acc = total_train_correct / total_train_steps if total_train_steps > 0 else 0
         
-        # Save checkpoint after each epoch
+        agent.eval()
+        total_val_loss = 0.0
+        total_val_correct = 0
+        total_val_steps = 0
+        valid_val_batches = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                loss_val, correct, steps, valid = process_batch(agent, batch, device, None)
+                if valid:
+                    total_val_loss += loss_val
+                    total_val_correct += correct
+                    total_val_steps += steps
+                    valid_val_batches += 1
+                    
+        avg_val_loss = total_val_loss / valid_val_batches if valid_val_batches > 0 else 0
+        val_acc = total_val_correct / total_val_steps if total_val_steps > 0 else 0
+        
+        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {avg_val_loss:.4f} Acc: {val_acc:.4f}")
+        
+        writer.add_scalars('Loss', {'Train': avg_train_loss, 'Val': avg_val_loss}, epoch)
+        writer.add_scalars('Accuracy', {'Train': train_acc, 'Val': val_acc}, epoch)
+        
         torch.save(agent.state_dict(), save_path)
-        print(f"Saved checkpoint to {save_path}")
-
-    # Save the bootstrapped weights
-    os.makedirs('models', exist_ok=True)
-    save_path = 'models/bc_agent.pt'
-    torch.save(agent.state_dict(), save_path)
+        
+    writer.close()
     print(f"Saved trained BC model to {save_path}")
 
 if __name__ == "__main__":

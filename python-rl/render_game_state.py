@@ -18,31 +18,16 @@ def render_tensor_state(traj_path, step_idx=0, output_path="render.png"):
     width = topology.get("width", 16)
     height = topology.get("height", 16)
     
-    steps = traj_data.get("steps", [])
+    steps = traj_data.get("trajectories", [])
     if step_idx >= len(steps):
         print(f"Step {step_idx} out of bounds. Trajectory has {len(steps)} steps.")
         return
         
-    step = steps[step_idx]
-    payload = step.get("raw_payload", {})
-    
-    # Reconstruct the HeteroData from the payload to visualize the actual tensor data
-    # We instantiate a dummy env to use its parser
-    env = MegaMekEnvironment(connect_on_init=False)
-    env.topology_payload = topology
-    env.board_width = width
-    env.feature_dims = topology.get('feature_dims', {"hex": 14, "unit": 37, "weapon": 10})
-    
-    # Manually populate static cache
-    nodes = topology.get("hex_nodes", [])
-    edges = topology.get("hex_edges", [])
-    env.static_hex_features = torch.tensor(nodes, dtype=torch.float32) if nodes else torch.empty((0, 5))
-    env.static_hex_adjacency_edges = np.array(edges, dtype=np.int64) if edges else None
-    
-    data, mask = env._parse_to_heterodata(payload)
+    data = steps[step_idx]
     
     fig, ax = plt.subplots(figsize=(10, 10))
-    ax.set_title(f"MegaMek Tensor State Render - Step {step_idx} - {data.context}")
+    context = getattr(data, 'context', ["Unknown"])[0] if hasattr(data, 'context') else "Unknown"
+    ax.set_title(f"MegaMek Tensor State Render - Step {step_idx} - {context}")
     
     # Draw Hexes
     for y in range(height):

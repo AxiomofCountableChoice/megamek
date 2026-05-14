@@ -55,9 +55,25 @@ public class RLDataCollectionPrincess extends Princess {
         try {
             // Princess natively calculates paths, ranks them, and returns the chosen MovePath
             chosenPath = super.continueMovementFor(entity);
+            
+            // Validate the path against off-board hexes to prevent headless Server NullPointerExceptions
+            if (chosenPath != null) {
+                java.util.ListIterator<megamek.common.moves.MoveStep> it = chosenPath.getSteps();
+                while (it.hasNext()) {
+                    megamek.common.moves.MoveStep step = it.next();
+                    megamek.common.Hex hex = getGame().getBoard(chosenPath.getFinalBoardId()).getHex(step.getPosition());
+                    if (hex == null) {
+                        logger.error("RLDataCollectionPrincess intercepted a MovePath with an off-board hex. Scrubbing path to prevent server crash.");
+                        MovePath safePath = new MovePath(getGame(), entity);
+                        chosenPath = safePath;
+                        break;
+                    }
+                }
+            }
         } catch (Exception e) {
             logger.error(e, "RLDataCollectionPrincess encountered an exception during Movement calculation. Returning empty path to prevent server hang.");
-            return new MovePath(getGame(), entity);
+            MovePath safePath = new MovePath(getGame(), entity);
+            return safePath;
         }
         
         // If a valid path is chosen, stream it down for supervised learning extraction
