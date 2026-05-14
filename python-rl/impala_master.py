@@ -72,13 +72,13 @@ class ImpalaReplayBuffer:
             if len(steps) == 0:
                 continue
                 
-            if len(steps) <= sequence_length:
+            if len(steps) <= sequence_length + 1:
                 sampled_steps = steps
             else:
                 # Coin-flip 2: sample start step
-                max_start = len(steps) - sequence_length
+                max_start = len(steps) - (sequence_length + 1)
                 start_idx = random.randint(0, max_start)
-                sampled_steps = steps[start_idx : start_idx + sequence_length]
+                sampled_steps = steps[start_idx : start_idx + sequence_length + 1]
                 
             batch_data.append((topology, sampled_steps, total_reward))
             
@@ -125,13 +125,13 @@ class ImpalaLearner:
         rhos = torch.min(torch.tensor(rho_bar, device=self.device), pi_probs / mu_probs)
         cs = torch.min(torch.tensor(c_bar, device=self.device), pi_probs / mu_probs)
         
-        sigma = torch.sqrt(v_vars + 1e-8)
+        sigma = torch.sqrt(v_vars[:-1] + 1e-8)
         
         # Precompute v_mean_next and delta_V using vectorized operations
-        # Bootstrap the last step with the final value estimate if the episode isn't done.
-        v_means_next = torch.cat([v_means[1:], v_means[-1:]])
-        delta_Vs = rhos * (rewards + gamma * v_means_next - v_means)
+        v_means_next = v_means[1:]
+        delta_Vs = rhos * (rewards + gamma * v_means_next - v_means[:-1])
         
+        # True bootstrap value from the N+1'th state
         v_next = v_means[-1]
         for t in reversed(range(seq_len)):
             v_s = v_means[t] + delta_Vs[t] + gamma * cs[t] * (v_next - v_means_next[t])
@@ -173,39 +173,44 @@ class ImpalaLearner:
         total_game_rewards = []
         
         for topology, steps, total_reward in batch_data:
-            seq_len = len(steps)
-            if seq_len == 0: continue
+            actual_seq_len = len(steps) - 1
+            if actual_seq_len <= 0: continue
             
             valid_batches += 1
             total_game_rewards.append(total_reward)
             
-            rewards = torch.tensor([s["reward"] for s in steps], device=self.device, dtype=torch.float32)
-            mu_probs = torch.tensor([torch.exp(torch.tensor(s["mu_log_prob"])) for s in steps], device=self.device, dtype=torch.float32)
+            transitions = steps[:-1]
             
-            pi_probs = torch.zeros(seq_len, device=self.device)
-            v_means = torch.zeros(seq_len, device=self.device)
-            v_vars = torch.zeros(seq_len, device=self.device)
-            log_pis = torch.zeros(seq_len, device=self.device)
-            entropies = torch.zeros(seq_len, device=self.device)
+            rewards = torch.tensor([s["reward"] for s in transitions], device=self.device, dtype=torch.float32)
+            mu_probs = torch.tensor([torch.exp(torch.tensor(s["mu_log_prob"])) for s in transitions], device=self.device, dtype=torch.float32)
+            
+            pi_probs = torch.zeros(actual_seq_len, device=self.device)
+            log_pis = torch.zeros(actual_seq_len, device=self.device)
+            entropies = torch.zeros(actual_seq_len, device=self.device)
+            
+            v_means = torch.zeros(actual_seq_len + 1, device=self.device)
+            v_vars = torch.zeros(actual_seq_len + 1, device=self.device)
             
             v_preds_ensemble = []
             
-            # Recompute graph forward pass using CURRENT weights
+            # Recompute graph forward pass using CURRENT weights for ALL N+1 states
             for t, s in enumerate(steps):
                 graph, mask = self.parse_state(s["raw_payload"], s.get("action_dict", {}), topology)
                 
-                # Evaluate the true sequence taken
                 pi_log_prob, entropy, v_mean, v_variance = self.agent.evaluate_actions(graph)
                 
-                pi_probs[t] = torch.exp(pi_log_prob[0]) if pi_log_prob.numel() > 0 else 1.0
-                log_pis[t] = pi_log_prob[0] if pi_log_prob.numel() > 0 else 0.0
-                entropies[t] = entropy[0] if entropy.numel() > 0 else 0.0
                 v_means[t] = v_mean[0] if v_mean.numel() > 0 else 0.0
                 v_vars[t] = v_variance[0] if v_variance.numel() > 0 else 0.0
                 
-                z, _ = self.agent.encoder(graph)
-                v_preds = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
-                v_preds_ensemble.append(v_preds)
+                # Only extract actor targets for the N transitions
+                if t < actual_seq_len:
+                    pi_probs[t] = torch.exp(pi_log_prob[0]) if pi_log_prob.numel() > 0 else 1.0
+                    log_pis[t] = pi_log_prob[0] if pi_log_prob.numel() > 0 else 0.0
+                    entropies[t] = entropy[0] if entropy.numel() > 0 else 0.0
+                    
+                    z, _ = self.agent.encoder(graph)
+                    v_preds = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
+                    v_preds_ensemble.append(v_preds)
                 
             vs, v_enhanced, rhos = self.compute_vtrace_targets(
                 rewards, v_means.detach(), v_vars.detach(), mu_probs, pi_probs.detach(), 
@@ -213,16 +218,18 @@ class ImpalaLearner:
             )
             
             # Vectorized sequence loss computation
-            v_enh_next = torch.cat([v_enhanced[1:], v_enhanced[-1:]])
-            advantages = rewards + gamma * v_enh_next - v_means.detach()
+            # Compute true bootstrap for Nth state including epistemic variance
+            v_enh_last = v_means[-1:] + lam_epistemic * torch.sqrt(v_vars[-1:] + 1e-8)
+            v_enh_next = torch.cat([v_enhanced[1:], v_enh_last.detach()])
+            advantages = rewards + gamma * v_enh_next - v_means[:-1].detach()
             
             # Actor Loss: sum over sequence
             actor_losses = -rhos * log_pis * advantages
             total_actor_loss += actor_losses.sum()
             
             # Critic Loss: mean over ensemble dimension, sum over sequence
-            v_preds_tensor = torch.stack(v_preds_ensemble, dim=0) # [seq_len, E]
-            vs_target_expanded = vs.unsqueeze(-1).expand(seq_len, self.agent.ensembles.__len__()) # [seq_len, E]
+            v_preds_tensor = torch.stack(v_preds_ensemble, dim=0) # [actual_seq_len, E]
+            vs_target_expanded = vs.unsqueeze(-1).expand(actual_seq_len, self.agent.ensembles.__len__()) # [actual_seq_len, E]
             critic_losses = nn.functional.mse_loss(v_preds_tensor, vs_target_expanded.detach(), reduction='none')
             total_critic_loss += critic_losses.mean(dim=-1).sum()
             
@@ -231,7 +238,7 @@ class ImpalaLearner:
             total_entropy_loss += entropy_losses.sum()
                 
             # Logging the average sequence advantages
-            self.writer.add_scalar("VTrace/Advantage_Mean", (rewards + gamma * torch.cat([v_enhanced[1:], v_enhanced[-1:]]) - v_means.detach()).mean().item(), self.global_step)
+            self.writer.add_scalar("VTrace/Advantage_Mean", (rewards + gamma * torch.cat([v_enhanced[1:], v_enh_last.detach()]) - v_means[:-1].detach()).mean().item(), self.global_step)
             self.writer.add_scalar("VTrace/Rho_Mean", rhos.mean().item(), self.global_step)
             
         if valid_batches == 0:
