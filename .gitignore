@@ -101,3 +101,5 @@ __pycache__/
 # No need to re-commit this folder
 /megamek/data
 units.cache
+runs/
+rl_*_dataset/
