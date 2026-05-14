@@ -54,10 +54,12 @@ class ImpalaWorker:
             # Tracking for dense rewards
             prev_bv1, prev_bv2 = None, None
             prev_tp1, prev_tp2 = 0, 0
+            prev_vp1 = 0
             total_match_bv = 1.0 # fallback to prevent div by zero
             
             beta_bv = 1.0
             beta_tp = 0.01
+            beta_vp = 1.0
             
             step_idx = 0
             while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
@@ -84,21 +86,26 @@ class ImpalaWorker:
                         bv2 = rew_dict.get("bv2", 0)
                         tp1 = rew_dict.get("tp1", 0)
                         tp2 = rew_dict.get("tp2", 0)
+                        vp1 = rew_dict.get("vp1", 0) # Already zero-sum from Java
                         
                         if prev_bv1 is None:
                             prev_bv1, prev_bv2 = bv1, bv2
                             total_match_bv = max(bv1 + bv2, 1.0)
+                            prev_vp1 = vp1
                             
                         delta_bv1 = bv1 - prev_bv1
                         delta_bv2 = bv2 - prev_bv2
+                        delta_vp1 = vp1 - prev_vp1
                         
                         reward_bv = beta_bv * ((delta_bv1 - delta_bv2) / total_match_bv)
                         reward_tp = beta_tp * (tp2 - tp1)
+                        reward_vp = beta_vp * delta_vp1
                         
-                        reward = reward_bv + reward_tp
+                        reward = reward_bv + reward_tp + reward_vp
                         
                         prev_bv1, prev_bv2 = bv1, bv2
                         prev_tp1, prev_tp2 = tp1, tp2
+                        prev_vp1 = vp1
 
                     trajectory.append({
                         "raw_payload": current_payload,
@@ -115,14 +122,6 @@ class ImpalaWorker:
                 step_idx += 1
 
             if len(trajectory) > 0:
-                # Assign final win/loss reward if episode ends
-                if getattr(self.env, "done", False):
-                    # Simplistic win/loss: assume positive if P1 has more BV left than P2?
-                    # MegaMek doesn't strictly define done except game over.
-                    # For now, we can just leave the dense rewards or add a +1 / -1
-                    pass
-                
-                # Save to disk
                 traj_data = {
                     "topology_payload": topology_payload,
                     "steps": trajectory

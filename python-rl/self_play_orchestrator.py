@@ -17,7 +17,7 @@ def get_random_meks(all_meks, num=1):
         return ""
     return ",".join(random.choices(all_meks, k=num))
 
-def megamek_runner(port, mode, all_meks, shutdown_event):
+def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, options=None):
     """Continuously runs the MegaMek server on the specified port until shutdown."""
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
     env = os.environ.copy()
@@ -26,20 +26,33 @@ def megamek_runner(port, mode, all_meks, shutdown_event):
     env["MEGAMEK_OPTS"] = f"-DlogPath=logs/server_{port}"
     env["RL_SERVER_PORT"] = str(port)
     
+    if options is None:
+        options = []
+    
     while not shutdown_event.is_set():
-        p1_meks = get_random_meks(all_meks, num=4)
-        p2_meks = get_random_meks(all_meks, num=4)
-        
         cmd = [
             "build/install/MegaMek/bin/megamek", 
-            "-rlexport", "-randomMap", 
-            "-p1meks", p1_meks, 
-            "-p2meks", p2_meks
+            "-rlexport"
         ]
+        
+        if scenario:
+            cmd.extend(["-scenario", scenario])
+        else:
+            p1_meks = get_random_meks(all_meks, num=4)
+            p2_meks = get_random_meks(all_meks, num=4)
+            cmd.extend([
+                "-randomMap", 
+                "-p1meks", p1_meks, 
+                "-p2meks", p2_meks
+            ])
+            
         if mode == "selfplay":
             cmd.append("-selfplay")
         else:
             cmd.append("-autogen")
+            
+        for opt in options:
+            cmd.append(opt)
             
         print(f"[MegaMek {port}] Starting match...")
         proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -79,6 +92,8 @@ def main():
     parser.add_argument("--num-instances", type=int, default=4, help="Number of concurrent MegaMek servers")
     parser.add_argument("--mode", type=str, choices=["selfplay", "princess"], default="selfplay", help="Opponent mode")
     parser.add_argument("--base-port", type=int, default=4000)
+    parser.add_argument("--scenario", type=str, default="", help="Path to .mms scenario file")
+    parser.add_argument("--options", type=str, nargs="*", default=[], help="List of game options like -VICTORY_USE_KILL_COUNT=true")
     args = parser.parse_args()
     
     dataset_dir = "rl_sp_dataset" if args.mode == "selfplay" else "rl_princess_dataset"
@@ -105,7 +120,7 @@ def main():
         worker2_port = server_port + 1001
         
         # Start Server Thread
-        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event))
+        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.options))
         t_server.start()
         threads.append(t_server)
         

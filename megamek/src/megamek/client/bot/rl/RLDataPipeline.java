@@ -284,9 +284,31 @@ public class RLDataPipeline {
         double tp1 = 0;
         double tp2 = 0;
 
+        megamek.server.victory.VictoryResult vr = null;
+        java.lang.reflect.Method getPlayerScoreMethod = null;
+        try {
+            vr = game.getVictoryResult();
+            getPlayerScoreMethod = vr.getClass().getDeclaredMethod("getPlayerScore", int.class);
+            getPlayerScoreMethod.setAccessible(true);
+        } catch (Exception e) {
+            // Ignore
+        }
+
         for (Player p : game.getPlayersList()) {
             double bv = 0;
             double tp = 0;
+            double vp = 0;
+            
+            if (vr != null && getPlayerScoreMethod != null) {
+                try {
+                    vp = (Double) getPlayerScoreMethod.invoke(vr, p.getId());
+                } catch (Exception ex) {}
+                if (vr.isVictory()) {
+                    if (vr.getWinningPlayer() == p.getId()) vp += 100.0;
+                    else if (!vr.isDraw()) vp -= 100.0;
+                }
+            }
+            
             for (Entity e : game.getEntitiesVector()) {
                 if (e.getOwnerId() == p.getId()) {
                     if (!e.isDestroyed()) {
@@ -305,19 +327,19 @@ public class RLDataPipeline {
             }
             if (baseClient.getLocalPlayer() != null && p.getId() == baseClient.getLocalPlayer().getId()) {
                 bv1 = bv;
-                vp1 = 0; // VP calculation omitted for now
+                vp1 = vp;
                 tp1 = tp;
             } else {
                 bv2 = bv;
-                vp2 = 0; // VP calculation omitted for now
+                vp2 = vp;
                 tp2 = tp;
             }
         }
 
         rewards.put("bv1", bv1);
         rewards.put("bv2", bv2);
-        rewards.put("vp1", vp1);
-        rewards.put("vp2", vp2);
+        rewards.put("vp1", vp1 - vp2); // Zero sum
+        rewards.put("vp2", vp2 - vp1); // Zero sum
         rewards.put("tp1", tp1);
         rewards.put("tp2", tp2);
 

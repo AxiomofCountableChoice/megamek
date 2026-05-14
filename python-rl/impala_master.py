@@ -67,6 +67,7 @@ class ImpalaReplayBuffer:
         for traj in sampled_trajs:
             topology = traj.get("topology_payload", None)
             steps = traj.get("steps", [])
+            total_reward = sum([s.get("reward", 0.0) for s in steps])
             
             if len(steps) == 0:
                 continue
@@ -79,7 +80,7 @@ class ImpalaReplayBuffer:
                 start_idx = random.randint(0, max_start)
                 sampled_steps = steps[start_idx : start_idx + sequence_length]
                 
-            batch_data.append((topology, sampled_steps))
+            batch_data.append((topology, sampled_steps, total_reward))
             
         return batch_data
 
@@ -169,12 +170,14 @@ class ImpalaLearner:
         total_critic_loss = 0
         total_entropy_loss = 0
         valid_batches = 0
+        total_game_rewards = []
         
-        for topology, steps in batch_data:
+        for topology, steps, total_reward in batch_data:
             seq_len = len(steps)
             if seq_len == 0: continue
             
             valid_batches += 1
+            total_game_rewards.append(total_reward)
             
             rewards = torch.tensor([s["reward"] for s in steps], device=self.device, dtype=torch.float32)
             mu_probs = torch.tensor([torch.exp(torch.tensor(s["mu_log_prob"])) for s in steps], device=self.device, dtype=torch.float32)
@@ -209,25 +212,23 @@ class ImpalaLearner:
                 rho_bar, c_bar, gamma, lam_epistemic
             )
             
-            # Sum the loss over all steps in the chunk to utilize the full unrolled V-Trace sequence
-            for t in range(seq_len):
-                if t == seq_len - 1:
-                    v_enh_next = v_enhanced[-1]
-                else:
-                    v_enh_next = v_enhanced[t+1]
-                    
-                advantage = rewards[t] + gamma * v_enh_next - v_means[t].detach()
-                actor_loss = -rhos[t] * log_pis[t] * advantage
-                
-                v_preds_tensor = v_preds_ensemble[t].unsqueeze(0) # [1, E]
-                vs_target_expanded = vs[t].unsqueeze(0).expand(1, self.agent.ensembles.__len__()) # [1, E]
-                critic_loss = nn.functional.mse_loss(v_preds_tensor, vs_target_expanded.detach())
-                
-                entropy_loss = -entropies[t]
-                
-                total_actor_loss += actor_loss
-                total_critic_loss += critic_loss
-                total_entropy_loss += entropy_loss
+            # Vectorized sequence loss computation
+            v_enh_next = torch.cat([v_enhanced[1:], v_enhanced[-1:]])
+            advantages = rewards + gamma * v_enh_next - v_means.detach()
+            
+            # Actor Loss: sum over sequence
+            actor_losses = -rhos * log_pis * advantages
+            total_actor_loss += actor_losses.sum()
+            
+            # Critic Loss: mean over ensemble dimension, sum over sequence
+            v_preds_tensor = torch.stack(v_preds_ensemble, dim=0) # [seq_len, E]
+            vs_target_expanded = vs.unsqueeze(-1).expand(seq_len, self.agent.ensembles.__len__()) # [seq_len, E]
+            critic_losses = nn.functional.mse_loss(v_preds_tensor, vs_target_expanded.detach(), reduction='none')
+            total_critic_loss += critic_losses.mean(dim=-1).sum()
+            
+            # Entropy Loss: sum over sequence
+            entropy_losses = -entropies
+            total_entropy_loss += entropy_losses.sum()
                 
             # Logging the average sequence advantages
             self.writer.add_scalar("VTrace/Advantage_Mean", (rewards + gamma * torch.cat([v_enhanced[1:], v_enhanced[-1:]]) - v_means.detach()).mean().item(), self.global_step)
@@ -236,15 +237,19 @@ class ImpalaLearner:
         if valid_batches == 0:
             return False
             
-        # Normalize the loss by the number of valid batches * sequence length
-        loss = (total_actor_loss + 0.5 * total_critic_loss + entropy_coef * total_entropy_loss) / (valid_batches * sequence_length)
+        # Normalize the loss by the number of valid batches
+        loss = (total_actor_loss + 0.5 * total_critic_loss + entropy_coef * total_entropy_loss) / valid_batches
         loss.backward()
         self.optimizer.step()
         
         self.writer.add_scalar("Loss/Total", loss.item(), self.global_step)
-        self.writer.add_scalar("Loss/Actor", (total_actor_loss/(valid_batches * sequence_length)).item(), self.global_step)
-        self.writer.add_scalar("Loss/Critic", (total_critic_loss/(valid_batches * sequence_length)).item(), self.global_step)
-        self.writer.add_scalar("Loss/Entropy", (total_entropy_loss/(valid_batches * sequence_length)).item(), self.global_step)
+        self.writer.add_scalar("Loss/Actor", (total_actor_loss/valid_batches).item(), self.global_step)
+        self.writer.add_scalar("Loss/Critic", (total_critic_loss/valid_batches).item(), self.global_step)
+        self.writer.add_scalar("Loss/Entropy", (total_entropy_loss/valid_batches).item(), self.global_step)
+        
+        if len(total_game_rewards) > 0:
+            avg_game_reward = sum(total_game_rewards) / len(total_game_rewards)
+            self.writer.add_scalar("System/Average_Game_Total_Reward", avg_game_reward, self.global_step)
         
         self.global_step += 1
         return True
