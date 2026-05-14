@@ -254,12 +254,14 @@ public class RLDataPipeline {
             e.printStackTrace(System.err);
             logger.error(e, "RLDataPipeline: Python query failed due to timeout");
             return null;
-        } catch (java.net.SocketException e) {
+        } catch (java.io.IOException e) {
             System.err.println(
-                    "RL_SYNC_DEBUG [queryPython]: SocketException (Broken Pipe). Disconnecting python client.");
+                    "RL_SYNC_DEBUG [queryPython]: IOException (Broken Pipe / EOF). Disconnecting python client.");
             this.close();
             pythonSocket = null;
             hasSentTopology = false;
+            System.err.println("RL_SYNC_DEBUG [queryPython]: Terminating MegaMek Server due to Python disconnection.");
+            System.exit(0);
             return null;
         } catch (Exception e) {
             System.err.println("RL_SYNC_DEBUG [queryPython]: Failed! Exception: " + e.getClass().getName() + " - "

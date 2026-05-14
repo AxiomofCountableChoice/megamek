@@ -122,7 +122,12 @@ public class PrincessOfflineTrainer {
                 p2 = new RLBotClient("RL_Agent_Beta", "localhost", resolver.port, resolver.port + 1001);
             } else if (autoGen && !bcDataGen) {
                 p1 = new RLBotClient("RL_Agent", "localhost", resolver.port, resolver.port + 1000);
-                p2 = new Princess("Princess_Beta", "localhost", resolver.port);
+                Princess p2Bot = new Princess("Princess_Beta", "localhost", resolver.port);
+                megamek.client.bot.princess.BehaviorSettings bs = p2Bot.getBehaviorSettings().getCopy();
+                bs.setAutoFlee(false);
+                bs.setForcedWithdrawal(false);
+                p2Bot.setBehaviorSettings(bs);
+                p2 = p2Bot;
             } else {
                 // Used for bcDataGen or default manual operation
                 p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, resolver.port + 1000);
@@ -276,6 +281,23 @@ public class PrincessOfflineTrainer {
                     
                     System.out.println("Sent host and bot Done packets. Reached INITIATIVE phase!");
                     
+                    while (true) {
+                        try {
+                            megamek.common.game.IGame g = server.getGame();
+                            if (g == null) break;
+                            megamek.common.enums.GamePhase phase = g.getPhase();
+                            if (phase == null || phase.isVictory() || phase.isEnd()) {
+                                break;
+                            }
+                        } catch (Exception ex) {
+                            System.out.println("Loop exception: " + ex.getMessage());
+                            break;
+                        }
+                        Thread.sleep(1000);
+                    }
+                    
+                    System.out.println("Game Ended! Shutting down MegaMek server.");
+                    
                 } else {
                     System.out.println("Could not find players!");
                 }
@@ -283,6 +305,9 @@ public class PrincessOfflineTrainer {
             } catch (Throwable ex) {
                 System.out.println("FATAL EXCEPTION: " + ex.getMessage());
                 ex.printStackTrace();
+            } finally {
+                System.out.println("PrincessOfflineTrainer start() exiting, invoking System.exit(0)");
+                System.exit(0);
             }
         }
     }

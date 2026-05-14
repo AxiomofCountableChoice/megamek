@@ -3,7 +3,6 @@ import struct
 import msgpack
 import time
 import torch
-import numpy as np
 
 from torch_geometric.data import HeteroData
 
@@ -55,7 +54,7 @@ class MegaMekEnvironment:
         while True:
             payload = self._receive_payload()
             if payload is None:
-                raise ConnectionError("Server disconnected during reset.")
+                raise ConnectionError("Server closed connection during reset.")
                 
             ctx = payload.get("context")
             if ctx == "START_GAME":
@@ -73,10 +72,9 @@ class MegaMekEnvironment:
                 else:
                     self.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
                 if edges:
-                    self.static_hex_adjacency_edges = np.array(edges, dtype=np.int64)
+                    self.static_hex_adjacency_edges = torch.tensor(edges, dtype=torch.long)
                 else:
-                    self.static_hex_adjacency_edges = None
-                print("Topology cached.")
+                    self.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
                 continue
             else:
                 # Actual actionable state
@@ -183,7 +181,7 @@ class MegaMekEnvironment:
             edge_arr = self.static_hex_adjacency_edges
             for dir_idx in range(6):
                 dir_mask = edge_arr[:, 2] == dir_idx
-                data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.tensor(edge_arr[dir_mask, :2].T, dtype=torch.long)
+                data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = edge_arr[dir_mask, :2].T.contiguous()
         else:
             for dir_idx in range(6):
                 data['hex', f'hexAdj_{dir_idx}', 'hex'].edge_index = torch.empty((2, 0), dtype=torch.long)
@@ -202,8 +200,8 @@ class MegaMekEnvironment:
             
         equips = raw_state.get("equips_edges", [])
         if equips:
-            e_arr = np.array(equips, dtype=np.int64).T
-            data['weapon', 'equips', 'unit'].edge_index = torch.tensor(e_arr, dtype=torch.long)
+            e_arr = torch.tensor(equips, dtype=torch.long).T
+            data['weapon', 'equips', 'unit'].edge_index = e_arr
         else:
             data['weapon', 'equips', 'unit'].edge_index = torch.empty((2, 0), dtype=torch.long)
         
@@ -231,8 +229,8 @@ class MegaMekEnvironment:
                 return
             edges = raw_state.get(key, [])
             if edges:
-                e_arr = np.array(edges, dtype=np.int64).T
-                data[src, out_type, dst].edge_index = torch.tensor(e_arr, dtype=torch.long)
+                e_arr = torch.tensor(edges, dtype=torch.long).T
+                data[src, out_type, dst].edge_index = e_arr
             else:
                 data[src, out_type, dst].edge_index = torch.empty((2, 0), dtype=torch.long)
                 

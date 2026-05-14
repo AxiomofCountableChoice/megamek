@@ -6,7 +6,6 @@ import threading
 import torch
 import glob
 import random
-import numpy as np
 import concurrent.futures
 
 from env import MegaMekEnvironment
@@ -94,7 +93,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                 else:
                     env.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
                 if edges:
-                    env.static_hex_adjacency_edges = np.array(edges, dtype=np.int64)
+                    env.static_hex_adjacency_edges = torch.tensor(edges, dtype=torch.long)
                 else:
                     env.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
                 continue
@@ -109,8 +108,13 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                         collected_dataset.append(state_graph)
                         collected_this_episode += 1
                         
-                        if payload.get("context") in ["WEAPON_BC", "PHYSICAL_BC"]:
-                            print(f"[Worker {port}] Successfully extracted {payload.get('context')}! Nodes: {state_graph['action'].x.shape}")
+                        state_info = payload.get("state", {})
+                        phase = state_info.get("phase_main", "UNKNOWN")
+                        turn = state_info.get("turn_number", 0)
+                        round_num = state_info.get("round_number", 0)
+                        
+                        if payload.get("context") in ["MOVEMENT_BC", "WEAPON_BC", "PHYSICAL_BC"]:
+                            print(f"[Worker {port}] Round: {round_num} | Phase: {phase} | Turn: {turn} | Extracted {payload.get('context')}! Nodes: {state_graph['action'].x.shape}")
                         
                         if len(collected_dataset) % 10 == 0:
                             print(f"[Worker {port}] Global Collection count: {len(collected_dataset)} valid actions...")

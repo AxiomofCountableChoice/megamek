@@ -32,8 +32,11 @@ public class RLDataCollectionPrincess extends Princess {
         super(playerName, host, port);
         
         // Disable enhanced targeting and set behavior specifics if required here
-        getBehaviorSettings().setAutoFlee(false);
-        getBehaviorSettings().setForcedWithdrawal(false);        
+        megamek.client.bot.princess.BehaviorSettings bs = getBehaviorSettings().getCopy();
+        bs.setAutoFlee(false);
+        bs.setForcedWithdrawal(false);
+        setBehaviorSettings(bs);
+        
         this.dataPipeline = new RLDataPipeline(this);
         this.dataPipeline.listenForPython(listenPort);
     }
@@ -48,8 +51,14 @@ public class RLDataCollectionPrincess extends Princess {
     
     @Override
     protected MovePath continueMovementFor(final Entity entity) {
-        // Princess natively calculates paths, ranks them, and returns the chosen MovePath
-        MovePath chosenPath = super.continueMovementFor(entity);
+        MovePath chosenPath = null;
+        try {
+            // Princess natively calculates paths, ranks them, and returns the chosen MovePath
+            chosenPath = super.continueMovementFor(entity);
+        } catch (Exception e) {
+            logger.error(e, "RLDataCollectionPrincess encountered an exception during Movement calculation. Returning empty path to prevent server hang.");
+            return new MovePath(getGame(), entity);
+        }
         
         // If a valid path is chosen, stream it down for supervised learning extraction
         if (chosenPath != null && dataPipeline.isConnected()) {
@@ -57,6 +66,17 @@ public class RLDataCollectionPrincess extends Princess {
         }
         
         return chosenPath;
+    }
+    
+    @Override
+    protected megamek.client.bot.PhysicalOption calculatePhysicalTurn() {
+        try {
+            return super.calculatePhysicalTurn();
+        } catch (Exception e) {
+            logger.error(e, "RLDataCollectionPrincess encountered an exception during Physical calculation. Returning null to prevent server hang.");
+            // Returning null here safely clears the physical turn and allows BotClient to send an empty attack vector, preventing deadlocks!
+            return null;
+        }
     }
 
     @Override
