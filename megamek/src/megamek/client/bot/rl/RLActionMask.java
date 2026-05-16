@@ -37,6 +37,8 @@ public class RLActionMask {
         public Integer dest_index;
         public Integer dest_facing;
         public Integer mp_used;
+        public Boolean is_walk;
+        public Boolean is_run;
         public Boolean is_jump;
     }
 

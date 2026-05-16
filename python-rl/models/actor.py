@@ -1,8 +1,23 @@
+import math
 import torch
 import torch.nn as nn
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, max_len: int = 5000):
+        super().__init__()
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.pe[:, :x.size(1)]
+        return x
+
 class ActionConditionedPointer(nn.Module):
-    def __init__(self, hidden_dim=128, action_feature_dim=6):
+    def __init__(self, hidden_dim=128, action_feature_dim=8):
         super().__init__()
         
         # e_action = ActionMLP( H_unit (+) H_target_node (+) X_action_node )
@@ -35,6 +50,7 @@ class ActionConditionedPointer(nn.Module):
             dim_feedforward=hidden_dim * 2,
             batch_first=True
         )
+        self.pos_encoder = PositionalEncoding(hidden_dim)
         self.transformer_decoder = nn.TransformerEncoder(decoder_layer, num_layers=2)
 
     def decode_sequence(self, z, chosen_action_embeddings_seq):
@@ -56,6 +72,9 @@ class ActionConditionedPointer(nn.Module):
             seq_inputs = torch.cat([s_0, chosen_action_embeddings_seq], dim=1) # (B, seq_len+1, hidden_dim)
             
         seq_len = seq_inputs.size(1)
+        
+        # Apply positional encodings
+        seq_inputs = self.pos_encoder(seq_inputs)
         
         # Causal inference generation (if sequence is larger than 1)
         if seq_len > 1:

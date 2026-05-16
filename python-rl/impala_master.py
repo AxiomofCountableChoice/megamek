@@ -7,9 +7,13 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 import random
+import argparse
 
 from models.agent import MegaMekAgent
 from env import MegaMekEnvironment
+from logger_config import setup_logger
+
+logger = setup_logger("ImpalaMaster")
 
 class ImpalaReplayBuffer:
     """
@@ -20,6 +24,7 @@ class ImpalaReplayBuffer:
         self.dataset_dirs = dataset_dirs
         self.max_trajectories = max_trajectories
         self.trajectories = []
+        self.ingested_files = set()
         self.lock = threading.Lock()
         
         # Start background worker to ingest trajectories
@@ -38,16 +43,22 @@ class ImpalaReplayBuffer:
                     
                     files = glob.glob(os.path.join(wd, "*.pt"))
                     for f in files:
+                        if f in self.ingested_files:
+                            continue
                         try:
                             data = torch.load(f, weights_only=False, map_location='cpu')
                             with self.lock:
-                                self.trajectories.append(data)
+                                self.trajectories.append((f, data))
+                                self.ingested_files.add(f)
                                 if len(self.trajectories) > self.max_trajectories:
-                                    self.trajectories.pop(0) # FIFO
-                            # Archive or delete
-                            os.remove(f)
+                                    oldest_f, _ = self.trajectories.pop(0) # FIFO
+                                    self.ingested_files.discard(oldest_f)
+                                    try:
+                                        os.remove(oldest_f)
+                                    except OSError:
+                                        pass
                         except Exception as e:
-                            print(f"[ReplayBuffer] Error loading {f}: {e}")
+                            logger.error(f"[ReplayBuffer] Error loading {f}: {e}")
             time.sleep(2)
 
     def sample_batch(self, batch_size=4, sequence_length=16):
@@ -64,7 +75,7 @@ class ImpalaReplayBuffer:
             sampled_trajs = random.sample(self.trajectories, batch_size)
             
         batch_data = []
-        for traj in sampled_trajs:
+        for f, traj in sampled_trajs:
             topology = traj.get("topology_payload", None)
             steps = traj.get("steps", [])
             total_reward = sum([s.get("reward", 0.0) for s in steps])
@@ -85,8 +96,9 @@ class ImpalaReplayBuffer:
         return batch_data
 
 class ImpalaLearner:
-    def __init__(self, device='cpu'):
+    def __init__(self, device='cpu', dataset_dirs=None, batch_size=4):
         self.device = device
+        self.batch_size = batch_size
         self.agent = MegaMekAgent(hidden_dim=128, ensemble_size=8).to(self.device)
         self.optimizer = Adam(self.agent.parameters(), lr=1e-4)
         self.writer = SummaryWriter(log_dir="runs/impala_master")
@@ -102,10 +114,10 @@ class ImpalaLearner:
         os.makedirs("models", exist_ok=True)
         
         if os.path.exists(self.latest_model_path):
-            print(f"Resuming from {self.latest_model_path}")
+            logger.info(f"Resuming from {self.latest_model_path}")
             self.agent.load_state_dict(torch.load(self.latest_model_path, map_location=device))
         elif os.path.exists(bc_model_path):
-            print(f"Bootstrapping Learner from BC weights: {bc_model_path}")
+            logger.info(f"Bootstrapping Learner from BC weights: {bc_model_path}")
             self.agent.load_state_dict(torch.load(bc_model_path, map_location=device))
             self.save_checkpoint()
             
@@ -184,12 +196,12 @@ class ImpalaLearner:
             rewards = torch.tensor([s["reward"] for s in transitions], device=self.device, dtype=torch.float32)
             mu_probs = torch.tensor([torch.exp(torch.tensor(s["mu_log_prob"])) for s in transitions], device=self.device, dtype=torch.float32)
             
-            pi_probs = torch.zeros(actual_seq_len, device=self.device)
-            log_pis = torch.zeros(actual_seq_len, device=self.device)
-            entropies = torch.zeros(actual_seq_len, device=self.device)
+            pi_probs_list = []
+            log_pis_list = []
+            entropies_list = []
             
-            v_means = torch.zeros(actual_seq_len + 1, device=self.device)
-            v_vars = torch.zeros(actual_seq_len + 1, device=self.device)
+            v_means_list = []
+            v_vars_list = []
             
             v_preds_ensemble = []
             
@@ -199,18 +211,24 @@ class ImpalaLearner:
                 
                 pi_log_prob, entropy, v_mean, v_variance = self.agent.evaluate_actions(graph)
                 
-                v_means[t] = v_mean[0] if v_mean.numel() > 0 else 0.0
-                v_vars[t] = v_variance[0] if v_variance.numel() > 0 else 0.0
+                v_means_list.append(v_mean[0] if v_mean.numel() > 0 else torch.tensor(0.0, device=self.device, requires_grad=True))
+                v_vars_list.append(v_variance[0] if v_variance.numel() > 0 else torch.tensor(0.0, device=self.device))
                 
                 # Only extract actor targets for the N transitions
                 if t < actual_seq_len:
-                    pi_probs[t] = torch.exp(pi_log_prob[0]) if pi_log_prob.numel() > 0 else 1.0
-                    log_pis[t] = pi_log_prob[0] if pi_log_prob.numel() > 0 else 0.0
-                    entropies[t] = entropy[0] if entropy.numel() > 0 else 0.0
+                    pi_probs_list.append(torch.exp(pi_log_prob[0]) if pi_log_prob.numel() > 0 else torch.tensor(1.0, device=self.device))
+                    log_pis_list.append(pi_log_prob[0] if pi_log_prob.numel() > 0 else torch.tensor(0.0, device=self.device, requires_grad=True))
+                    entropies_list.append(entropy[0] if entropy.numel() > 0 else torch.tensor(0.0, device=self.device, requires_grad=True))
                     
                     z, _ = self.agent.encoder(graph)
                     v_preds = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
                     v_preds_ensemble.append(v_preds)
+                    
+            pi_probs = torch.stack(pi_probs_list)
+            log_pis = torch.stack(log_pis_list)
+            entropies = torch.stack(entropies_list)
+            v_means = torch.stack(v_means_list)
+            v_vars = torch.stack(v_vars_list)
                 
             vs, v_enhanced, rhos = self.compute_vtrace_targets(
                 rewards, v_means.detach(), v_vars.detach(), mu_probs, pi_probs.detach(), 
@@ -262,7 +280,7 @@ class ImpalaLearner:
         return True
 
     def run(self):
-        print(f"Starting IMPALA Learner on {self.device}...")
+        logger.info(f"Starting IMPALA Learner on {self.device}...")
         try:
             while True:
                 with self.buffer.lock:
@@ -271,19 +289,23 @@ class ImpalaLearner:
                 self.writer.add_scalar("System/Buffer_Size", buf_size, self.global_step)
                     
                 # Perform optimization step if we have enough data
-                if self.learn_step(batch_size=8):
+                if self.learn_step(batch_size=self.batch_size):
                     if self.global_step % 10 == 0:
                         self.save_checkpoint()
-                        print(f"Step {self.global_step}: Saved checkpoint.")
+                        logger.info(f"Step {self.global_step}: Saved checkpoint.")
                 else:
                     # Wait for workers to generate data
                     time.sleep(2)
         except KeyboardInterrupt:
-            print("\nKeyboardInterrupt received. Gracefully shutting down Master...")
+            logger.info("KeyboardInterrupt received. Gracefully shutting down Master...")
             self.save_checkpoint()
-            print("Final checkpoint saved. Exiting.")
+            logger.info("Final checkpoint saved. Exiting.")
 
 if __name__ == "__main__":
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--device", type=str, default="cpu", help="Device to run master trainer on")
+    args = parser.parse_args()
+    
+    device = torch.device(args.device)
     learner = ImpalaLearner(device=device)
     learner.run()

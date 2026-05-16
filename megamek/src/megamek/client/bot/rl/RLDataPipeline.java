@@ -275,6 +275,7 @@ public class RLDataPipeline {
     public Map<String, Object> calculateRewards() {
         Game game = (Game) baseClient.getGame();
         Map<String, Object> rewards = new HashMap<>();
+        if (game == null) return rewards;
 
         // Compute current BV for Player 1 and Player 2
         double bv1 = 0;
@@ -310,6 +311,7 @@ public class RLDataPipeline {
             }
             
             for (Entity e : game.getEntitiesVector()) {
+                if (e == null) continue;
                 if (e.getOwnerId() == p.getId()) {
                     if (!e.isDestroyed()) {
                         bv += e.calculateBattleValue();
@@ -461,6 +463,7 @@ public class RLDataPipeline {
         if (localPlayer != null) {
             state.put("current_player_id", localPlayer.getId());
             for (Entity e : game.getEntitiesVector()) {
+                if (e == null) continue;
                 if (!e.isDone() && !e.isDestroyed()) {
                     if (e.getOwnerId() == localPlayer.getId()) {
                         myActivations++;
@@ -496,6 +499,7 @@ public class RLDataPipeline {
 
         for (int i = 0; i < game.getEntitiesVector().size(); i++) {
             Entity e1 = game.getEntitiesVector().get(i);
+            if (e1 == null) continue;
             java.util.Map<Integer, Integer> reachableHexes = new java.util.HashMap<>();
 
             // A unit can always "reach" its own hex (stationary TMM = 0)
@@ -560,6 +564,7 @@ public class RLDataPipeline {
         // Pass 2: Extract features and build edges
         for (int i = 0; i < game.getEntitiesVector().size(); i++) {
             Entity e1 = game.getEntitiesVector().get(i);
+            if (e1 == null) continue;
             entityIds.add(e1.getId());
             entityArray.add(extractEntityFeatures(e1));
 
@@ -576,6 +581,7 @@ public class RLDataPipeline {
                 if (i == j)
                     continue;
                 Entity e2 = game.getEntitiesVector().get(j);
+            if (e2 == null) continue;
                 megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, e2);
                 if (los.canSee()) {
                     losTargetEdges.add(new int[] { i, j });
@@ -686,6 +692,8 @@ public class RLDataPipeline {
             pm.dest_facing = p.getFinalFacing();
             pm.mp_used = p.getMpUsed();
             pm.is_jump = p.isJumping();
+            pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
+            pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
             serializedMaskOut.add(pm);
         }
         return calculatedPaths;
@@ -782,6 +790,7 @@ public class RLDataPipeline {
 
             List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
             for (Entity target : game.getEntitiesVector()) {
+                if (target == null) continue;
                 if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) {
                     continue;
                 }
@@ -893,6 +902,7 @@ public class RLDataPipeline {
         megamek.common.game.Game game = baseClient.getGame();
 
         for (Entity target : game.getEntitiesVector()) {
+                if (target == null) continue;
             if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter))
                 continue;
 

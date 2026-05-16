@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class RLActionResponse {
     public Integer selected_path_index;
+    public Integer twist;
     public List<RLAttack> attacks;
     public RLPhysicalAttack attack;
 

@@ -7,6 +7,7 @@ import signal
 import argparse
 from models.agent import MegaMekAgent
 from env import MegaMekEnvironment
+from logger_config import setup_logger
 
 class ImpalaWorker:
     """
@@ -17,8 +18,10 @@ class ImpalaWorker:
     def __init__(self, agent_model, worker_id=None, host='localhost', port=4000, device='cpu', dataset_dir='rl_sp_dataset'):
         self.agent = agent_model
         self.device = device
-        self.env = MegaMekEnvironment(port=port, device=self.device)
         self.worker_id = worker_id or str(uuid.uuid4())[:8]
+        self.logger = setup_logger(f"Worker {port}")
+        
+        self.env = MegaMekEnvironment(port=port, device=self.device, logger=self.logger)
         self.traj_dir = os.path.join(dataset_dir, self.worker_id)
         os.makedirs(self.traj_dir, exist_ok=True)
         self.latest_model_path = os.path.join("models", "impala_agent_latest.pt")
@@ -29,38 +32,34 @@ class ImpalaWorker:
             try:
                 state_dict = torch.load(self.latest_model_path, map_location=self.device)
                 self.agent.load_state_dict(state_dict)
-                print(f"Worker {self.worker_id}: Synced latest weights from {self.latest_model_path}")
+                self.logger.debug(f"Synced latest weights from {self.latest_model_path}")
             except Exception as e:
-                print(f"Worker {self.worker_id}: Failed to load weights: {e}")
+                self.logger.error(f"Failed to load weights: {e}")
 
     def run(self, max_episodes=1000, max_steps_per_episode=50):
-        print(f"Worker {self.worker_id} starting rollout loop...")
+        self.logger.info("Starting rollout loop...")
+        
+        state_graph, mask, current_payload = None, None, None
         
         for ep in range(max_episodes):
             self.sync_weights()
             self.agent.eval()
             
-            try:
-                state_graph, mask, current_payload = self.env.reset()
-            except ConnectionError:
-                print("Connection to MegaMek lost. Waiting for server restart...")
-                time.sleep(5)
-                self.env = MegaMekEnvironment(port=self.env.port, device=self.device)
-                continue
+            if getattr(self.env, "done", True) or state_graph is None:
+                try:
+                    state_graph, mask, current_payload = self.env.reset()
+                except ConnectionError:
+                    self.logger.warning("Connection to MegaMek lost. Waiting for server restart...")
+                    time.sleep(5)
+                    self.env = MegaMekEnvironment(port=self.env.port, device=self.device, logger=self.logger)
+                    state_graph, mask, current_payload = None, None, None
+                    continue
             
             topology_payload = getattr(self.env, 'topology_payload', None)
             trajectory = []
             
-            # Tracking for dense rewards
-            prev_bv1, prev_bv2 = None, None
-            prev_tp1, prev_tp2 = 0, 0
-            prev_vp1 = 0
-            total_match_bv = 1.0 # fallback to prevent div by zero
-            
-            beta_bv = 1.0
-            beta_tp = 0.01
-            beta_vp = 1.0
-            
+            # State graphs handled natively via environment
+    
             step_idx = 0
             while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
                 # Fallback action if no valid actions
@@ -78,34 +77,8 @@ class ImpalaWorker:
                     is_valid = False
                     
                 if is_valid:
-                    # Calculate Dense Reward
-                    reward = 0.0
-                    if current_payload and "rewards" in current_payload:
-                        rew_dict = current_payload["rewards"]
-                        bv1 = rew_dict.get("bv1", 0)
-                        bv2 = rew_dict.get("bv2", 0)
-                        tp1 = rew_dict.get("tp1", 0)
-                        tp2 = rew_dict.get("tp2", 0)
-                        vp1 = rew_dict.get("vp1", 0) # Already zero-sum from Java
-                        
-                        if prev_bv1 is None:
-                            prev_bv1, prev_bv2 = bv1, bv2
-                            total_match_bv = max(bv1 + bv2, 1.0)
-                            prev_vp1 = vp1
-                            
-                        delta_bv1 = bv1 - prev_bv1
-                        delta_bv2 = bv2 - prev_bv2
-                        delta_vp1 = vp1 - prev_vp1
-                        
-                        reward_bv = beta_bv * ((delta_bv1 - delta_bv2) / total_match_bv)
-                        reward_tp = beta_tp * (tp2 - tp1)
-                        reward_vp = beta_vp * delta_vp1
-                        
-                        reward = reward_bv + reward_tp + reward_vp
-                        
-                        prev_bv1, prev_bv2 = bv1, bv2
-                        prev_tp1, prev_tp2 = tp1, tp2
-                        prev_vp1 = vp1
+                    # Reward is now calculated inside self.env.step() and bundled in current_payload
+                    reward = current_payload.get("reward", 0.0) if current_payload else 0.0
 
                     trajectory.append({
                         "raw_payload": current_payload,
@@ -129,19 +102,23 @@ class ImpalaWorker:
                 
                 traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
                 torch.save(traj_data, traj_file)
-                print(f"Worker {self.worker_id}: Saved trajectory of length {len(trajectory)} to {traj_file}")
+                self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
     parser.add_argument("--dataset_dir", type=str, default="rl_sp_dataset", help="Directory to save trajectories")
     parser.add_argument("--test", action="store_true", help="Run in test mode (small limits)")
+    parser.add_argument("--device", type=str, default="cpu", help="Device to run inference on")
     args = parser.parse_args()
 
     worker = None
     
     def signal_handler(sig, frame):
-        print(f"\nWorker received signal {sig}, shutting down gracefully...")
+        if worker is not None and hasattr(worker, 'logger'):
+            worker.logger.info(f"Worker received signal {sig}, shutting down gracefully...")
+        else:
+            print(f"\nWorker received signal {sig}, shutting down gracefully...")
         if worker is not None and getattr(worker.env, 'sock', None) is not None:
             try:
                 worker.env.sock.close()
@@ -152,15 +129,16 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Initializing IMPALA Worker on {device} (Port: {args.port})...")
+    device = torch.device(args.device)
+    temp_logger = setup_logger(f"Worker {args.port}")
+    temp_logger.info(f"Initializing IMPALA Worker on {device}...")
     
     agent = MegaMekAgent(hidden_dim=128, ensemble_size=8).to(device)
     
     # Try to bootstrap from BC initially if impala_latest doesn't exist
     bc_model_path = os.path.join("models", "bc_agent.pt")
     if not os.path.exists(os.path.join("models", "impala_agent_latest.pt")) and os.path.exists(bc_model_path):
-        print(f"Bootstrapping worker from BC weights: {bc_model_path}")
+        temp_logger.info(f"Bootstrapping worker from BC weights: {bc_model_path}")
         agent.load_state_dict(torch.load(bc_model_path, map_location=device))
         
     worker = ImpalaWorker(agent, port=args.port, device=device, dataset_dir=args.dataset_dir)

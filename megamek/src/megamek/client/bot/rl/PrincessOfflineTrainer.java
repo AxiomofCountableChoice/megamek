@@ -199,6 +199,9 @@ public class PrincessOfflineTrainer {
                     megamek.common.force.Force f2 = megamek.common.force.Force.createToplevelForce("Force Beta", player2);
                     int f1Id = game.getForces().addTopLevelForce(f1, player1);
                     int f2Id = game.getForces().addTopLevelForce(f2, player2);
+                    
+                    player1.setTeam(1);
+                    player2.setTeam(2);
 
                     System.out.println("Forces created.");
 
@@ -286,7 +289,7 @@ public class PrincessOfflineTrainer {
                             megamek.common.game.IGame g = server.getGame();
                             if (g == null) break;
                             megamek.common.enums.GamePhase phase = g.getPhase();
-                            if (phase == null || phase.isVictory() || phase.isEnd()) {
+                            if (phase == null || phase.isVictory() || phase.isEnd() || phase.isLounge() || !watcher.isConnected()) {
                                 break;
                             }
                         } catch (Exception ex) {

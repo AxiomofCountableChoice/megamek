@@ -18,27 +18,53 @@ def render_tensor_state(traj_path, step_idx=0, output_path="render.png"):
     width = topology.get("width", 16)
     height = topology.get("height", 16)
     
-    steps = traj_data.get("trajectories", [])
+    steps = traj_data.get("steps", [])
     if step_idx >= len(steps):
         print(f"Step {step_idx} out of bounds. Trajectory has {len(steps)} steps.")
         return
         
-    data = steps[step_idx]
+    data_dict = steps[step_idx]
+    raw_payload = data_dict.get("raw_payload", {})
+    
+    # Initialize environment just to use its parser
+    env = MegaMekEnvironment(connect_on_init=False)
+    
+    # Inject topology features manually to satisfy parser
+    nodes = topology.get("hex_nodes", [])
+    env.static_hex_features = torch.tensor(nodes, dtype=torch.float32) if nodes else torch.empty((0, 5), dtype=torch.float32)
+    
+    # Parse into PyG HeteroData
+    data, _ = env._parse_to_heterodata(raw_payload)
     
     fig, ax = plt.subplots(figsize=(10, 10))
-    context = getattr(data, 'context', ["Unknown"])[0] if hasattr(data, 'context') else "Unknown"
+    context = raw_payload.get('context', "Unknown")
     ax.set_title(f"MegaMek Tensor State Render - Step {step_idx} - {context}")
     
     # Draw Hexes
+    hex_features = env.static_hex_features
     for y in range(height):
         for x in range(width):
+            idx = y * width + x
+            color = 'lightgray'
+            if hex_features is not None and idx < hex_features.size(0):
+                woods = hex_features[idx, 1].item()
+                water = hex_features[idx, 2].item()
+                swamp = hex_features[idx, 7].item()
+                
+                if woods > 0:
+                    color = 'green'
+                elif water > 0:
+                    color = 'lightblue'
+                elif swamp > 0:
+                    color = 'purple'
+                    
             # Hex staggered math
             offset = 0.5 if x % 2 != 0 else 0
             px = x * 0.866
             py = -(y + offset)
             
             # Simple circle for hex
-            circle = patches.Circle((px, py), radius=0.4, fill=False, color='lightgray', alpha=0.5)
+            circle = patches.Circle((px, py), radius=0.4, fill=True if color != 'lightgray' else False, color=color, alpha=0.5 if color == 'lightgray' else 0.7)
             ax.add_patch(circle)
             
     # Extract Unit Data from PyTorch Tensors
@@ -95,6 +121,19 @@ def render_tensor_state(traj_path, step_idx=0, output_path="render.png"):
             
             ax.plot([upx1, upx2], [upy1, upy2], color='red', linestyle='-', linewidth=2, alpha=0.8, zorder=4)
             
+    # Legend for terrain and edges
+    import matplotlib.lines as mlines
+    legend_elements = [
+        patches.Patch(facecolor='green', alpha=0.7, label='Woods'),
+        patches.Patch(facecolor='lightblue', alpha=0.7, label='Water'),
+        patches.Patch(facecolor='purple', alpha=0.7, label='Swamp'),
+        mlines.Line2D([], [], color='orange', linestyle='--', alpha=0.5, label='LOS Threat'),
+        mlines.Line2D([], [], color='red', linestyle='-', linewidth=2, alpha=0.8, label='Target Edge'),
+        patches.Circle((0,0), radius=0.3, fill=True, color='red', label='Enemy Unit'),
+        patches.Circle((0,0), radius=0.3, fill=True, color='blue', label='Friendly Unit')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.15, 1))
+
     ax.set_aspect('equal')
     plt.axis('off')
     plt.tight_layout()

@@ -35,6 +35,7 @@ import megamek.common.Report;
 public class RLBotClient extends BotClient {
     
     private RLDataPipeline dataPipeline;
+    private int lastReportCount = 0;
 
     public RLBotClient(String playerName, String host, int port, int listenPort) {
         super(playerName, host, port);
@@ -57,11 +58,16 @@ public class RLBotClient extends BotClient {
     @Override
     public String receiveReport(List<Report> reports) {
         if (RLDataPipeline.DEBUG_RL_SYNC) {
-            for (Report r : reports) {
-                // Strip HTML tags for clean console logging
-                String cleanText = r.text().replaceAll("<[^>]*>", "");
-                System.err.println("[RLBotClient REPORT] " + cleanText);
+            if (reports.size() < lastReportCount) {
+                lastReportCount = 0;
             }
+            for (int i = lastReportCount; i < reports.size(); i++) {
+                Report r = reports.get(i);
+                // Strip HTML tags and entities for clean console logging
+                String cleanText = r.text().replaceAll("<[^>]*>", "").replace("&nbsp;", " ");
+                System.err.println("[RLBotClient REPORT - " + this.getName() + "] " + cleanText);
+            }
+            lastReportCount = reports.size();
         }
         return "";
     }
@@ -118,7 +124,19 @@ public class RLBotClient extends BotClient {
                     if (RLDataPipeline.DEBUG_RL_SYNC) {
                         System.err.println("RL_SYNC_DEBUG [continueMovementFor]: Successfully parsed path index " + idx + " out of " + calculatedPaths.size() + " paths.");
                     }
-                    return calculatedPaths.get(idx);
+                    MovePath chosenPath = calculatedPaths.get(idx);
+                    if (chosenPath != null) {
+                        java.util.ListIterator<megamek.common.moves.MoveStep> it = chosenPath.getSteps();
+                        while (it.hasNext()) {
+                            megamek.common.moves.MoveStep step = it.next();
+                            megamek.common.Hex hex = game.getBoard(chosenPath.getFinalBoardId()).getHex(step.getPosition());
+                            if (hex == null) {
+                                System.err.println("RL_SYNC_DEBUG [continueMovementFor]: WARNING! Intercepted a MovePath with an off-board hex. Scrubbing path to prevent server crash.");
+                                return new MovePath(game, entity);
+                            }
+                        }
+                    }
+                    return chosenPath;
                 } else {
                     if (RLDataPipeline.DEBUG_RL_SYNC) {
                         System.err.println("RL_SYNC_DEBUG [continueMovementFor]: WARNING! Python returned an out-of-bounds selected_path_index: " + idx + " (max " + calculatedPaths.size() + "). Defaulting to standing still.");
@@ -154,10 +172,22 @@ public class RLBotClient extends BotClient {
         RLActionResponse response = dataPipeline.queryPython("WEAPON_INFERENCE", maskData, RLActionResponse.class);
 
         Vector<megamek.common.actions.EntityAction> actions = new Vector<>();
-        if (response != null && response.attacks != null) {
-            for (RLActionResponse.RLAttack att : response.attacks) {
-                if (att.target_id != null && att.weapon_id != null) {
-                    actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), att.target_id, att.weapon_id));
+        if (response != null) {
+            System.out.println("[RLBotClient REPORT] WEAPON_INFERENCE executed. Twist: " + response.twist + ", Attacks: " + (response.attacks != null ? response.attacks.size() : 0));
+            if (response.twist != null && response.twist != 0) {
+                int newFacing = megamek.client.bot.princess.FireControl.correctFacing(shooter.getFacing() + response.twist);
+                actions.add(new megamek.common.actions.TorsoTwistAction(shooter.getId(), newFacing));
+            }
+            if (response.attacks != null) {
+                for (RLActionResponse.RLAttack att : response.attacks) {
+                    if (att != null && att.target_id != null && att.weapon_id != null) {
+                        if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
+                            Entity target = game.getEntitiesVector().get(att.target_id);
+                            if (target != null) {
+                                actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getId(), att.weapon_id));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -187,9 +217,11 @@ public class RLBotClient extends BotClient {
         if (response != null && response.attack != null) {
             RLActionResponse.RLPhysicalAttack att = response.attack;
             if (att.target_id != null && att.action_type != null) {
-                megamek.common.units.Targetable target = game.getEntity(att.target_id);
-                if (target != null) {
-                    return new PhysicalOption(shooter, target, 0.0, att.action_type, null);
+                if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
+                    megamek.common.units.Targetable target = game.getEntitiesVector().get(att.target_id);
+                    if (target != null) {
+                        return new PhysicalOption(shooter, target, 0.0, att.action_type, null);
+                    }
                 }
             }
         }

@@ -12,17 +12,31 @@ class MegaMekEnvironment:
     It synchronously maintains a connection and parses MessagePack state payloads
     into PyTorch Geometric HeteroData objects.
     """
-    def __init__(self, host='localhost', port=12346, device=None, connect_on_init=True):
+    def __init__(self, host='localhost', port=12346, device=None, connect_on_init=True, logger=None):
         self.host = host
         self.port = port
         self.sock = None
         self._connected = False
         self.device = device
+        self.logger = logger
         self._max_attempts = 50
         # Static Topology Cache
         # Populated once per game match to prevent redundant IPC overhead
         self.static_hex_features = None 
         self.static_hex_adjacency_edges = None
+        
+        # Dense reward configuration
+        self.beta_bv = 1.0
+        self.beta_tp = 0.01
+        self.beta_vp = 1.0
+        
+        # Tracking states for delta computation
+        self.prev_bv1 = None
+        self.prev_bv2 = None
+        self.prev_tp1 = 0
+        self.prev_tp2 = 0
+        self.prev_vp1 = 0
+        self.total_match_bv = 1.0
         
         # Connect immediately if requested
         if connect_on_init:
@@ -33,24 +47,35 @@ class MegaMekEnvironment:
             return
 
         # If not already connected proceed to connect 
-        print(f"Connecting to MegaMek RLServer at {self.host}:{self.port}...")
+        if self.logger:
+            self.logger.info(f"Connecting to MegaMek RLServer at {self.host}:{self.port}...")
+        else:
+            print(f"Connecting to MegaMek RLServer at {self.host}:{self.port}...")
+            
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         attempt = 0
         while attempt < self._max_attempts:
             try:
                 self.sock.connect((self.host, self.port))
                 self._connected = True
-                print("Connected successfully!")
+                if self.logger:
+                    self.logger.info("Connected successfully!")
+                else:
+                    print("Connected successfully!")
                 break
             except ConnectionRefusedError:
-                print("Waiting for MegaMek server to start...")
+                if self.logger:
+                    self.logger.info("Waiting for MegaMek server to start...")
+                else:
+                    print("Waiting for MegaMek server to start...")
                 time.sleep(2)
             attempt += 1
         if attempt == self._max_attempts:
             raise ConnectionError("Failed to connect to MegaMek server.")
                 
     def reset(self):
-        print("Awaiting initial state payload...")
+        if self.logger: self.logger.info("Awaiting initial state payload...")
+        else: print("Awaiting initial state payload...")
         while True:
             payload = self._receive_payload()
             if payload is None:
@@ -85,6 +110,13 @@ class MegaMekEnvironment:
             data_graph = data_graph.to(self.device)
             self.static_hex_features = self.static_hex_features.to(self.device)
             
+        # Initialize the dense reward base metrics silently
+        self.prev_bv1, self.prev_bv2 = None, None
+        self.prev_tp1, self.prev_tp2 = 0, 0
+        self.prev_vp1 = 0
+        self.total_match_bv = 1.0
+        self._compute_dense_reward(payload)
+            
         return data_graph, mask, payload
 
     def step(self, action_dict):
@@ -106,8 +138,41 @@ class MegaMekEnvironment:
         if (self.device is not None) and (state is not None):
             state = state.to(self.device)
             
-        # Using dummy reward/done for now
+        # Compute dynamic reward inside the environment abstraction
+        reward = self._compute_dense_reward(payload)
+        payload["reward"] = reward
+            
         return state, mask, False, payload
+        
+    def _compute_dense_reward(self, payload):
+        reward = 0.0
+        if payload and "rewards" in payload:
+            rew_dict = payload["rewards"]
+            bv1 = rew_dict.get("bv1", 0)
+            bv2 = rew_dict.get("bv2", 0)
+            tp1 = rew_dict.get("tp1", 0)
+            tp2 = rew_dict.get("tp2", 0)
+            vp1 = rew_dict.get("vp1", 0) # Already zero-sum from Java
+            
+            if self.prev_bv1 is None:
+                self.prev_bv1, self.prev_bv2 = bv1, bv2
+                self.total_match_bv = max(bv1 + bv2, 1.0)
+                self.prev_vp1 = vp1
+                
+            delta_bv1 = bv1 - self.prev_bv1
+            delta_bv2 = bv2 - self.prev_bv2
+            delta_vp1 = vp1 - self.prev_vp1
+            
+            reward_bv = self.beta_bv * ((delta_bv1 - delta_bv2) / self.total_match_bv)
+            reward_tp = self.beta_tp * (tp2 - tp1)
+            reward_vp = self.beta_vp * delta_vp1
+            
+            reward = reward_bv + reward_tp + reward_vp
+            
+            self.prev_bv1, self.prev_bv2 = bv1, bv2
+            self.prev_tp1, self.prev_tp2 = tp1, tp2
+            self.prev_vp1 = vp1
+        return reward
 
     def _receive_payload(self):
         # Read 4-byte length prefix
@@ -287,7 +352,7 @@ class MegaMekEnvironment:
                 step_indices.append(0) # k=0
                 
                 # Abstract representation for "Hex Selection". Feature values are 0 since the spatial target edge provides context.
-                action_features.append([0.0, 0.0, 0.0, 0.0, 0.0, phase_type])
+                action_features.append([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, phase_type])
                 
                 action_target_hex_idx.append(dest_idx if dest_idx != -1 else -1)
                 action_target_unit_idx.append(-1)
@@ -309,8 +374,10 @@ class MegaMekEnvironment:
                     
                     facing = float(p_dict.get("dest_facing", 0))
                     mp_used = float(p_dict.get("mp_used", 0))
+                    is_walk = 1.0 if p_dict.get("is_walk", False) else 0.0
+                    is_run = 1.0 if p_dict.get("is_run", False) else 0.0
                     is_jump = 1.0 if p_dict.get("is_jump", False) else 0.0
-                    action_features.append([mp_used, facing, is_jump, 0.0, 1.0, phase_type])
+                    action_features.append([mp_used, facing, is_walk, is_run, is_jump, 0.0, 1.0, phase_type])
                     
                     # Target is still the hex to ground it spatially
                     action_target_hex_idx.append(true_dest_index)
@@ -365,7 +432,7 @@ class MegaMekEnvironment:
             for tv in twist_values:
                 idx = len(action_features)
                 twist_node_indices[tv] = idx
-                action_features.append([tv, 0.0, 0.0, 0.0, 0.0, phase_type]) # Torso Twist Feature
+                action_features.append([tv, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, phase_type]) # Torso Twist Feature
                 action_target_hex_idx.append(-1)
                 action_target_unit_idx.append(-1)
                 action_target_weapon_idx.append(-1)
@@ -384,7 +451,7 @@ class MegaMekEnvironment:
                     # Append Target Node
                     idx = len(action_features)
                     tm["node_idx"] = idx
-                    action_features.append([1.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
+                    action_features.append([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
                     action_target_hex_idx.append(-1)
                     action_target_unit_idx.append(target_entity_index)
                     action_target_weapon_idx.append(-1)
@@ -401,7 +468,7 @@ class MegaMekEnvironment:
                         # Append Weapon Node
                         idx = len(action_features)
                         wm["node_idx"] = idx
-                        action_features.append([0.0, 1.0, to_hit, sec_to_hit, 2.0, phase_type]) # Weapon Feature
+                        action_features.append([0.0, 1.0, to_hit, sec_to_hit, 0.0, 0.0, 2.0, phase_type]) # Weapon Feature
                         action_target_hex_idx.append(-1)
                         action_target_unit_idx.append(-1)
                         action_target_weapon_idx.append(weapon_id)
@@ -412,7 +479,7 @@ class MegaMekEnvironment:
             # Append END node
             end_node_idx = len(action_features)
             mask["end_node_idx"] = end_node_idx
-            action_features.append([0.0, 0.0, 1.0, 0.0, 3.0, phase_type]) # END Feature
+            action_features.append([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 3.0, phase_type]) # END Feature
             action_target_hex_idx.append(-1)
             action_target_unit_idx.append(-1)
             action_target_weapon_idx.append(-1)
@@ -495,7 +562,7 @@ class MegaMekEnvironment:
                 # Append Target Node
                 idx = len(action_features)
                 tm["node_idx"] = idx
-                action_features.append([1.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
+                action_features.append([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, phase_type]) # Target Feature
                 action_target_hex_idx.append(-1)
                 action_target_unit_idx.append(target_entity_index)
                 action_target_weapon_idx.append(-1)
@@ -511,7 +578,7 @@ class MegaMekEnvironment:
                     # Append Physical Action Node
                     idx = len(action_features)
                     am["node_idx"] = idx
-                    action_features.append([0.0, 1.0, to_hit, float(action_type), 2.0, phase_type]) # Physical Action Feature encodes action_type
+                    action_features.append([0.0, 1.0, to_hit, float(action_type), 0.0, 0.0, 2.0, phase_type]) # Physical Action Feature encodes action_type
                     action_target_hex_idx.append(-1)
                     action_target_unit_idx.append(-1)
                     action_target_weapon_idx.append(-1)
@@ -522,7 +589,7 @@ class MegaMekEnvironment:
             # Append END node
             end_node_idx = len(action_features)
             mask["end_node_idx"] = end_node_idx
-            action_features.append([0.0, 0.0, 1.0, 0.0, 3.0, phase_type]) # END Feature
+            action_features.append([0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 3.0, phase_type]) # END Feature
             action_target_hex_idx.append(-1)
             action_target_unit_idx.append(-1)
             action_target_weapon_idx.append(-1)
