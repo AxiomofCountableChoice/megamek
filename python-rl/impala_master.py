@@ -45,6 +45,8 @@ class ImpalaReplayBuffer:
                     for f in files:
                         if f in self.ingested_files:
                             continue
+                        if os.path.exists(f + ".consumed"):
+                            continue
                         try:
                             data = torch.load(f, weights_only=False, map_location='cpu')
                             with self.lock:
@@ -54,7 +56,7 @@ class ImpalaReplayBuffer:
                                     oldest_f, _ = self.trajectories.pop(0) # FIFO
                                     self.ingested_files.discard(oldest_f)
                                     try:
-                                        os.remove(oldest_f)
+                                        open(oldest_f + ".consumed", 'w').close()
                                     except OSError:
                                         pass
                         except Exception as e:

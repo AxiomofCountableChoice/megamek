@@ -4,6 +4,8 @@ import time
 import subprocess
 import torch
 import shutil
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from impala_master import ImpalaLearner
 
 PORT = 4052
@@ -22,8 +24,8 @@ def validate_e2e_learning():
         "-rlexport",
         "-autogen",
         "-randomMap",
-        "-p1meks", os.path.join(mm_data_root, "data", "mekfiles", "meks", "3075", "Pariah Prime.mtf"),
-        "-p2meks", os.path.join(mm_data_root, "data", "mekfiles", "meks", "Rec Guides ilClan", "Vol 33", "Gyrfalcon 5.mtf")
+        "-p1meks", f"{os.path.join(mm_data_root, 'data', 'mekfiles', 'meks', '3075', 'Pariah Prime.mtf')},{os.path.join(mm_data_root, 'data', 'mekfiles', 'meks', '3075', 'Pariah Prime.mtf')}",
+        "-p2meks", f"{os.path.join(mm_data_root, 'data', 'mekfiles', 'meks', 'Rec Guides ilClan', 'Vol 33', 'Gyrfalcon 5.mtf')},{os.path.join(mm_data_root, 'data', 'mekfiles', 'meks', 'Rec Guides ilClan', 'Vol 33', 'Gyrfalcon 5.mtf')}"
     ]
     env_vars = os.environ.copy()
     env_vars["RL_SERVER_PORT"] = str(PORT)
@@ -31,19 +33,21 @@ def validate_e2e_learning():
     
     time.sleep(5)
     
-    print("Starting Impala Worker (Test Mode) to generate a short trajectory...")
+    print("Starting Impala Worker to run a full 2v2 E2E validation for up to 10 turns...")
     cmd_worker = [
         sys.executable, os.path.join(os.path.dirname(__file__), "..", "impala_worker.py"),
         "--port", str(PORT + 1000),
         "--dataset_dir", val_dataset_dir,
-        "--test"
+        "--max_turns", "10"
     ]
-    proc_worker = subprocess.Popen(cmd_worker, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc_worker = subprocess.Popen(cmd_worker, text=True)
+    
+    print("Waiting for match to complete (up to 3 minutes)...")
     try:
-        proc_worker.wait(timeout=60)
-        print("Worker finished early.")
+        proc_worker.wait(timeout=180)
+        print("Worker finished early or reached turn limit.")
     except subprocess.TimeoutExpired:
-        print("Worker ran for 60s. Shutting down MegaMek to trigger trajectory save...")
+        print("Worker timeout. Shutting down MegaMek to trigger trajectory save...")
         
     print("Shutting down MegaMek...")
     proc_mm.terminate()

@@ -153,7 +153,7 @@ class MegaMekAgent(nn.Module):
         if hetero_data['action'].x is None or hetero_data['action'].x.size(0) == 0:
             return {"selected_path_index": -1}, v_mean, torch.empty((0,)), 0.0
             
-        phase_type = int(hetero_data['action'].x[0, 5].item())
+        phase_type = int(hetero_data['action'].x[0, 7].item())
         
         if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT (assuming similar flat action space)
             s_0 = self.actor_pointer.decode_sequence(z, None) 

@@ -88,7 +88,7 @@ class MegaMekEnvironment:
             elif ctx == "TOPOLOGY":
                 self.topology_payload = payload
                 self.board_width = payload.get('width', 0)
-                self.feature_dims = payload.get('feature_dims', {"hex": 14, "unit": 37, "weapon": 10})
+                self.feature_dims = payload.get('feature_dims', {"hex": 14, "unit": 45, "weapon": 10})
                 print(f"Received TOPOLOGY payload. Parsing Board shape ({self.board_width}x{payload.get('height')})...")
                 nodes = payload.get("hex_nodes", [])
                 edges = payload.get("hex_edges", [])
@@ -227,7 +227,7 @@ class MegaMekEnvironment:
         
         # 2. Dynamic Entity Nodes ($V_U$)
         raw_entities = raw_state.get("entities", [])
-        unit_dim = getattr(self, 'feature_dims', {}).get("unit", 37)
+        unit_dim = getattr(self, 'feature_dims', {}).get("unit", 45)
         if raw_entities:
             t = torch.tensor(raw_entities, dtype=torch.float32)
             pad = torch.zeros((t.size(0), unit_dim - t.size(1)), dtype=torch.float32)

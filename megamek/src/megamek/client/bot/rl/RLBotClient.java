@@ -21,6 +21,7 @@ package megamek.client.bot.rl;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Vector;
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -36,6 +37,7 @@ public class RLBotClient extends BotClient {
     
     private RLDataPipeline dataPipeline;
     private int lastReportCount = 0;
+    public List<String> unreadReports = new ArrayList<>();
 
     public RLBotClient(String playerName, String host, int port, int listenPort) {
         super(playerName, host, port);
@@ -57,18 +59,19 @@ public class RLBotClient extends BotClient {
 
     @Override
     public String receiveReport(List<Report> reports) {
-        if (RLDataPipeline.DEBUG_RL_SYNC) {
-            if (reports.size() < lastReportCount) {
-                lastReportCount = 0;
-            }
-            for (int i = lastReportCount; i < reports.size(); i++) {
-                Report r = reports.get(i);
-                // Strip HTML tags and entities for clean console logging
-                String cleanText = r.text().replaceAll("<[^>]*>", "").replace("&nbsp;", " ");
+        if (reports.size() < lastReportCount) {
+            lastReportCount = 0;
+        }
+        for (int i = lastReportCount; i < reports.size(); i++) {
+            Report r = reports.get(i);
+            // Strip HTML tags and entities for clean console logging
+            String cleanText = r.text().replaceAll("<[^>]*>", "").replace("&nbsp;", " ");
+            unreadReports.add(cleanText);
+            if (RLDataPipeline.DEBUG_RL_SYNC) {
                 System.err.println("[RLBotClient REPORT - " + this.getName() + "] " + cleanText);
             }
-            lastReportCount = reports.size();
         }
+        lastReportCount = reports.size();
         return "";
     }
 

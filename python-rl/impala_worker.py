@@ -36,7 +36,7 @@ class ImpalaWorker:
             except Exception as e:
                 self.logger.error(f"Failed to load weights: {e}")
 
-    def run(self, max_episodes=1000, max_steps_per_episode=50):
+    def run(self, max_episodes=1000, max_steps_per_episode=500, max_turns=0):
         self.logger.info("Starting rollout loop...")
         
         state_graph, mask, current_payload = None, None, None
@@ -93,6 +93,10 @@ class ImpalaWorker:
                     if done:
                         break
                     
+                    if max_turns > 0 and current_payload and current_payload.get("turn_number", 0) >= max_turns:
+                        self.logger.info(f"Max turns ({max_turns}) reached. Exiting episode.")
+                        break
+                    
                     step_idx += 1
             except Exception as e:
                 self.logger.error(f"Episode terminated abruptly: {e}")
@@ -106,12 +110,21 @@ class ImpalaWorker:
                     traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
                     torch.save(traj_data, traj_file)
                     self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file}")
+                    
+                    try:
+                        import subprocess
+                        render_script = os.path.join(os.path.dirname(__file__), "validations", "render_game_state.py")
+                        out_html = traj_file.replace(".pt", ".html")
+                        subprocess.Popen([sys.executable, render_script, traj_file, out_html], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except Exception as re:
+                        self.logger.warning(f"Failed to trigger auto-render for {traj_file}: {re}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
     parser.add_argument("--dataset_dir", type=str, default="rl_sp_dataset", help="Directory to save trajectories")
     parser.add_argument("--test", action="store_true", help="Run in test mode (small limits)")
+    parser.add_argument("--max_turns", type=int, default=0, help="Max turns to run (0 for infinite)")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run inference on")
     args = parser.parse_args()
 
@@ -148,4 +161,4 @@ if __name__ == "__main__":
     if args.test:
         worker.run(max_episodes=1, max_steps_per_episode=15)
     else:
-        worker.run()
+        worker.run(max_turns=args.max_turns)

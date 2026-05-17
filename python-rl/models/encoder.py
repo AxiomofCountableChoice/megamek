@@ -40,7 +40,7 @@ class MegaMekHGTEncoder(nn.Module):
         self.metadata = metadata
         
         if feature_dims is None:
-            feature_dims = {'hex': 14, 'unit': 37, 'weapon': 10}
+            feature_dims = {'hex': 14, 'unit': 45, 'weapon': 10}
 
         # 1. Node Linear Embeddings
         # Assumes input features for hexes and units are projected into a shared latent space.

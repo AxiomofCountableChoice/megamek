@@ -170,7 +170,7 @@ public class RLDataPipeline {
 
             java.util.Map<String, Integer> featureDims = new java.util.HashMap<>();
             featureDims.put("hex", 14);
-            featureDims.put("unit", 37);
+            featureDims.put("unit", 45);
             featureDims.put("weapon", 10);
             payload.put("feature_dims", featureDims);
 
@@ -220,6 +220,14 @@ public class RLDataPipeline {
             payload.put("state", serializeGameState());
             payload.put("mask", mask);
             payload.put("rewards", calculateRewards());
+            
+            if (baseClient instanceof RLBotClient) {
+                RLBotClient botClient = (RLBotClient) baseClient;
+                payload.put("reports", new java.util.ArrayList<>(botClient.unreadReports));
+                botClient.unreadReports.clear();
+            } else {
+                payload.put("reports", new java.util.ArrayList<String>());
+            }
 
             byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
 
@@ -385,7 +393,7 @@ public class RLDataPipeline {
         float isImmobile = e.isImmobile() ? 1f : 0f;
         float height = (float) e.getHeight();
 
-        float[] features = new float[37];
+        float[] features = new float[45];
         features[0] = isFriendly;
         features[1] = x;
         features[2] = y;
@@ -410,11 +418,18 @@ public class RLDataPipeline {
 
         for (int i = 0; i < 8; i++) {
             if (i < e.locations()) {
-                features[21 + i] = e.getArmor(i);
-                features[29 + i] = e.getInternal(i);
+                float maxArmor = Math.max(1f, e.getOArmor(i));
+                features[21 + i] = e.getArmor(i) / maxArmor;
+                
+                float maxRearArmor = e.hasRearArmor(i) ? Math.max(1f, e.getOArmor(i, true)) : 1f;
+                features[29 + i] = e.hasRearArmor(i) ? (e.getArmor(i, true) / maxRearArmor) : 0f;
+                
+                float maxInternal = Math.max(1f, e.getOInternal(i));
+                features[37 + i] = e.getInternal(i) / maxInternal;
             } else {
                 features[21 + i] = 0f;
                 features[29 + i] = 0f;
+                features[37 + i] = 0f;
             }
         }
 
@@ -562,11 +577,49 @@ public class RLDataPipeline {
         }
 
         // Pass 2: Extract features and build edges
+        List<java.util.Map<String, Object>> entitiesMeta = new java.util.ArrayList<>();
         for (int i = 0; i < game.getEntitiesVector().size(); i++) {
             Entity e1 = game.getEntitiesVector().get(i);
             if (e1 == null) continue;
             entityIds.add(e1.getId());
             entityArray.add(extractEntityFeatures(e1));
+
+            java.util.Map<String, Object> stateMeta = new java.util.HashMap<>();
+            stateMeta.put("id", e1.getId());
+            stateMeta.put("name", e1.getDisplayName());
+            stateMeta.put("owner", e1.getOwner() != null ? e1.getOwner().getName() : "Unknown");
+            List<java.util.Map<String, Object>> locs = new java.util.ArrayList<>();
+            for (int loc = 0; loc < e1.locations(); loc++) {
+                java.util.Map<String, Object> locData = new java.util.HashMap<>();
+                locData.put("name", e1.getLocationName(loc));
+                locData.put("armor", e1.getArmor(loc));
+                locData.put("o_armor", e1.getOArmor(loc));
+                locData.put("internal", e1.getInternal(loc));
+                locData.put("o_internal", e1.getOInternal(loc));
+                if (e1.hasRearArmor(loc)) {
+                    locData.put("rear_armor", e1.getArmor(loc, true));
+                    locData.put("o_rear_armor", e1.getOArmor(loc, true));
+                }
+                locs.add(locData);
+            }
+            stateMeta.put("locations", locs);
+            
+            List<String> weapons = new java.util.ArrayList<>();
+            for (Mounted<?> m : e1.getEquipment()) {
+                if (m.getType() instanceof WeaponType) {
+                    WeaponType wt = (WeaponType) m.getType();
+                    String wName = wt.getName();
+                    if (m instanceof megamek.common.equipment.WeaponMounted) {
+                        megamek.common.equipment.WeaponMounted wm = (megamek.common.equipment.WeaponMounted) m;
+                        if (wm.getLinkedAmmo() != null) {
+                            wName += " (" + wm.getLinkedAmmo().getUsableShotsLeft() + ")";
+                        }
+                    }
+                    weapons.add(wName);
+                }
+            }
+            stateMeta.put("weapons", weapons);
+            entitiesMeta.add(stateMeta);
 
             for (Mounted<?> m : e1.getEquipment()) {
                 if (m.getType() instanceof WeaponType) {
@@ -581,36 +634,39 @@ public class RLDataPipeline {
                 if (i == j)
                     continue;
                 Entity e2 = game.getEntitiesVector().get(j);
-            if (e2 == null) continue;
+            if (e2 == null || !e1.isEnemyOf(e2)) continue;
                 megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, e2);
                 if (los.canSee()) {
                     losTargetEdges.add(new int[] { i, j });
                 }
             }
 
-            // LOS Threat and Partial Cover Edges (Restricted to reachable hexes)
-            for (int hexIdx : globalReachableHexes) {
-                int hexX = hexIdx % boardWidth;
-                int hexY = hexIdx / boardWidth;
-                megamek.common.board.Coords targetCoords = new megamek.common.board.Coords(hexX, hexY);
-                megamek.common.HexTarget target = new megamek.common.HexTarget(targetCoords, game.getBoard(),
-                        megamek.common.units.Targetable.TYPE_HEX_CLEAR) {
-                    @Override
-                    public int getHeight() {
-                        return 2; // Assume standard Mek height for evaluating hex visibility
-                    }
-                };
-                megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, target);
-                if (los.canSee()) {
-                    losThreatEdges.add(new int[] { i, hexIdx });
-                    if (los.getTargetCover() > megamek.common.LosEffects.COVER_NONE) {
-                        partialCoverEdges.add(new int[] { i, hexIdx });
+            boolean isFriendly = (localPlayer != null && e1.getOwnerId() == localPlayer.getId());
+
+            // LOS Threat and Partial Cover Edges (Restricted to reachable hexes and enemy units)
+            if (!isFriendly) {
+                for (int hexIdx : globalReachableHexes) {
+                    int hexX = hexIdx % boardWidth;
+                    int hexY = hexIdx / boardWidth;
+                    megamek.common.board.Coords targetCoords = new megamek.common.board.Coords(hexX, hexY);
+                    megamek.common.HexTarget target = new megamek.common.HexTarget(targetCoords, game.getBoard(),
+                            megamek.common.units.Targetable.TYPE_HEX_CLEAR) {
+                        @Override
+                        public int getHeight() {
+                            return 2; // Assume standard Mek height for evaluating hex visibility
+                        }
+                    };
+                    megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, target);
+                    if (los.canSee()) {
+                        losThreatEdges.add(new int[] { i, hexIdx });
+                        if (los.getTargetCover() > megamek.common.LosEffects.COVER_NONE) {
+                            partialCoverEdges.add(new int[] { i, hexIdx });
+                        }
                     }
                 }
             }
 
             // Movement Threat and TMM Edges
-            boolean isFriendly = (localPlayer != null && e1.getOwnerId() == localPlayer.getId());
             for (java.util.Map.Entry<Integer, Integer> entry : entityReachableHexes.get(i).entrySet()) {
                 int hexIdx = entry.getKey();
                 int tmm = entry.getValue();
@@ -634,6 +690,7 @@ public class RLDataPipeline {
         }
 
         state.put("entities", entityArray);
+        state.put("entities_meta", entitiesMeta);
         state.put("entity_id_map", entityIds);
         state.put("weapons", weaponArray);
         state.put("equips_edges", equipsEdges);
