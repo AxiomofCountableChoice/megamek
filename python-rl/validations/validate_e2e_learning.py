@@ -7,8 +7,8 @@ import shutil
 from impala_master import ImpalaLearner
 
 PORT = 4052
-repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
-mm_data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "mm-data"))
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "megamek"))
+mm_data_root = os.path.abspath(os.path.join(repo_root, "..", "..", "mm-data"))
 
 def validate_e2e_learning():
     val_dataset_dir = "rl_val_dataset"
@@ -33,19 +33,32 @@ def validate_e2e_learning():
     
     print("Starting Impala Worker (Test Mode) to generate a short trajectory...")
     cmd_worker = [
-        sys.executable, "impala_worker.py",
+        sys.executable, os.path.join(os.path.dirname(__file__), "..", "impala_worker.py"),
         "--port", str(PORT + 1000),
         "--dataset_dir", val_dataset_dir,
         "--test"
     ]
-    proc_worker = subprocess.run(cmd_worker, capture_output=True, text=True)
-    print("Worker Output:\n", proc_worker.stdout)
-    if proc_worker.stderr:
-        print("Worker Error:\n", proc_worker.stderr)
+    proc_worker = subprocess.Popen(cmd_worker, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        proc_worker.wait(timeout=60)
+        print("Worker finished early.")
+    except subprocess.TimeoutExpired:
+        print("Worker ran for 60s. Shutting down MegaMek to trigger trajectory save...")
         
     print("Shutting down MegaMek...")
     proc_mm.terminate()
     subprocess.run(["pkill", "-f", "java.*MegaMek"], stderr=subprocess.DEVNULL)
+    
+    print("Waiting for worker to flush trajectory...")
+    try:
+        stdout, stderr = proc_worker.communicate(timeout=15)
+        print("Worker Output:\n", stdout)
+        if stderr:
+            print("Worker Error:\n", stderr)
+    except subprocess.TimeoutExpired:
+        print("Worker did not shut down gracefully. Forcing termination.")
+        proc_worker.terminate()
+        stdout, stderr = proc_worker.communicate()
     
     # Initialize Learner
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

@@ -11,7 +11,7 @@ class MegaMekAgent(nn.Module):
       - The Value Ensemble (E=8 by default for Epistemic Exploration).
       - The Autoregressive Pointer Decoder (Action head).
     """
-    def __init__(self, hidden_dim=128, ensemble_size=8, action_feature_dim=6):
+    def __init__(self, hidden_dim=128, ensemble_size=8, action_feature_dim=8):
         super().__init__()
         self.encoder = MegaMekHGTEncoder(hidden_dim=hidden_dim)
         

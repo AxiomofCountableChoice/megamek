@@ -61,48 +61,51 @@ class ImpalaWorker:
             # State graphs handled natively via environment
     
             step_idx = 0
-            while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
-                # Fallback action if no valid actions
-                if (state_graph is None) or ('action' not in state_graph.node_types) or (state_graph['action'].x is None) or (state_graph['action'].x.size(0) == 0):
-                    action_dict = {"selected_path_index": -1}
+            try:
+                while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
+                    # Fallback action if no valid actions
+                    if (state_graph is None) or ('action' not in state_graph.node_types) or (state_graph['action'].x is None) or (state_graph['action'].x.size(0) == 0):
+                        action_dict = {"selected_path_index": -1}
 
-                with torch.no_grad():
-                    # Forward pass (Training mode: deterministic=False)
-                    action_dict, v_mean, probs, mu_log_prob = self.agent.get_action(state_graph, mask, deterministic=False)
+                    with torch.no_grad():
+                        # Forward pass (Training mode: deterministic=False)
+                        action_dict, v_mean, probs, mu_log_prob = self.agent.get_action(state_graph, mask, deterministic=False)
 
+                        
+                    # Check if it was a valid action by looking at the default fallback
+                    is_valid = True
+                    if "selected_path_index" in action_dict and action_dict["selected_path_index"] == -1:
+                        is_valid = False
+                        
+                    if is_valid:
+                        # Reward is now calculated inside self.env.step() and bundled in current_payload
+                        reward = current_payload.get("reward", 0.0) if current_payload else 0.0
+
+                        trajectory.append({
+                            "raw_payload": current_payload,
+                            "action_dict": action_dict,
+                            "mu_log_prob": mu_log_prob,
+                            "reward": reward
+                        })
+
+                    state_graph, mask, done, current_payload = self.env.step(action_dict)
+
+                    if done:
+                        break
                     
-                # Check if it was a valid action by looking at the default fallback
-                is_valid = True
-                if "selected_path_index" in action_dict and action_dict["selected_path_index"] == -1:
-                    is_valid = False
+                    step_idx += 1
+            except Exception as e:
+                self.logger.error(f"Episode terminated abruptly: {e}")
+            finally:
+                if len(trajectory) > 0:
+                    traj_data = {
+                        "topology_payload": topology_payload,
+                        "steps": trajectory
+                    }
                     
-                if is_valid:
-                    # Reward is now calculated inside self.env.step() and bundled in current_payload
-                    reward = current_payload.get("reward", 0.0) if current_payload else 0.0
-
-                    trajectory.append({
-                        "raw_payload": current_payload,
-                        "action_dict": action_dict,
-                        "mu_log_prob": mu_log_prob,
-                        "reward": reward
-                    })
-
-                state_graph, mask, done, current_payload = self.env.step(action_dict)
-
-                if done:
-                    break
-                
-                step_idx += 1
-
-            if len(trajectory) > 0:
-                traj_data = {
-                    "topology_payload": topology_payload,
-                    "steps": trajectory
-                }
-                
-                traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
-                torch.save(traj_data, traj_file)
-                self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file}")
+                    traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
+                    torch.save(traj_data, traj_file)
+                    self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
