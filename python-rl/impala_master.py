@@ -20,7 +20,7 @@ class ImpalaReplayBuffer:
     Monitors dataset directories for new trajectories, loads them into memory,
     and removes the processed files.
     """
-    def __init__(self, dataset_dirs=["rl_sp_dataset", "rl_princess_dataset"], max_trajectories=1000):
+    def __init__(self, dataset_dirs=["data/rl_selfplay_trajectories", "data/rl_princess_trajectories"], max_trajectories=1000):
         self.dataset_dirs = dataset_dirs
         self.max_trajectories = max_trajectories
         self.trajectories = []
@@ -110,10 +110,10 @@ class ImpalaLearner:
         self.global_step = 0
         
         # Load BC bootstrapping if impala_latest doesn't exist
-        self.latest_model_path = os.path.join("models", "impala_agent_latest.pt")
-        bc_model_path = os.path.join("models", "bc_agent.pt")
+        self.latest_model_path = os.path.join("model_objects", "impala_agent_latest.pt")
+        bc_model_path = os.path.join("model_objects", "bc_agent.pt")
         
-        os.makedirs("models", exist_ok=True)
+        os.makedirs("model_objects", exist_ok=True)
         
         if os.path.exists(self.latest_model_path):
             logger.info(f"Resuming from {self.latest_model_path}")

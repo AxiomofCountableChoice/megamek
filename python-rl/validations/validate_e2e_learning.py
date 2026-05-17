@@ -13,7 +13,7 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", 
 mm_data_root = os.path.abspath(os.path.join(repo_root, "..", "..", "mm-data"))
 
 def validate_e2e_learning():
-    val_dataset_dir = "rl_val_dataset"
+    val_dataset_dir = "data/rl_val_trajectories"
     if os.path.exists(val_dataset_dir):
         shutil.rmtree(val_dataset_dir)
     os.makedirs(val_dataset_dir, exist_ok=True)

@@ -75,21 +75,25 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
         for opt in options:
             cmd.append(opt)
             
-        port_logger = setup_logger(f"MegaMek {port}")
-        port_logger.info("Starting match...")
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        
-        # Start a thread to read Java stdout
-        t_reader = threading.Thread(target=stream_reader, args=(proc.stdout, port_logger), daemon=True)
-        t_reader.start()
-        
-        # Wait for the process to finish or shutdown to be requested
-        while proc.poll() is None:
-            if shutdown_event.is_set():
-                proc.terminate()
-                proc.wait()
-                return
-            time.sleep(1)
+        try:
+            port_logger = setup_logger(f"MegaMek {port}")
+            port_logger.info("Starting match...")
+            proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            
+            # Start a thread to read Java stdout
+            t_reader = threading.Thread(target=stream_reader, args=(proc.stdout, port_logger), daemon=True)
+            t_reader.start()
+            
+            # Wait for the process to finish or shutdown to be requested
+            while proc.poll() is None:
+                if shutdown_event.is_set():
+                    proc.terminate()
+                    proc.wait()
+                    return
+                time.sleep(1)
+        except Exception as e:
+            logger.error(f"Failed to start MegaMek server on port {port}: {e}")
+            time.sleep(5)
 
 def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu"):
     """Continuously runs the ImpalaWorker process."""
@@ -104,16 +108,20 @@ def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu"):
     cwd = os.path.dirname(__file__)
     
     while not shutdown_event.is_set():
-        # Impala worker handles its own logging so we don't need to pipe it
-        logger.info(f"Starting Worker {port}...")
-        proc = subprocess.Popen(cmd, cwd=cwd)
-        
-        while proc.poll() is None:
-            if shutdown_event.is_set():
-                proc.terminate()
-                proc.wait()
-                return
-            time.sleep(1)
+        try:
+            # Impala worker handles its own logging so we don't need to pipe it
+            logger.info(f"Starting Worker {port}...")
+            proc = subprocess.Popen(cmd, cwd=cwd)
+            
+            while proc.poll() is None:
+                if shutdown_event.is_set():
+                    proc.terminate()
+                    proc.wait()
+                    return
+                time.sleep(1)
+        except Exception as e:
+            logger.error(f"Failed to start Python worker on port {port}: {e}")
+            time.sleep(5)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -127,7 +135,7 @@ def main():
     parser.add_argument("--device", type=str, default="cpu", help="Device to run workers on (cpu, cuda:0, etc)")
     args = parser.parse_args()
     
-    dataset_dir = "rl_sp_dataset" if args.mode == "selfplay" else "rl_princess_dataset"
+    dataset_dir = "data/rl_selfplay_trajectories" if args.mode == "selfplay" else "data/rl_princess_trajectories"
     os.makedirs(dataset_dir, exist_ok=True)
     
     logger.info("Pre-fetching all valid MTF Mek files...")

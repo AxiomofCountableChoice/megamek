@@ -141,21 +141,29 @@ def run_single_episode(ep_idx, server_port, all_meks):
     t1.start()
     t2.start()
     
+    crashed = False
     try:
-        # Let matches naturally conclude. No timeout.
-        t1.join()
-        t2.join()
+        import time
+        while t1.is_alive() or t2.is_alive():
+            if proc.poll() is not None:
+                print(f"[bc_generator] Server crashed prematurely on port {server_port} (code {proc.poll()})")
+                crashed = True
+                break
+            time.sleep(1)
     finally:
         print(f"[bc_generator] Terminating Headless Server on port {server_port}...")
         proc.terminate()
         proc.wait(timeout=5)
         if proc.poll() is None:
             proc.kill()
+            
+    if crashed:
+        return False
     
     if local_dataset:
-        os.makedirs("bc_dataset", exist_ok=True)
+        os.makedirs("data/bc_trajectories", exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"bc_dataset/match_{ep_idx+1}_{timestamp}.pt"
+        filename = f"data/bc_trajectories/match_{ep_idx+1}_{timestamp}.pt"
         
         payload = {
             "metadata": {
@@ -168,8 +176,10 @@ def run_single_episode(ep_idx, server_port, all_meks):
         }
         torch.save(payload, filename)
         print(f"Episode {ep_idx+1} complete. Saved {len(local_dataset)} Trajectories to {filename}")
+        return True
     else:
         print(f"Episode {ep_idx+1} complete, but no valid trajectories collected.")
+        return False
 
 if __name__ == "__main__":
             
@@ -191,11 +201,18 @@ if __name__ == "__main__":
     base_port = 2346
     
     try:
-        for ep in range(args.episodes):
+        successful_ep = 0
+        attempts = 0
+        max_attempts = args.episodes * 5
+        
+        while successful_ep < args.episodes and attempts < max_attempts:
             try:
-                run_single_episode(ep, base_port + ep, all_meks)
+                success = run_single_episode(successful_ep, base_port + attempts, all_meks)
+                if success:
+                    successful_ep += 1
             except Exception as e:
                 print(f"Episode Exception: {e}")
+            attempts += 1
     except KeyboardInterrupt:
         print("\n[bc_generator] Interrupted by user.")
     

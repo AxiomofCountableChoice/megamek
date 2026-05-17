@@ -15,7 +15,7 @@ class ImpalaWorker:
     Connects to MegaMek, syncs latest weights, collects raw trajectories,
     and writes them to disk for the Learner.
     """
-    def __init__(self, agent_model, worker_id=None, host='localhost', port=4000, device='cpu', dataset_dir='rl_sp_dataset'):
+    def __init__(self, agent_model, worker_id=None, host='localhost', port=4000, device='cpu', dataset_dir='data/rl_selfplay_trajectories'):
         self.agent = agent_model
         self.device = device
         self.worker_id = worker_id or str(uuid.uuid4())[:8]
@@ -122,7 +122,7 @@ class ImpalaWorker:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4000, help="Port to connect to MegaMek")
-    parser.add_argument("--dataset_dir", type=str, default="rl_sp_dataset", help="Directory to save trajectories")
+    parser.add_argument("--dataset_dir", type=str, default="data/rl_selfplay_trajectories", help="Directory to save trajectories")
     parser.add_argument("--test", action="store_true", help="Run in test mode (small limits)")
     parser.add_argument("--max_turns", type=int, default=0, help="Max turns to run (0 for infinite)")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run inference on")

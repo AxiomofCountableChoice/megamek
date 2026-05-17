@@ -79,7 +79,7 @@ def train():
     device = torch.device('cpu')
     print(f"Using compute device: {device}")
     
-    dataset_dir = 'bc_dataset'
+    dataset_dir = 'data/bc_trajectories'
     if not os.path.exists(dataset_dir) or not os.listdir(dataset_dir):
         print(f"Dataset directory not found or empty at {dataset_dir}. Please run bc_generator.py first.")
         return
@@ -117,8 +117,8 @@ def train():
     optimizer = Adam(agent.parameters(), lr=1e-3)
     
     epochs = 15
-    os.makedirs('models', exist_ok=True)
-    save_path = 'models/bc_agent.pt'
+    os.makedirs('model_objects', exist_ok=True)
+    save_path = 'model_objects/bc_agent.pt'
     
     for epoch in range(epochs):
         agent.train()

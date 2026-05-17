@@ -67,7 +67,7 @@ public class RLDataPipeline {
             logger.info("RLDataPipeline waiting for Python connection on port " + listenPort);
             try {
                 pythonSocket = pythonServerSocket.accept();
-                pythonSocket.setSoTimeout(10000); // 10 seconds read timeout on actual communications
+                pythonSocket.setSoTimeout(60000); // 60 seconds read timeout on actual communications
                 pythonIn = pythonSocket.getInputStream();
                 pythonOut = pythonSocket.getOutputStream();
                 logger.info("Python connected on port " + listenPort);
@@ -737,6 +737,22 @@ public class RLDataPipeline {
             // Filter out illegal destination states (stacking violations)
             if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
                     p.getFinalCoords(), mover.climbMode()) != null) {
+                continue;
+            }
+
+            // Prevent NPEs by ensuring no hex in the path is null (e.g. stepping off board)
+            boolean hasNullHex = false;
+            if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
+                hasNullHex = true;
+            } else {
+                for (megamek.common.moves.MoveStep step : p.getStepVector()) {
+                    if (game.getBoard().getHex(step.getPosition()) == null) {
+                        hasNullHex = true;
+                        break;
+                    }
+                }
+            }
+            if (hasNullHex) {
                 continue;
             }
 
