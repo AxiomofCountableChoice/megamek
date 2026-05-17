@@ -103,3 +103,5 @@ __pycache__/
 units.cache
 runs/
 rl_*_dataset/
+python-rl/data/
+python-rl/model_objects/
