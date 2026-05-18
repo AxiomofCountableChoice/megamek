@@ -55,7 +55,7 @@ def run_megamek_episode(all_meks, server_port):
     
     return proc, p1_meks, p2_meks
 
-def collect_trajectories(port, target_trajectories, collected_dataset):
+def collect_trajectories(port, target_trajectories, collected_dataset, dataset_lock):
     env = MegaMekEnvironment(port=port)
     retries = 60
     
@@ -72,6 +72,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
         print(f"[Worker {port}] Failed to connect after retries.")
         return 0
         
+    env.sock.settimeout(60.0)
     print(f"[Worker {port}] Connected to socket. Waiting for trajectories...")
     collected_this_episode = 0
     
@@ -105,7 +106,8 @@ def collect_trajectories(port, target_trajectories, collected_dataset):
                     # state_graph is natively CPU in env.py
                     # env.py automatically computes target tree subset mappings
                     if getattr(state_graph, 'y_sequence', None) is not None:
-                        collected_dataset.append(state_graph)
+                        with dataset_lock:
+                            collected_dataset.append(state_graph)
                         collected_this_episode += 1
                         
                         state_info = payload.get("state", {})
@@ -129,14 +131,16 @@ def run_single_episode(ep_idx, server_port, all_meks):
     import os
     import threading
     import torch
+    import uuid
     print(f"\n=======================")
     print(f"Initiating Episode {ep_idx+1} on port {server_port}")
     
     proc, p1_meks, p2_meks = run_megamek_episode(all_meks, server_port)
     
+    dataset_lock = threading.Lock()
     local_dataset = []
-    t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset), daemon=True)
-    t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset), daemon=True)
+    t1 = threading.Thread(target=collect_trajectories, args=(server_port + 1000, 1, local_dataset, dataset_lock), daemon=True)
+    t2 = threading.Thread(target=collect_trajectories, args=(server_port + 1001, 1, local_dataset, dataset_lock), daemon=True)
     
     t1.start()
     t2.start()
@@ -163,14 +167,25 @@ def run_single_episode(ep_idx, server_port, all_meks):
     if local_dataset:
         os.makedirs("data/bc_trajectories", exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"data/bc_trajectories/match_{ep_idx+1}_{timestamp}.pt"
+        unique_id = uuid.uuid4().hex[:8]
+        filename = f"data/bc_trajectories/match_{ep_idx+1}_{timestamp}_{unique_id}.pt"
         
+        gamelog_html = ""
+        try:
+            gamelog_path = os.path.join(os.path.dirname(__file__), "..", "megamek", "logs", f"server_{server_port}", "gamelog.html")
+            if os.path.exists(gamelog_path):
+                with open(gamelog_path, "r", encoding="utf-8") as f:
+                    gamelog_html = f.read()
+        except Exception as gle:
+            print(f"Failed to read gamelog.html: {gle}")
+
         payload = {
             "metadata": {
                 "p1_meks": p1_meks,
                 "p2_meks": p2_meks,
                 "timestamp": timestamp,
-                "map": "Randomized"
+                "map": "Randomized",
+                "gamelog_html": gamelog_html
             },
             "trajectories": local_dataset
         }
@@ -196,6 +211,8 @@ if __name__ == "__main__":
     device = torch.device('cpu') # Always accumulate Dataset on CPU!
     print(f"Using compute device: {device} to avoid VRAM exhaustion")
     
+    import concurrent.futures
+    
     # Run in parallel using ProcessPoolExecutor
     max_workers = min(args.episodes, 4) # cap at 4 parallel matches
     base_port = 2346
@@ -205,14 +222,31 @@ if __name__ == "__main__":
         attempts = 0
         max_attempts = args.episodes * 5
         
-        while successful_ep < args.episodes and attempts < max_attempts:
-            try:
-                success = run_single_episode(successful_ep, base_port + attempts, all_meks)
-                if success:
-                    successful_ep += 1
-            except Exception as e:
-                print(f"Episode Exception: {e}")
-            attempts += 1
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = set()
+            
+            # Initial batch
+            while len(futures) < max_workers and attempts < max_attempts:
+                futures.add(executor.submit(run_single_episode, attempts, base_port + attempts, all_meks))
+                attempts += 1
+                
+            # Process as they complete
+            while futures and successful_ep < args.episodes:
+                done, futures = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                
+                for future in done:
+                    try:
+                        success = future.result()
+                        if success:
+                            successful_ep += 1
+                    except Exception as e:
+                        print(f"Episode Exception: {e}")
+                    
+                    # Submit replacement task if needed
+                    if successful_ep + len(futures) < args.episodes and attempts < max_attempts:
+                        futures.add(executor.submit(run_single_episode, attempts, base_port + attempts, all_meks))
+                        attempts += 1
+
     except KeyboardInterrupt:
         print("\n[bc_generator] Interrupted by user.")
     

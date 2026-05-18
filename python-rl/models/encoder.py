@@ -65,7 +65,9 @@ class MegaMekHGTEncoder(nn.Module):
         # 3. Global Attention Pooling (Graph Readout)
         self.gate_nn = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.LayerNorm(hidden_dim // 2),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(hidden_dim // 2, 1)
         )
         self.global_pool = AttentionalAggregation(gate_nn=self.gate_nn)
@@ -74,6 +76,7 @@ class MegaMekHGTEncoder(nn.Module):
         self.context_mlp = nn.Sequential(
             nn.Linear(2, 64), # phase length & turn num
             nn.ReLU(),
+            nn.Dropout(0.1),
             nn.Linear(64, hidden_dim)
         )
 

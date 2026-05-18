@@ -375,6 +375,45 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                 }});
             }}
             
+            // Draw Weapon Attack Lasers
+            if ((stepData.context === "WEAPON_INFERENCE" || stepData.context === "WEAPON_BC") && stepData.mask && stepData.mask.valid_targets && stepData.action) {{
+                let activeId = stepData.mask.active_entity;
+                let activeIdx = -1;
+                if (stepData.entities_meta) {{
+                    stepData.entities_meta.forEach((meta, idx) => {{
+                        if (meta && meta.id === activeId) activeIdx = idx;
+                    }});
+                }}
+                
+                if (activeIdx !== -1 && stepData.entities[activeIdx]) {{
+                    let shooterPos = getPxPy(stepData.entities[activeIdx][1], stepData.entities[activeIdx][2]);
+                    
+                    let firedTargets = new Set();
+                    for (let key in stepData.action) {{
+                        if (key.startsWith("weapon_") && stepData.action[key] !== -1) {{
+                            firedTargets.add(stepData.action[key]);
+                        }}
+                    }}
+                    
+                    firedTargets.forEach(tgtNodeIdx => {{
+                        let vt = stepData.mask.valid_targets[tgtNodeIdx];
+                        if (vt && stepData.entities[vt.target_entity_index]) {{
+                            let targetIdx = vt.target_entity_index;
+                            let targetPos = getPxPy(stepData.entities[targetIdx][1], stepData.entities[targetIdx][2]);
+                            
+                            let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                            line.setAttribute("x1", shooterPos[0]); line.setAttribute("y1", shooterPos[1]);
+                            line.setAttribute("x2", targetPos[0]); line.setAttribute("y2", targetPos[1]);
+                            line.setAttribute("stroke", "#ff3333");
+                            line.setAttribute("stroke-width", "5");
+                            line.setAttribute("stroke-dasharray", "8,4");
+                            line.setAttribute("style", "filter: drop-shadow(0 0 5px #ff0000); pointer-events: none;");
+                            svg.appendChild(line);
+                        }}
+                    }});
+                }}
+            }}
+            
             updateEntityPanel();
         }}
         

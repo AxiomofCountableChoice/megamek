@@ -221,13 +221,8 @@ public class RLDataPipeline {
             payload.put("mask", mask);
             payload.put("rewards", calculateRewards());
             
-            if (baseClient instanceof RLBotClient) {
-                RLBotClient botClient = (RLBotClient) baseClient;
-                payload.put("reports", new java.util.ArrayList<>(botClient.unreadReports));
-                botClient.unreadReports.clear();
-            } else {
-                payload.put("reports", new java.util.ArrayList<String>());
-            }
+            // We no longer send step-by-step reports.
+            // Game logs are natively extracted at the end of the episode by the Python worker.
 
             byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
 
@@ -335,14 +330,14 @@ public class RLDataPipeline {
                         tp += 1; // ammo explosion
                 }
             }
-            if (baseClient.getLocalPlayer() != null && p.getId() == baseClient.getLocalPlayer().getId()) {
-                bv1 = bv;
-                vp1 = vp;
-                tp1 = tp;
+            if (baseClient.getLocalPlayer() != null && p.getTeam() == baseClient.getLocalPlayer().getTeam()) {
+                bv1 += bv;
+                vp1 += vp;
+                tp1 += tp;
             } else {
-                bv2 = bv;
-                vp2 = vp;
-                tp2 = tp;
+                bv2 += bv;
+                vp2 += vp;
+                tp2 += tp;
             }
         }
 

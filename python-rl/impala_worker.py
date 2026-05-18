@@ -100,11 +100,23 @@ class ImpalaWorker:
                     step_idx += 1
             except Exception as e:
                 self.logger.error(f"Episode terminated abruptly: {e}")
+                self.env.done = False # ensure we don't save aborted games
             finally:
-                if len(trajectory) > 0:
+                if len(trajectory) > 0 and getattr(self.env, "done", False):
+                    # Attempt to fetch full game log from server
+                    gamelog_html = ""
+                    try:
+                        gamelog_path = os.path.join(os.path.dirname(__file__), "..", "megamek", "logs", f"server_{self.port}", "gamelog.html")
+                        if os.path.exists(gamelog_path):
+                            with open(gamelog_path, "r", encoding="utf-8") as f:
+                                gamelog_html = f.read()
+                    except Exception as gle:
+                        self.logger.warning(f"Failed to read gamelog.html: {gle}")
+
                     traj_data = {
                         "topology_payload": topology_payload,
-                        "steps": trajectory
+                        "steps": trajectory,
+                        "gamelog_html": gamelog_html
                     }
                     
                     traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
@@ -152,8 +164,8 @@ if __name__ == "__main__":
     agent = MegaMekAgent(hidden_dim=128, ensemble_size=8).to(device)
     
     # Try to bootstrap from BC initially if impala_latest doesn't exist
-    bc_model_path = os.path.join("models", "bc_agent.pt")
-    if not os.path.exists(os.path.join("models", "impala_agent_latest.pt")) and os.path.exists(bc_model_path):
+    bc_model_path = os.path.join("model_objects", "bc_agent.pt")
+    if not os.path.exists(os.path.join("model_objects", "impala_agent_latest.pt")) and os.path.exists(bc_model_path):
         temp_logger.info(f"Bootstrapping worker from BC weights: {bc_model_path}")
         agent.load_state_dict(torch.load(bc_model_path, map_location=device))
         

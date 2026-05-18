@@ -8,10 +8,8 @@ from models.agent import MegaMekAgent
 import os
 import glob
 
-def process_batch(agent, batch, device, optimizer=None):
+def process_batch(agent, batch, device, is_training=False, accumulation_steps=32):
     batch = batch.to(device)
-    if optimizer:
-        optimizer.zero_grad()
         
     if getattr(batch, 'y_sequence', None) is None:
         return 0.0, 0, 0, False
@@ -68,9 +66,9 @@ def process_batch(agent, batch, device, optimizer=None):
         chosen_embeddings.append(e_actions[target_idx])
         
     if type(seq_loss) != int and seq_loss > 0:
-        if optimizer:
-            seq_loss.backward()
-            optimizer.step()
+        if is_training:
+            scaled_loss = seq_loss / accumulation_steps
+            scaled_loss.backward()
         return seq_loss.item(), correct, steps, True
         
     return 0.0, 0, 0, False
@@ -114,7 +112,9 @@ def train():
     writer = SummaryWriter(log_dir='runs/bc_training_logs')
     
     agent = MegaMekAgent(hidden_dim=128).to(device)
-    optimizer = Adam(agent.parameters(), lr=1e-3)
+    optimizer = Adam(agent.parameters(), lr=3e-4) # Lowered LR
+    
+    accumulation_steps = 32
     
     epochs = 15
     os.makedirs('model_objects', exist_ok=True)
@@ -126,14 +126,19 @@ def train():
         total_train_correct = 0
         total_train_steps = 0
         valid_train_batches = 0
-        
-        for batch in train_loader:
-            loss_val, correct, steps, valid = process_batch(agent, batch, device, optimizer)
+        optimizer.zero_grad()
+        for i, batch in enumerate(train_loader):
+            loss_val, correct, steps, valid = process_batch(agent, batch, device, is_training=True, accumulation_steps=accumulation_steps)
             if valid:
                 total_train_loss += loss_val
                 total_train_correct += correct
                 total_train_steps += steps
                 valid_train_batches += 1
+                
+            if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+                torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.0)
+                optimizer.step()
+                optimizer.zero_grad()
                 
         avg_train_loss = total_train_loss / valid_train_batches if valid_train_batches > 0 else 0
         train_acc = total_train_correct / total_train_steps if total_train_steps > 0 else 0
@@ -145,7 +150,7 @@ def train():
         valid_val_batches = 0
         with torch.no_grad():
             for batch in val_loader:
-                loss_val, correct, steps, valid = process_batch(agent, batch, device, None)
+                loss_val, correct, steps, valid = process_batch(agent, batch, device, is_training=False)
                 if valid:
                     total_val_loss += loss_val
                     total_val_correct += correct

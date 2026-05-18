@@ -36,8 +36,6 @@ import megamek.common.Report;
 public class RLBotClient extends BotClient {
     
     private RLDataPipeline dataPipeline;
-    private int lastReportCount = 0;
-    public List<String> unreadReports = new ArrayList<>();
 
     public RLBotClient(String playerName, String host, int port, int listenPort) {
         super(playerName, host, port);
@@ -59,19 +57,6 @@ public class RLBotClient extends BotClient {
 
     @Override
     public String receiveReport(List<Report> reports) {
-        if (reports.size() < lastReportCount) {
-            lastReportCount = 0;
-        }
-        for (int i = lastReportCount; i < reports.size(); i++) {
-            Report r = reports.get(i);
-            // Strip HTML tags and entities for clean console logging
-            String cleanText = r.text().replaceAll("<[^>]*>", "").replace("&nbsp;", " ");
-            unreadReports.add(cleanText);
-            if (RLDataPipeline.DEBUG_RL_SYNC) {
-                System.err.println("[RLBotClient REPORT - " + this.getName() + "] " + cleanText);
-            }
-        }
-        lastReportCount = reports.size();
         return "";
     }
 
@@ -187,7 +172,19 @@ public class RLBotClient extends BotClient {
                         if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
                             Entity target = game.getEntitiesVector().get(att.target_id);
                             if (target != null) {
-                                actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getId(), att.weapon_id));
+                                megamek.common.equipment.Mounted weapon = shooter.getEquipment(att.weapon_id);
+                                if (weapon instanceof megamek.common.equipment.WeaponMounted) {
+                                    megamek.common.equipment.WeaponMounted wm = (megamek.common.equipment.WeaponMounted) weapon;
+                                    if (wm.getType().hasFlag(megamek.common.equipment.WeaponType.F_ARTILLERY) ||
+                                        (wm.getType() instanceof megamek.common.weapons.capitalWeapons.CapitalMissileWeapon &&
+                                         megamek.common.compute.Compute.isGroundToGround(shooter, target))) {
+                                        actions.add(new megamek.common.actions.ArtilleryAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id, game));
+                                    } else {
+                                        actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id));
+                                    }
+                                } else {
+                                    actions.add(new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getId(), att.weapon_id));
+                                }
                             }
                         }
                     }
