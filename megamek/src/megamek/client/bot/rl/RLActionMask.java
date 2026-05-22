@@ -20,19 +20,20 @@ package megamek.client.bot.rl;
 
 import java.util.List;
 public class RLActionMask {
-    public Integer active_entity_index;
-    public Integer active_entity;
+    public Integer active_entity; // We can keep active_entity if needed, but remove active_entity_index
     public List<RLPathMask> valid_paths;
     public List<RLTargetMask> valid_targets; // Restored for Physical Phase
     public List<RLTwistMask> valid_twists; // Added for Weapon Phase Option C
     public RLTargetAction target_action;   // Added for Behavioral Cloning
 
     public static class RLTwistMask {
+        public Integer source_entity_index;
         public Integer twist;
         public List<RLTargetMask> valid_targets;
     }
 
     public static class RLPathMask {
+        public Integer source_entity_index;
         public Integer path_index;
         public Integer dest_index;
         public Integer dest_facing;
@@ -40,9 +41,12 @@ public class RLActionMask {
         public Boolean is_walk;
         public Boolean is_run;
         public Boolean is_jump;
+        public Boolean has_masc;
+        public Boolean has_supercharger;
     }
 
     public static class RLTargetMask {
+        public Integer source_entity_index;
         public Integer target_entity_index;
         public Integer target_entity_id;
         public List<RLWeaponMask> valid_weapons;
@@ -64,6 +68,7 @@ public class RLActionMask {
 
     // --- Behavioral Cloning Trajectory Classes ---
     public static class RLTargetAction {
+        public Integer selected_entity_index;
         public Integer torso_twist;
         public List<RLAttack> attacks;
     }

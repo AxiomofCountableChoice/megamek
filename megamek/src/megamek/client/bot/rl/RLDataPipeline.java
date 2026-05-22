@@ -204,9 +204,51 @@ public class RLDataPipeline {
         pythonOut.flush();
     }
 
+    // Entity / Unit Feature Indices
+    public static final int UNIT_FEAT_IS_FRIENDLY = 0;
+    public static final int UNIT_FEAT_X = 1;
+    public static final int UNIT_FEAT_Y = 2;
+    public static final int UNIT_FEAT_SIN_FACING = 3;
+    public static final int UNIT_FEAT_COS_FACING = 4;
+    public static final int UNIT_FEAT_HEAT = 5;
+    public static final int UNIT_FEAT_MAX_HEAT = 6;
+    public static final int UNIT_FEAT_ARMOR = 7;
+    public static final int UNIT_FEAT_STRUCTURE = 8;
+    public static final int UNIT_FEAT_TMM = 9;
+    public static final int UNIT_FEAT_SPEED_MODE = 10;
+    public static final int UNIT_FEAT_GUNNERY = 11;
+    public static final int UNIT_FEAT_PILOTING = 12;
+    public static final int UNIT_FEAT_WALK_MP = 13;
+    public static final int UNIT_FEAT_RUN_MP = 14;
+    public static final int UNIT_FEAT_JUMP_MP = 15;
+    public static final int UNIT_FEAT_WEIGHT = 16;
+    public static final int UNIT_FEAT_IS_PRONE = 17;
+    public static final int UNIT_FEAT_IS_DESTROYED = 18;
+    public static final int UNIT_FEAT_IS_IMMOBILE = 19;
+    public static final int UNIT_FEAT_HEIGHT = 20;
+    public static final int UNIT_FEAT_LOCATIONS_ARMOR_OFFSET = 21;
+    public static final int UNIT_FEAT_LOCATIONS_REAR_ARMOR_OFFSET = 29;
+    public static final int UNIT_FEAT_LOCATIONS_INTERNAL_OFFSET = 37;
+
+    // Weapon Feature Indices
+    public static final int WEAPON_FEAT_MIN_RANGE = 0;
+    public static final int WEAPON_FEAT_SHORT_RANGE = 1;
+    public static final int WEAPON_FEAT_MEDIUM_RANGE = 2;
+    public static final int WEAPON_FEAT_LONG_RANGE = 3;
+    public static final int WEAPON_FEAT_DAMAGE = 4;
+    public static final int WEAPON_FEAT_IS_OPERATIONAL = 5;
+    public static final int WEAPON_FEAT_IS_CLUSTER = 6;
+    public static final int WEAPON_FEAT_NUM_CLUSTERS = 7;
+    public static final int WEAPON_FEAT_SALVOS_REMAINING = 8;
+    public static final int WEAPON_FEAT_HEAT = 9;
+
     public static boolean DEBUG_RL_SYNC = true;
 
     public <T> T queryPython(String actionContext, Object mask, Class<T> responseType) {
+        return queryPython(actionContext, mask, responseType, null);
+    }
+
+    public <T> T queryPython(String actionContext, Object mask, Class<T> responseType, List<megamek.common.actions.WeaponAttackAction> declaredAttacks) {
         if (!isConnected()) {
             return null;
         }
@@ -217,7 +259,7 @@ public class RLDataPipeline {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", actionContext);
-            payload.put("state", serializeGameState());
+            payload.put("state", serializeGameState(declaredAttacks));
             payload.put("mask", mask);
             payload.put("rewards", calculateRewards());
             
@@ -389,42 +431,42 @@ public class RLDataPipeline {
         float height = (float) e.getHeight();
 
         float[] features = new float[45];
-        features[0] = isFriendly;
-        features[1] = x;
-        features[2] = y;
-        features[3] = sinFacing;
-        features[4] = cosFacing;
-        features[5] = heat;
-        features[6] = maxHeat;
-        features[7] = armor;
-        features[8] = structure;
-        features[9] = tmm;
-        features[10] = speedMode;
-        features[11] = gunnery;
-        features[12] = piloting;
-        features[13] = walkMP;
-        features[14] = runMP;
-        features[15] = jumpMP;
-        features[16] = weight;
-        features[17] = isProne;
-        features[18] = isDestroyed;
-        features[19] = isImmobile;
-        features[20] = height;
+        features[UNIT_FEAT_IS_FRIENDLY] = isFriendly;
+        features[UNIT_FEAT_X] = x;
+        features[UNIT_FEAT_Y] = y;
+        features[UNIT_FEAT_SIN_FACING] = sinFacing;
+        features[UNIT_FEAT_COS_FACING] = cosFacing;
+        features[UNIT_FEAT_HEAT] = heat;
+        features[UNIT_FEAT_MAX_HEAT] = maxHeat;
+        features[UNIT_FEAT_ARMOR] = armor;
+        features[UNIT_FEAT_STRUCTURE] = structure;
+        features[UNIT_FEAT_TMM] = tmm;
+        features[UNIT_FEAT_SPEED_MODE] = speedMode;
+        features[UNIT_FEAT_GUNNERY] = gunnery;
+        features[UNIT_FEAT_PILOTING] = piloting;
+        features[UNIT_FEAT_WALK_MP] = walkMP;
+        features[UNIT_FEAT_RUN_MP] = runMP;
+        features[UNIT_FEAT_JUMP_MP] = jumpMP;
+        features[UNIT_FEAT_WEIGHT] = weight;
+        features[UNIT_FEAT_IS_PRONE] = isProne;
+        features[UNIT_FEAT_IS_DESTROYED] = isDestroyed;
+        features[UNIT_FEAT_IS_IMMOBILE] = isImmobile;
+        features[UNIT_FEAT_HEIGHT] = height;
 
         for (int i = 0; i < 8; i++) {
             if (i < e.locations()) {
                 float maxArmor = Math.max(1f, e.getOArmor(i));
-                features[21 + i] = e.getArmor(i) / maxArmor;
+                features[UNIT_FEAT_LOCATIONS_ARMOR_OFFSET + i] = e.getArmor(i) / maxArmor;
                 
                 float maxRearArmor = e.hasRearArmor(i) ? Math.max(1f, e.getOArmor(i, true)) : 1f;
-                features[29 + i] = e.hasRearArmor(i) ? (e.getArmor(i, true) / maxRearArmor) : 0f;
+                features[UNIT_FEAT_LOCATIONS_REAR_ARMOR_OFFSET + i] = e.hasRearArmor(i) ? (e.getArmor(i, true) / maxRearArmor) : 0f;
                 
                 float maxInternal = Math.max(1f, e.getOInternal(i));
-                features[37 + i] = e.getInternal(i) / maxInternal;
+                features[UNIT_FEAT_LOCATIONS_INTERNAL_OFFSET + i] = e.getInternal(i) / maxInternal;
             } else {
-                features[21 + i] = 0f;
-                features[29 + i] = 0f;
-                features[37 + i] = 0f;
+                features[UNIT_FEAT_LOCATIONS_ARMOR_OFFSET + i] = 0f;
+                features[UNIT_FEAT_LOCATIONS_REAR_ARMOR_OFFSET + i] = 0f;
+                features[UNIT_FEAT_LOCATIONS_INTERNAL_OFFSET + i] = 0f;
             }
         }
 
@@ -454,11 +496,38 @@ public class RLDataPipeline {
 
         float heat = wt.getHeat();
 
-        return new float[] { minRange, shortRange, mediumRange, longRange, damage, isOperational, isCluster,
-                numClusters, salvosRemaining, heat };
+        float[] features = new float[10];
+        features[WEAPON_FEAT_MIN_RANGE] = minRange;
+        features[WEAPON_FEAT_SHORT_RANGE] = shortRange;
+        features[WEAPON_FEAT_MEDIUM_RANGE] = mediumRange;
+        features[WEAPON_FEAT_LONG_RANGE] = longRange;
+        features[WEAPON_FEAT_DAMAGE] = damage;
+        features[WEAPON_FEAT_IS_OPERATIONAL] = isOperational;
+        features[WEAPON_FEAT_IS_CLUSTER] = isCluster;
+        features[WEAPON_FEAT_NUM_CLUSTERS] = numClusters;
+        features[WEAPON_FEAT_SALVOS_REMAINING] = salvosRemaining;
+        features[WEAPON_FEAT_HEAT] = heat;
+        return features;
     }
 
-    public Map<String, Object> serializeGameState() {
+    public int getGlobalWeaponId(Entity shooter, Mounted<?> weapon) {
+        Game game = baseClient.getGame();
+        int globalId = 0;
+        for (Entity e : game.getEntitiesVector()) {
+            if (e == null) continue;
+            for (Mounted<?> m : e.getEquipment()) {
+                if (m.getType() instanceof WeaponType) {
+                    if (e.equals(shooter) && m.equals(weapon)) {
+                        return globalId;
+                    }
+                    globalId++;
+                }
+            }
+        }
+        return -1;
+    }
+
+    public Map<String, Object> serializeGameState(List<megamek.common.actions.WeaponAttackAction> declaredAttacks) {
         Game game = (Game) baseClient.getGame();
         Player localPlayer = baseClient.getLocalPlayer();
 
@@ -499,6 +568,7 @@ public class RLDataPipeline {
         List<int[]> moveTypeTMM2Edges = new ArrayList<>();
         List<int[]> moveTypeTMM3Edges = new ArrayList<>();
         List<int[]> moveTypeTMM4Edges = new ArrayList<>();
+        List<int[]> declaredAttackEdges = new ArrayList<>();
 
         int weaponNodeId = 0;
         int boardWidth = game.getBoard().getWidth();
@@ -517,7 +587,7 @@ public class RLDataPipeline {
                 reachableHexes.put(e1.getPosition().getY() * boardWidth + e1.getPosition().getX(), 0);
 
                 try {
-                    int groundMove = Math.max(e1.getWalkMP(), e1.getRunMPWithoutMASC());
+                    int groundMove = Math.max(e1.getWalkMP(), e1.getRunMP());
                     int jumpMove = e1.getAnyTypeMaxJumpMP();
                     int maxMove = Math.max(groundMove, jumpMove);
 
@@ -684,6 +754,24 @@ public class RLDataPipeline {
             }
         }
 
+        // Parse declared attacks into edges
+        if (declaredAttacks != null) {
+            for (megamek.common.actions.WeaponAttackAction atk : declaredAttacks) {
+                Entity shooter = game.getEntity(atk.getEntityId());
+                Entity target = game.getEntity(atk.getTargetId());
+                if (shooter != null && target != null) {
+                    Mounted<?> weapon = shooter.getEquipment(atk.getWeaponId());
+                    if (weapon != null) {
+                        int globalWeaponId = getGlobalWeaponId(shooter, weapon);
+                        int targetEntityIndex = game.getEntitiesVector().indexOf(target);
+                        if (globalWeaponId != -1 && targetEntityIndex != -1) {
+                            declaredAttackEdges.add(new int[] { globalWeaponId, targetEntityIndex });
+                        }
+                    }
+                }
+            }
+        }
+
         state.put("entities", entityArray);
         state.put("entities_meta", entitiesMeta);
         state.put("entity_id_map", entityIds);
@@ -698,83 +786,120 @@ public class RLDataPipeline {
         state.put("move_type_tmm_2_edges", moveTypeTMM2Edges);
         state.put("move_type_tmm_3_edges", moveTypeTMM3Edges);
         state.put("move_type_tmm_4_edges", moveTypeTMM4Edges);
+        state.put("declared_attack_edges", declaredAttackEdges);
 
         return state;
     }
 
-    public List<MovePath> buildMovementMask(Entity mover, List<RLActionMask.RLPathMask> serializedMaskOut) {
+    public List<MovePath> buildMovementMask(List<Entity> movers, List<RLActionMask.RLPathMask> serializedMaskOut) {
         Game game = (Game) baseClient.getGame();
         List<MovePath> calculatedPaths = new ArrayList<>();
         serializedMaskOut.clear();
+        
+        int pathIndexCounter = 0;
 
-        // Ground path generation
-        int maxMove = Math.max(mover.getWalkMP(), Math.max(mover.getRunMPWithoutMASC(), mover.getJumpMP()));
-        if (maxMove > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
-                    .newInstanceOfOneToAll(maxMove, megamek.common.enums.MoveStepType.FORWARDS, game);
-            spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
-            calculatedPaths.addAll(spfGround.getAllComputedPathsUncategorized());
-        }
+        for (Entity mover : movers) {
+            if (mover == null) continue;
+            int sourceEntityIndex = game.getEntitiesVector().indexOf(mover);
 
-        // Add jump paths if applicable
-        if (mover.getAnyTypeMaxJumpMP() > 0) {
-            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
-                    .newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.enums.MoveStepType.FORWARDS,
-                            game);
-            spfJump.run(new megamek.common.moves.MovePath(game, mover, null)
-                    .addStep(megamek.common.enums.MoveStepType.START_JUMP));
-            calculatedPaths.addAll(spfJump.getAllComputedPathsUncategorized());
-        }
-
-        for (int i = 0; i < calculatedPaths.size(); i++) {
-            MovePath p = calculatedPaths.get(i);
-
-            // Filter out illegal destination states (stacking violations)
-            if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
-                    p.getFinalCoords(), mover.climbMode()) != null) {
-                continue;
-            }
-
-            // Prevent NPEs by ensuring no hex in the path is null (e.g. stepping off board)
-            boolean hasNullHex = false;
-            if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
-                hasNullHex = true;
-            } else {
-                for (megamek.common.moves.MoveStep step : p.getStepVector()) {
-                    if (game.getBoard().getHex(step.getPosition()) == null) {
-                        hasNullHex = true;
-                        break;
+            // Ground path generation
+            int maxMove = Math.max(mover.getWalkMP(), Math.max(mover.getRunMP(), mover.getJumpMP()));
+            if (maxMove > 0) {
+                megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
+                        .newInstanceOfOneToAll(maxMove, megamek.common.enums.MoveStepType.FORWARDS, game);
+                spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
+                
+                for (MovePath p : spfGround.getAllComputedPathsUncategorized()) {
+                    if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
+                            p.getFinalCoords(), mover.climbMode()) != null) {
+                        continue;
                     }
+                    boolean hasNullHex = false;
+                    if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
+                        hasNullHex = true;
+                    } else {
+                        for (megamek.common.moves.MoveStep step : p.getStepVector()) {
+                            if (game.getBoard().getHex(step.getPosition()) == null) {
+                                hasNullHex = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasNullHex) continue;
+
+                    calculatedPaths.add(p);
+                    RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
+                    pm.source_entity_index = sourceEntityIndex;
+                    pm.path_index = pathIndexCounter++;
+                    if (p.getFinalCoords() != null && game.getBoard() != null) {
+                        pm.dest_index = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
+                    }
+                    pm.dest_facing = p.getFinalFacing();
+                    pm.mp_used = p.getMpUsed();
+                    pm.is_jump = p.isJumping();
+                    pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
+                    pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
+                    pm.has_masc = p.hasActiveMASC();
+                    pm.has_supercharger = p.hasActiveSupercharger();
+                    serializedMaskOut.add(pm);
                 }
             }
-            if (hasNullHex) {
-                continue;
-            }
 
-            RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
-            pm.path_index = i;
-            if (p.getFinalCoords() != null && game.getBoard() != null) {
-                int destIndex = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
-                pm.dest_index = destIndex;
+            // Add jump paths if applicable
+            if (mover.getAnyTypeMaxJumpMP() > 0) {
+                megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
+                        .newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.enums.MoveStepType.FORWARDS,
+                                game);
+                spfJump.run(new megamek.common.moves.MovePath(game, mover, null)
+                        .addStep(megamek.common.enums.MoveStepType.START_JUMP));
+                        
+                for (MovePath p : spfJump.getAllComputedPathsUncategorized()) {
+                    if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
+                            p.getFinalCoords(), mover.climbMode()) != null) {
+                        continue;
+                    }
+                    boolean hasNullHex = false;
+                    if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
+                        hasNullHex = true;
+                    } else {
+                        for (megamek.common.moves.MoveStep step : p.getStepVector()) {
+                            if (game.getBoard().getHex(step.getPosition()) == null) {
+                                hasNullHex = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasNullHex) continue;
+
+                    calculatedPaths.add(p);
+                    RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
+                    pm.source_entity_index = sourceEntityIndex;
+                    pm.path_index = pathIndexCounter++;
+                    if (p.getFinalCoords() != null && game.getBoard() != null) {
+                        pm.dest_index = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
+                    }
+                    pm.dest_facing = p.getFinalFacing();
+                    pm.mp_used = p.getMpUsed();
+                    pm.is_jump = p.isJumping();
+                    pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
+                    pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
+                    pm.has_masc = p.hasActiveMASC();
+                    pm.has_supercharger = p.hasActiveSupercharger();
+                    serializedMaskOut.add(pm);
+                }
             }
-            pm.dest_facing = p.getFinalFacing();
-            pm.mp_used = p.getMpUsed();
-            pm.is_jump = p.isJumping();
-            pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
-            pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
-            serializedMaskOut.add(pm);
         }
         return calculatedPaths;
     }
-
-    public void sendBehavioralCloningTrajectory(Entity mover, MovePath princessChosenPath) {
+    
+    public void sendBehavioralCloningTrajectory(List<Entity> selectableEntities, Entity mover, MovePath princessChosenPath) {
         if (!isConnected())
             return;
         ensureTopologySent();
 
         try {
             List<RLActionMask.RLPathMask> serializedMask = new ArrayList<>();
-            List<MovePath> calculatedPaths = buildMovementMask(mover, serializedMask);
+            List<MovePath> calculatedPaths = buildMovementMask(selectableEntities, serializedMask);
 
             // Find target action index
             int chosenIndex = -1;
@@ -819,13 +944,11 @@ public class RLDataPipeline {
             }
 
             RLActionMask maskData = new RLActionMask();
-            int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(mover);
-            maskData.active_entity_index = activeIndex;
             maskData.valid_paths = serializedMask;
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", "MOVEMENT_BC");
-            payload.put("state", serializeGameState());
+            payload.put("state", serializeGameState(null));
             payload.put("mask", maskData);
             payload.put("rewards", calculateRewards());
 
@@ -842,83 +965,89 @@ public class RLDataPipeline {
         }
     }
 
-    public List<RLActionMask.RLTwistMask> buildFiringMask(Entity shooter) {
+    public List<RLActionMask.RLTwistMask> buildFiringMask(List<Entity> shooters) {
         List<RLActionMask.RLTwistMask> validTwists = new ArrayList<>();
         megamek.common.game.Game game = baseClient.getGame();
 
-        int originalFacing = shooter.getSecondaryFacing();
-        List<Integer> facingChanges = new ArrayList<>(
-                megamek.client.bot.princess.FireControl.getValidFacingChanges(shooter));
-        facingChanges.add(0); // "no facing change"
+        for (Entity shooter : shooters) {
+            if (shooter == null) continue;
+            int sourceEntityIndex = game.getEntitiesVector().indexOf(shooter);
+            int originalFacing = shooter.getSecondaryFacing();
+            List<Integer> facingChanges = new ArrayList<>(
+                    megamek.client.bot.princess.FireControl.getValidFacingChanges(shooter));
+            facingChanges.add(0); // "no facing change"
 
-        for (int twist : facingChanges) {
-            // Apply the twist temporarily
-            int newFacing = megamek.client.bot.princess.FireControl.correctFacing(originalFacing + twist);
-            shooter.setSecondaryFacing(newFacing, false);
+            for (int twist : facingChanges) {
+                // Apply the twist temporarily
+                int newFacing = megamek.client.bot.princess.FireControl.correctFacing(originalFacing + twist);
+                shooter.setSecondaryFacing(newFacing, false);
 
-            List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
-            for (Entity target : game.getEntitiesVector()) {
-                if (target == null) continue;
-                if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) {
-                    continue;
-                }
-
-                boolean inFrontArc = megamek.common.compute.ComputeArc.isInArc(shooter.getPosition(),
-                        shooter.getSecondaryFacing(), target, shooter.getForwardArc());
-                int secondaryPenalty = 2;
-                if (inFrontArc || shooter instanceof megamek.common.battleArmor.BattleArmor) {
-                    secondaryPenalty = 1;
-                }
-                if (shooter.hasAbility(megamek.common.options.OptionsConstants.GUNNERY_MULTI_TASKER)) {
-                    secondaryPenalty--;
-                }
-
-                List<RLActionMask.RLWeaponMask> validWeapons = new ArrayList<>();
-                for (megamek.common.equipment.WeaponMounted wm : shooter.getWeaponList()) {
-                    if (!wm.canFire() || (wm.getLinkedAmmo() != null && wm.getLinkedAmmo().getUsableShotsLeft() == 0)) {
+                List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
+                for (Entity target : game.getEntitiesVector()) {
+                    if (target == null) continue;
+                    if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter)) {
                         continue;
                     }
 
-                    // Leverage the game's actual attack resolution engine
-                    megamek.common.ToHitData toHit = megamek.common.actions.WeaponAttackAction.toHit(
-                            game, shooter.getId(), target, shooter.getEquipmentNum(wm), false);
+                    boolean inFrontArc = megamek.common.compute.ComputeArc.isInArc(shooter.getPosition(),
+                            shooter.getSecondaryFacing(), target, shooter.getForwardArc());
+                    int secondaryPenalty = 2;
+                    if (inFrontArc || shooter instanceof megamek.common.battleArmor.BattleArmor) {
+                        secondaryPenalty = 1;
+                    }
+                    if (shooter.hasAbility(megamek.common.options.OptionsConstants.GUNNERY_MULTI_TASKER)) {
+                        secondaryPenalty--;
+                    }
 
-                    if (toHit.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE
-                            && toHit.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+                    List<RLActionMask.RLWeaponMask> validWeapons = new ArrayList<>();
+                    for (megamek.common.equipment.WeaponMounted wm : shooter.getWeaponList()) {
+                        if (!wm.canFire() || (wm.getLinkedAmmo() != null && wm.getLinkedAmmo().getUsableShotsLeft() == 0)) {
+                            continue;
+                        }
 
-                        RLActionMask.RLWeaponMask wData = new RLActionMask.RLWeaponMask();
-                        wData.weapon_id = shooter.getEquipmentNum(wm);
-                        wData.weapon_name = wm.getName();
-                        wData.to_hit = toHit.getValue();
-                        wData.secondary_to_hit = wData.to_hit + secondaryPenalty;
-                        validWeapons.add(wData);
+                        // Leverage the game's actual attack resolution engine
+                        megamek.common.ToHitData toHit = megamek.common.actions.WeaponAttackAction.toHit(
+                                game, shooter.getId(), target, shooter.getEquipmentNum(wm), false);
+
+                        if (toHit.getValue() != megamek.common.rolls.TargetRoll.IMPOSSIBLE
+                                && toHit.getValue() != megamek.common.rolls.TargetRoll.AUTOMATIC_FAIL) {
+
+                            RLActionMask.RLWeaponMask wData = new RLActionMask.RLWeaponMask();
+                            wData.weapon_id = getGlobalWeaponId(shooter, wm);
+                            wData.weapon_name = wm.getName();
+                            wData.to_hit = toHit.getValue();
+                            wData.secondary_to_hit = wData.to_hit + secondaryPenalty;
+                            validWeapons.add(wData);
+                        }
+                    }
+
+                    if (!validWeapons.isEmpty()) {
+                        RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
+                        int targetIndex = game.getEntitiesVector().indexOf(target);
+                        tm.source_entity_index = sourceEntityIndex;
+                        tm.target_entity_index = targetIndex;
+                        tm.valid_weapons = validWeapons;
+                        targetsMask.add(tm);
                     }
                 }
 
-                if (!validWeapons.isEmpty()) {
-                    RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
-                    int targetIndex = game.getEntitiesVector().indexOf(target);
-                    tm.target_entity_index = targetIndex;
-                    tm.valid_weapons = validWeapons;
-                    targetsMask.add(tm);
+                if (!targetsMask.isEmpty()) {
+                    RLActionMask.RLTwistMask twistMask = new RLActionMask.RLTwistMask();
+                    twistMask.source_entity_index = sourceEntityIndex;
+                    twistMask.twist = twist;
+                    twistMask.valid_targets = targetsMask;
+                    validTwists.add(twistMask);
                 }
-            }
 
-            if (!targetsMask.isEmpty()) {
-                RLActionMask.RLTwistMask twistMask = new RLActionMask.RLTwistMask();
-                twistMask.twist = twist;
-                twistMask.valid_targets = targetsMask;
-                validTwists.add(twistMask);
+                // Revert the twist
+                shooter.setSecondaryFacing(originalFacing, false);
             }
-
-            // Revert the twist
-            shooter.setSecondaryFacing(originalFacing, false);
         }
 
         return validTwists;
     }
 
-    public void sendWeaponBehavioralCloningTrajectory(Entity shooter,
+    public void sendWeaponBehavioralCloningTrajectory(List<Entity> selectableEntities, Entity shooter,
             java.util.Vector<megamek.common.actions.EntityAction> attacks, int chosenTwist) {
         if (!isConnected())
             return;
@@ -927,11 +1056,10 @@ public class RLDataPipeline {
 
         try {
             RLActionMask maskData = new RLActionMask();
-            int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(shooter);
-            maskData.active_entity_index = activeIndex;
-            maskData.valid_twists = buildFiringMask(shooter);
+            maskData.valid_twists = buildFiringMask(selectableEntities);
 
             RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
+            targetAction.selected_entity_index = baseClient.getGame().getEntitiesVector().indexOf(shooter);
             targetAction.torso_twist = chosenTwist;
             targetAction.attacks = new ArrayList<>();
 
@@ -953,7 +1081,7 @@ public class RLDataPipeline {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", "WEAPON_BC");
-            payload.put("state", serializeGameState());
+            payload.put("state", serializeGameState(null));
             payload.put("mask", maskData);
             payload.put("rewards", calculateRewards());
             payload.put("target_action", targetAction);
@@ -965,11 +1093,15 @@ public class RLDataPipeline {
         }
     }
 
-    public List<RLActionMask.RLTargetMask> buildPhysicalMask(Entity shooter) {
+    public List<RLActionMask.RLTargetMask> buildPhysicalMask(List<Entity> shooters) {
         List<RLActionMask.RLTargetMask> targetsMask = new ArrayList<>();
         megamek.common.game.Game game = baseClient.getGame();
 
-        for (Entity target : game.getEntitiesVector()) {
+        for (Entity shooter : shooters) {
+            if (shooter == null) continue;
+            int sourceEntityIndex = game.getEntitiesVector().indexOf(shooter);
+
+            for (Entity target : game.getEntitiesVector()) {
                 if (target == null) continue;
             if (!target.isTargetable() || target.isDestroyed() || !target.isEnemyOf(shooter))
                 continue;
@@ -1028,17 +1160,19 @@ public class RLDataPipeline {
 
             if (!validAttacks.isEmpty()) {
                 RLActionMask.RLTargetMask tm = new RLActionMask.RLTargetMask();
+                tm.source_entity_index = sourceEntityIndex;
                 tm.target_entity_index = game.getEntitiesVector().indexOf(target);
                 tm.target_entity_id = target.getId();
                 tm.valid_attacks = validAttacks;
                 targetsMask.add(tm);
             }
         }
+    }
 
         return targetsMask;
     }
 
-    public void sendPhysicalBehavioralCloningTrajectory(Entity shooter,
+    public void sendPhysicalBehavioralCloningTrajectory(List<Entity> selectableEntities, Entity shooter,
             java.util.Vector<megamek.common.actions.EntityAction> attacks) {
         if (!isConnected())
             return;
@@ -1047,11 +1181,10 @@ public class RLDataPipeline {
 
         try {
             RLActionMask maskData = new RLActionMask();
-            int activeIndex = baseClient.getGame().getEntitiesVector().indexOf(shooter);
-            maskData.active_entity_index = activeIndex;
-            maskData.valid_targets = buildPhysicalMask(shooter);
+            maskData.valid_targets = buildPhysicalMask(selectableEntities);
 
             RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
+            targetAction.selected_entity_index = baseClient.getGame().getEntitiesVector().indexOf(shooter);
             targetAction.attacks = new ArrayList<>();
 
             for (megamek.common.actions.EntityAction ea : attacks) {
@@ -1091,7 +1224,7 @@ public class RLDataPipeline {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("context", "PHYSICAL_BC");
-            payload.put("state", serializeGameState());
+            payload.put("state", serializeGameState(null));
             payload.put("mask", maskData);
             payload.put("rewards", calculateRewards());
             payload.put("target_action", targetAction);
