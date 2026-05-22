@@ -68,7 +68,7 @@ def validate_extraction():
             assert graph['hex'].x.size(1) == env.feature_dims['hex'], f"Hex feature dimension mismatch. Expected {env.feature_dims['hex']}, got {graph['hex'].x.size(1)}"
             assert graph['unit'].x.size(1) == env.feature_dims['unit'], f"Unit feature dimension mismatch."
             assert graph['weapon'].x.size(1) == env.feature_dims['weapon'], f"Weapon feature dimension mismatch."
-            assert graph['action'].x.size(1) == 6, f"Action feature dimension mismatch. Expected 6, got {graph['action'].x.size(1)}"
+            assert graph['action'].x.size(1) == 8, f"Action feature dimension mismatch. Expected 8, got {graph['action'].x.size(1)}"
             
             # Select random action
             action_dict = {"selected_path_index": -1}

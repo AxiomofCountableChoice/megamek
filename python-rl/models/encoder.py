@@ -17,6 +17,7 @@ DEFAULT_METADATA = (
         ('hex', 'hexAdj_5', 'hex'),
         ('unit', 'occupies', 'hex'),
         ('weapon', 'equips', 'unit'),
+        ('weapon', 'targeted', 'unit'),
         ('unit', 'moveTypeTMM_0', 'hex'),
         ('unit', 'moveTypeTMM_1', 'hex'),
         ('unit', 'moveTypeTMM_2', 'hex'),
@@ -49,7 +50,7 @@ class MegaMekHGTEncoder(nn.Module):
         # Using LazyLinear (-1) or predefined sizes. HGTConv natively expects projection first.
         self.node_proj = nn.ModuleDict({
             'hex': nn.Linear(feature_dims.get('hex', 14), hidden_dim),
-            'unit': nn.Linear(feature_dims.get('unit', 37), hidden_dim), 
+            'unit': nn.Linear(feature_dims.get('unit', 45), hidden_dim), 
             'weapon': nn.Linear(feature_dims.get('weapon', 10), hidden_dim)
         })
         
@@ -95,11 +96,6 @@ class MegaMekHGTEncoder(nn.Module):
                 x_dict[node_type] = self.node_proj[node_type](hetero_data[node_type].x)
             else:
                 x_dict[node_type] = torch.empty((0, self.hidden_dim), device=hetero_data['hex'].x.device)
-                
-        # PyG HGTConv requires all node types defined in metadata to be present in x_dict
-        for node in self.metadata[0]:
-            if node not in x_dict:
-                x_dict[node] = torch.empty((0, self.hidden_dim), device=hetero_data['hex'].x.device)
                 
         # Filter edge_index_dict to strictly match metadata to prevent PyG internal offset corruption
         edge_index_dict = {

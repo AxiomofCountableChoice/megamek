@@ -36,8 +36,8 @@ def process_batch(agent, batch, device, is_training=False, accumulation_steps=32
         if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
             valid_mask = (step_indices == k)
         else:
-            target_type = batch['action'].x[target_idx, 4].item()
-            valid_mask = (batch['action'].x[:, 4] == target_type)
+            target_type = batch['action'].x[target_idx, 6].item()
+            valid_mask = (batch['action'].x[:, 6] == target_type)
             
         if not valid_mask.any() or not valid_mask[target_idx]:
             break

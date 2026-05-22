@@ -78,7 +78,16 @@ public class RLDataCollectionPrincess extends Princess {
         
         // If a valid path is chosen, stream it down for supervised learning extraction
         if (chosenPath != null && dataPipeline.isConnected()) {
-            dataPipeline.sendBehavioralCloningTrajectory(entity, chosenPath);
+            java.util.List<Entity> selectableEntities = new java.util.ArrayList<>();
+            for (Entity e : getEntitiesOwned()) {
+                if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
+                    selectableEntities.add(e);
+                }
+            }
+            if (!selectableEntities.contains(entity)) {
+                selectableEntities.add(entity); // Just in case
+            }
+            dataPipeline.sendBehavioralCloningTrajectory(selectableEntities, entity, chosenPath);
         }
         
         return chosenPath;
@@ -110,12 +119,24 @@ public class RLDataCollectionPrincess extends Princess {
                          chosenTwist = diff;
                      }
                  }
-                 dataPipeline.sendWeaponBehavioralCloningTrajectory(shooter, attacks, chosenTwist);
+                 java.util.List<Entity> selectableEntities = new java.util.ArrayList<>();
+                 for (Entity e : getEntitiesOwned()) {
+                     if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
+                         selectableEntities.add(e);
+                     }
+                 }
+                 dataPipeline.sendWeaponBehavioralCloningTrajectory(selectableEntities, shooter, attacks, chosenTwist);
              }
         } else if (getGame().getPhase() == megamek.common.enums.GamePhase.PHYSICAL) {
              Entity shooter = getGame().getEntity(aen);
              if (shooter != null && dataPipeline.isConnected()) {
-                 dataPipeline.sendPhysicalBehavioralCloningTrajectory(shooter, attacks);
+                 java.util.List<Entity> selectableEntities = new java.util.ArrayList<>();
+                 for (Entity e : getEntitiesOwned()) {
+                     if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
+                         selectableEntities.add(e);
+                     }
+                 }
+                 dataPipeline.sendPhysicalBehavioralCloningTrajectory(selectableEntities, shooter, attacks);
              }
         }
         super.sendAttackData(aen, attacks);

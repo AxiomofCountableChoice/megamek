@@ -76,6 +76,11 @@ We also define the following sets of edges, which are used to encode game specif
 \mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H
 ```
 
+9. Edges for showing which weapons have targeted which unit to faciliate tracking weapon declarations.
+```math
+\mathcal{E}_{\text{weaponTarget}}: \mathcal{V}_W \to \mathcal{V}_U
+```
+
 Defining the sets:
 
 ```math

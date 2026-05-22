@@ -75,8 +75,8 @@ class MegaMekAgent(nn.Module):
             if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
                 valid_mask = (step_indices == k)
             else:
-                target_type = batch['action'].x[target_idx, 4].item()
-                valid_mask = (batch['action'].x[:, 4] == target_type)
+                target_type = batch['action'].x[target_idx, 6].item()
+                valid_mask = (batch['action'].x[:, 6] == target_type)
                 
             if not valid_mask.any():
                 break
@@ -156,24 +156,79 @@ class MegaMekAgent(nn.Module):
         phase_type = int(hetero_data['action'].x[0, 7].item())
         
         if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT (assuming similar flat action space)
-            s_0 = self.actor_pointer.decode_sequence(z, None) 
-            logits = self.actor_pointer.score_actions(s_0, e_actions, batch_idx)
+            # Re-implement 2-step autoregressive movement decoding as specified by ARCHITECTURE.md
+            active_entity_idx = mask_tree.get("active_entity_index", -1) if mask_tree else -1
             
-            if logits.size(0) > 0:
-                probs = torch.softmax(logits, dim=-1)
-                if deterministic:
-                    action_idx = torch.argmax(probs).item()
-                    mu_log_prob = torch.log(probs[action_idx] + 1e-8).item()
-                else:
-                    dist = torch.distributions.Categorical(probs)
-                    action_idx = dist.sample().item()
-                    mu_log_prob = dist.log_prob(torch.tensor(action_idx, device=probs.device)).item()
-            else:
-                action_idx = -1
-                probs = torch.empty((0,))
-                mu_log_prob = 0.0
+            step_indices = hetero_data['action'].step_idx
+            source_unit_indices = hetero_data['action'].source_unit_idx
+            target_hex_indices = hetero_data['action'].target_hex_idx
+            path_indices = hetero_data['action'].path_idx
+            
+            # Step 0: Destination Hex selection (Tier 0)
+            step0_mask = (step_indices == 0) & (source_unit_indices == active_entity_idx)
+            
+            if not step0_mask.any():
+                # Fallback if no valid Tier 0 options exist for the active entity
+                return {"selected_path_index": -1}, v_mean, torch.empty((0,)), 0.0
                 
-            return {"selected_path_index": action_idx}, v_mean, probs, mu_log_prob
+            # Score Step 0
+            s_0 = self.actor_pointer.decode_sequence(z, None)
+            e_step0 = e_actions[step0_mask]
+            step0_batch_idx = batch_idx[step0_mask] if batch_idx is not None else None
+            
+            logits_0 = self.actor_pointer.score_actions(s_0, e_step0, step0_batch_idx)
+            probs_0 = torch.softmax(logits_0, dim=-1)
+            
+            if deterministic:
+                rel_selected_0 = torch.argmax(probs_0).item()
+                mu_log_prob_0 = torch.log(probs_0[rel_selected_0] + 1e-8).item()
+            else:
+                dist_0 = torch.distributions.Categorical(probs_0)
+                rel_selected_0 = dist_0.sample().item()
+                mu_log_prob_0 = dist_0.log_prob(torch.tensor(rel_selected_0, device=probs_0.device)).item()
+                
+            # Map back to global action node index
+            global_indices_0 = torch.where(step0_mask)[0]
+            selected_node_0 = global_indices_0[rel_selected_0].item()
+            
+            selected_hex = target_hex_indices[selected_node_0].item()
+            chosen_embedding_0 = e_actions[selected_node_0]
+            
+            # Step 1: Specific path/facing option selection (Tier 1) conditioned on Step 0 selection
+            step1_mask = (step_indices == 1) & (source_unit_indices == active_entity_idx) & (target_hex_indices == selected_hex)
+            
+            if not step1_mask.any():
+                # Fallback if no valid Tier 1 paths exist for this hex (should not happen in valid states)
+                return {"selected_path_index": -1}, v_mean, torch.empty((0,)), mu_log_prob_0
+                
+            # Decode using history (Step 0 embedding)
+            history_tensor = chosen_embedding_0.unsqueeze(0).unsqueeze(0) # [1, 1, hidden_dim]
+            s_1 = self.actor_pointer.decode_sequence(z, history_tensor)
+            
+            e_step1 = e_actions[step1_mask]
+            step1_batch_idx = batch_idx[step1_mask] if batch_idx is not None else None
+            
+            logits_1 = self.actor_pointer.score_actions(s_1, e_step1, step1_batch_idx)
+            probs_1 = torch.softmax(logits_1, dim=-1)
+            
+            if deterministic:
+                rel_selected_1 = torch.argmax(probs_1).item()
+                mu_log_prob_1 = torch.log(probs_1[rel_selected_1] + 1e-8).item()
+            else:
+                dist_1 = torch.distributions.Categorical(probs_1)
+                rel_selected_1 = dist_1.sample().item()
+                mu_log_prob_1 = dist_1.log_prob(torch.tensor(rel_selected_1, device=probs_1.device)).item()
+                
+            # Map back to global action node index
+            global_indices_1 = torch.where(step1_mask)[0]
+            selected_node_1 = global_indices_1[rel_selected_1].item()
+            
+            # Retrieve Java-compatible path index
+            selected_path_idx = path_indices[selected_node_1].item()
+            
+            total_mu_log_prob = mu_log_prob_0 + mu_log_prob_1
+            
+            return {"selected_path_index": selected_path_idx}, v_mean, probs_1, total_mu_log_prob
             
         elif phase_type == 1:
             # WEAPON_INFERENCE: Autoregressive Decoding
@@ -276,6 +331,7 @@ class MegaMekAgent(nn.Module):
                 best_beam = beams[0] if beams else None
                 if best_beam:
                     response["twist"] = best_beam["twist"].get("twist", 0)
+                    response["selected_entity_id"] = best_beam["twist"].get("source_entity_index", -1)
                     response["attacks"] = best_beam["attacks"]
                     mu_log_prob_total = best_beam["log_prob_sum"]
             else:
@@ -287,6 +343,7 @@ class MegaMekAgent(nn.Module):
                     
                 mu_log_prob_total += twist_log_prob
                 response["twist"] = best_twist.get("twist", 0)
+                response["selected_entity_id"] = best_twist.get("source_entity_index", -1)
                 chosen_twist_node = best_twist.get("node_idx")
                 history_embeddings.append(e_actions[chosen_twist_node].unsqueeze(0))
                 
@@ -381,6 +438,7 @@ class MegaMekAgent(nn.Module):
                     
             if best_att:
                 mu_log_prob_total += att_log_prob
+                response["selected_entity_id"] = chosen_target.get("source_entity_index", -1)
                 response["attack"] = {"target_id": target_entity, "action_type": best_att.get("action_type", -1)}
                 
             return response, v_mean, torch.empty((0,)), mu_log_prob_total
