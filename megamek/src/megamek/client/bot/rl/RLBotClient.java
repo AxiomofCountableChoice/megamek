@@ -208,7 +208,22 @@ public class RLBotClient extends BotClient {
                 }
                 
                 if (response.attacks != null) {
-                    for (RLActionResponse.RLAttack att : response.attacks) {
+                    for (Object attObj : response.attacks) {
+                        if (attObj == null) continue;
+                        RLActionResponse.RLAttack att = null;
+                        if (attObj instanceof RLActionResponse.RLAttack) {
+                            att = (RLActionResponse.RLAttack) attObj;
+                        } else if (attObj instanceof java.util.Map) {
+                            java.util.Map<?, ?> map = (java.util.Map<?, ?>) attObj;
+                            att = new RLActionResponse.RLAttack();
+                            if (map.containsKey("target_id") && map.get("target_id") != null) {
+                                att.target_id = ((Number) map.get("target_id")).intValue();
+                            }
+                            if (map.containsKey("weapon_id") && map.get("weapon_id") != null) {
+                                att.weapon_id = ((Number) map.get("weapon_id")).intValue();
+                            }
+                        }
+                        
                         if (att != null && att.target_id != null && att.weapon_id != null) {
                             if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
                                 Entity target = game.getEntitiesVector().get(att.target_id);
