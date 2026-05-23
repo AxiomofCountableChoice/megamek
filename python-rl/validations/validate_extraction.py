@@ -8,13 +8,13 @@ import traceback
 from env import MegaMekEnvironment
 
 PORT = 4050
-repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
-mm_data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "mm-data"))
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+mm_data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "mm-data"))
 
 def launch_server():
     print(f"Starting headless MegaMek on port {PORT} for validation...")
     cmd = [
-        "build/install/MegaMek/bin/megamek",
+        "megamek/build/install/MegaMek/bin/megamek",
         "-rlexport",
         "-autogen",
         "-randomMap",
@@ -23,7 +23,13 @@ def launch_server():
     ]
     env = os.environ.copy()
     env["RL_SERVER_PORT"] = str(PORT)
-    proc = subprocess.Popen(cmd, cwd=repo_root, env=env)
+    env["SENTRY_DSN"] = ""
+    log_path = os.path.join(os.path.dirname(__file__), "..", "megamek_server.log")
+    log_file = open(log_path, "w")
+    
+    install_dir = os.path.join(repo_root, "megamek", "build", "install", "MegaMek")
+    cmd[0] = "./bin/megamek"
+    proc = subprocess.Popen(cmd, cwd=install_dir, env=env, stdout=log_file, stderr=subprocess.STDOUT)
     return proc
 
 def validate_extraction():

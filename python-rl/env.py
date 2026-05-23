@@ -56,6 +56,14 @@ class MegaMekEnvironment:
     def static_hex_adjacency_edges(self, value):
         self.state_parser.static_hex_adjacency_edges = value
 
+    @property
+    def board_width(self):
+        return self.state_parser.board_width
+
+    @property
+    def feature_dims(self):
+        return self.state_parser.feature_dims
+
     def reset(self):
         self.done = False
         if self.network.logger: 

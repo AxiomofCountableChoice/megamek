@@ -115,21 +115,53 @@ class MegaMekAgent(nn.Module):
             
         return pi_log_prob_total, entropy_total, v_mean, v_variance
 
-    def get_action(self, hetero_data, mask_tree, deterministic=False):
+    def _decode_and_sample_step(self, z, history_embeddings, e_actions, candidates, batch_idx, deterministic=False):
         """
-        Forward pass of the agent for inference/sampling.
-        Supports deterministic (greedy) and stochastic (categorical) action selection.
-        Returns: response_dict, v_mean, probs, mu_log_prob
+        Decodes the sequence using the history of chosen action embeddings,
+        scores candidates (either a boolean mask or a list of option dicts),
+        and samples the selected action.
         """
-        def _sample_step(logits, valid_options, det):
-            if not valid_options:
-                return None, 0.0
-                
-            indices = [opt.get("node_idx", -1) for opt in valid_options]
-            valid_logits = logits[indices]
-            probs = torch.softmax(valid_logits, dim=-1)
+        # 1. Decode sequence based on history
+        if not history_embeddings:
+            history_tensor = None
+        else:
+            history_tensor = torch.stack(history_embeddings, dim=1) # [1, len, hidden_dim]
             
-            if det:
+        s_k = self.actor_pointer.decode_sequence(z, history_tensor)
+        
+        # 2. Score candidates
+        if isinstance(candidates, torch.Tensor):
+            # Mask based scoring
+            if not candidates.any():
+                return None, 0.0, torch.empty((0,))
+            e_candidates = e_actions[candidates]
+            cand_batch_idx = batch_idx[candidates] if batch_idx is not None else None
+            logits = self.actor_pointer.score_actions(s_k, e_candidates, cand_batch_idx)
+            probs = torch.softmax(logits, dim=-1)
+            
+            if deterministic:
+                rel_idx = torch.argmax(probs).item()
+                log_prob = torch.log(probs[rel_idx] + 1e-8).item()
+            else:
+                dist = torch.distributions.Categorical(probs)
+                rel_idx = dist.sample().item()
+                log_prob = dist.log_prob(torch.tensor(rel_idx, device=probs.device)).item()
+                
+            global_indices = torch.where(candidates)[0]
+            selected_global_idx = global_indices[rel_idx].item()
+            return selected_global_idx, log_prob, probs
+        else:
+            # Option list based scoring
+            if not candidates:
+                return None, 0.0, torch.empty((0,))
+                
+            indices = [opt.get("node_idx", -1) for opt in candidates]
+            e_candidates = e_actions[indices]
+            cand_batch_idx = batch_idx[indices] if batch_idx is not None else None
+            logits = self.actor_pointer.score_actions(s_k, e_candidates, cand_batch_idx)
+            probs = torch.softmax(logits, dim=-1)
+            
+            if deterministic:
                 idx = torch.argmax(probs).item()
                 log_prob = torch.log(probs[idx] + 1e-8).item()
             else:
@@ -137,8 +169,269 @@ class MegaMekAgent(nn.Module):
                 idx = dist.sample().item()
                 log_prob = dist.log_prob(torch.tensor(idx, device=probs.device)).item()
                 
-            return valid_options[idx], log_prob
+            return candidates[idx], log_prob, probs
 
+    def _beam_search_weapon_phase(self, z, e_actions, batch_idx, mask_tree, beam_width=3):
+        """
+        Isolated beam search tree search for the WEAPON phase (deterministic evaluation).
+        """
+        response = {"twist": 0, "attacks": []}
+        valid_twists = mask_tree.get("valid_twists", [])
+        if not valid_twists:
+            return response, torch.empty((0,)), 0.0
+            
+        # Initial twist scoring: Step 0
+        s_0 = self.actor_pointer.decode_sequence(z, None)
+        logits_0 = self.actor_pointer.score_actions(s_0, e_actions, batch_idx)
+        
+        beams = []
+        twist_indices = [opt.get("node_idx", -1) for opt in valid_twists]
+        twist_logits = logits_0[twist_indices]
+        twist_log_probs = torch.log_softmax(twist_logits, dim=-1)
+        
+        for i, opt_tm in enumerate(valid_twists):
+            lp = twist_log_probs[i].item()
+            beams.append({
+                "twist": opt_tm,
+                "attacks": [],
+                "history": [e_actions[opt_tm.get("node_idx")].unsqueeze(0)],
+                "fired_weapons": set(),
+                "log_prob_sum": lp,
+                "done": False
+            })
+            
+        beams = sorted(beams, key=lambda x: x["log_prob_sum"], reverse=True)[:beam_width]
+        end_node_idx = mask_tree.get("end_node_idx", -1)
+        
+        while True:
+            if all(b["done"] for b in beams):
+                break
+            new_beams = []
+            for b in beams:
+                if b["done"]:
+                    new_beams.append(b)
+                    continue
+                    
+                s_k = self.actor_pointer.decode_sequence(z, torch.stack(b["history"], dim=1))
+                logits_k = self.actor_pointer.score_actions(s_k, e_actions, batch_idx)
+                
+                valid_options = []
+                if end_node_idx != -1:
+                    valid_options.append({"type": "END", "node_idx": end_node_idx, "data": None})
+                    
+                for tm in b["twist"].get("valid_targets", []):
+                    unfired = [wm for wm in tm.get("valid_weapons", []) if wm.get("weapon_id", -1) not in b["fired_weapons"]]
+                    if unfired:
+                        valid_options.append({"type": "TARGET", "node_idx": tm.get("node_idx", -1), "data": tm, "unfired": unfired})
+                        
+                if not valid_options:
+                    b["done"] = True
+                    new_beams.append(b)
+                    continue
+                    
+                opt_indices = [opt["node_idx"] for opt in valid_options]
+                opt_log_probs = torch.log_softmax(logits_k[opt_indices], dim=-1)
+                
+                for i, opt in enumerate(valid_options):
+                    lp = opt_log_probs[i].item()
+                    if opt["type"] == "END":
+                        new_b = dict(b)
+                        new_b["history"] = list(b["history"])
+                        new_b["attacks"] = list(b["attacks"])
+                        new_b["fired_weapons"] = set(b["fired_weapons"])
+                        new_b["log_prob_sum"] = b["log_prob_sum"] + lp
+                        new_b["done"] = True
+                        new_beams.append(new_b)
+                    else:
+                        target_entity = opt["data"].get("target_entity_index", -1)
+                        temp_history = list(b["history"]) + [e_actions[opt["node_idx"]].unsqueeze(0)]
+                        s_k1 = self.actor_pointer.decode_sequence(z, torch.stack(temp_history, dim=1))
+                        logits_k1 = self.actor_pointer.score_actions(s_k1, e_actions, batch_idx)
+                        
+                        w_opts = opt["unfired"]
+                        w_indices = [w.get("node_idx", -1) for w in w_opts]
+                        w_log_probs = torch.log_softmax(logits_k1[w_indices], dim=-1)
+                        
+                        for j, w_opt in enumerate(w_opts):
+                            w_lp = w_log_probs[j].item()
+                            w_id = w_opt.get("weapon_id", -1)
+                            new_b = dict(b)
+                            new_b["history"] = temp_history + [e_actions[w_opt["node_idx"]].unsqueeze(0)]
+                            new_b["attacks"] = list(b["attacks"]) + [{"target_id": target_entity, "weapon_id": w_id}]
+                            new_b["fired_weapons"] = set(b["fired_weapons"]) | {w_id}
+                            new_b["log_prob_sum"] = b["log_prob_sum"] + lp + w_lp
+                            new_b["done"] = False
+                            new_beams.append(new_b)
+            beams = sorted(new_beams, key=lambda x: x["log_prob_sum"], reverse=True)[:beam_width]
+            
+        best_beam = beams[0] if beams else None
+        if best_beam:
+            response["twist"] = best_beam["twist"].get("twist", 0)
+            response["selected_entity_id"] = best_beam["twist"].get("source_entity_index", -1)
+            response["attacks"] = best_beam["attacks"]
+            mu_log_prob_total = best_beam["log_prob_sum"]
+            
+        return response, torch.empty((0,)), mu_log_prob_total
+
+    def _get_movement_action(self, z, e_actions, batch_idx, hetero_data, mask_tree, deterministic):
+        active_entity_idx = mask_tree.get("active_entity_index", -1) if mask_tree else -1
+        
+        step_indices = hetero_data['action'].step_idx
+        source_unit_indices = hetero_data['action'].source_unit_idx
+        target_hex_indices = hetero_data['action'].target_hex_idx
+        path_indices = hetero_data['action'].path_idx
+        
+        # Step 0: Destination Hex selection (Tier 0)
+        step0_mask = (step_indices == 0) & (source_unit_indices == active_entity_idx)
+        
+        res = self._decode_and_sample_step(z, [], e_actions, step0_mask, batch_idx, deterministic)
+        if res[0] is None:
+            return {"selected_path_index": -1}, torch.empty((0,)), 0.0
+            
+        selected_node_0, mu_log_prob_0, probs_0 = res
+        
+        selected_hex = target_hex_indices[selected_node_0].item()
+        chosen_embedding_0 = e_actions[selected_node_0]
+        
+        # Step 1: Specific path/facing option selection (Tier 1) conditioned on Step 0 selection
+        step1_mask = (step_indices == 1) & (source_unit_indices == active_entity_idx) & (target_hex_indices == selected_hex)
+        
+        # Decode using history (Step 0 embedding)
+        history = [chosen_embedding_0.unsqueeze(0)]
+        res1 = self._decode_and_sample_step(z, history, e_actions, step1_mask, batch_idx, deterministic)
+        if res1[0] is None:
+            return {"selected_path_index": -1}, torch.empty((0,)), mu_log_prob_0
+            
+        selected_node_1, mu_log_prob_1, probs_1 = res1
+        
+        # Retrieve Java-compatible path index
+        selected_path_idx = path_indices[selected_node_1].item()
+        total_mu_log_prob = mu_log_prob_0 + mu_log_prob_1
+        
+        return {"selected_path_index": selected_path_idx}, probs_1, total_mu_log_prob
+
+    def _get_weapon_action(self, z, e_actions, batch_idx, mask_tree, deterministic):
+        response = {"twist": 0, "attacks": []}
+        mu_log_prob_total = 0.0
+        
+        if not mask_tree or "valid_twists" not in mask_tree:
+            return response, torch.empty((0,)), 0.0
+            
+        if deterministic:
+            return self._beam_search_weapon_phase(z, e_actions, batch_idx, mask_tree)
+            
+        # Stochastic Sampling using the unified autoregressive helper
+        valid_twists = mask_tree.get("valid_twists", [])
+        
+        best_twist, twist_log_prob, _ = self._decode_and_sample_step(
+            z, [], e_actions, valid_twists, batch_idx, deterministic=False
+        )
+        
+        if not best_twist:
+            return response, torch.empty((0,)), 0.0
+            
+        mu_log_prob_total += twist_log_prob
+        response["twist"] = best_twist.get("twist", 0)
+        response["selected_entity_id"] = best_twist.get("source_entity_index", -1)
+        chosen_twist_node = best_twist.get("node_idx")
+        
+        history_embeddings = [e_actions[chosen_twist_node].unsqueeze(0)]
+        end_node_idx = mask_tree.get("end_node_idx", -1)
+        fired_weapons = set()
+        
+        while True:
+            valid_options = []
+            if end_node_idx != -1:
+                valid_options.append({"type": "END", "node_idx": end_node_idx, "data": None})
+                
+            valid_targets = best_twist.get("valid_targets", [])
+            for tm in valid_targets:
+                unfired_weapons = [wm for wm in tm.get("valid_weapons", []) if wm.get("weapon_id", -1) not in fired_weapons]
+                if unfired_weapons:
+                    n_idx = tm.get("node_idx", -1)
+                    if n_idx != -1:
+                        valid_options.append({"type": "TARGET", "node_idx": n_idx, "data": tm, "unfired": unfired_weapons})
+                        
+            best_opt, opt_log_prob, _ = self._decode_and_sample_step(
+                z, history_embeddings, e_actions, valid_options, batch_idx, deterministic=False
+            )
+            
+            if not best_opt or best_opt["type"] == "END":
+                if best_opt:
+                    mu_log_prob_total += opt_log_prob
+                break
+                
+            mu_log_prob_total += opt_log_prob
+            chosen_target = best_opt["data"]
+            target_entity = chosen_target.get("target_entity_index", -1)
+            history_embeddings.append(e_actions[best_opt["node_idx"]].unsqueeze(0))
+            
+            best_w_opt, w_log_prob, _ = self._decode_and_sample_step(
+                z, history_embeddings, e_actions, best_opt["unfired"], batch_idx, deterministic=False
+            )
+            
+            if not best_w_opt:
+                break
+                
+            mu_log_prob_total += w_log_prob
+            w_id = best_w_opt.get("weapon_id", -1)
+            fired_weapons.add(w_id)
+            history_embeddings.append(e_actions[best_w_opt["node_idx"]].unsqueeze(0))
+            
+            response["attacks"].append({"target_id": target_entity, "weapon_id": w_id})
+            
+        return response, torch.empty((0,)), mu_log_prob_total
+
+    def _get_physical_action(self, z, e_actions, batch_idx, mask_tree, deterministic):
+        response = {"attack": None}
+        mu_log_prob_total = 0.0
+        
+        if not mask_tree or "valid_targets" not in mask_tree:
+            return response, torch.empty((0,)), 0.0
+            
+        end_node_idx = mask_tree.get("end_node_idx", -1)
+        valid_targets = mask_tree.get("valid_targets", [])
+        
+        valid_options = []
+        if end_node_idx != -1:
+            valid_options.append({"type": "END", "node_idx": end_node_idx, "data": None})
+        for tm in valid_targets:
+            n_idx = tm.get("node_idx", -1)
+            if n_idx != -1:
+                valid_options.append({"type": "TARGET", "node_idx": n_idx, "data": tm})
+                
+        best_opt, opt_log_prob, _ = self._decode_and_sample_step(
+            z, [], e_actions, valid_options, batch_idx, deterministic
+        )
+        
+        if not best_opt or best_opt["type"] == "END":
+            if best_opt:
+                mu_log_prob_total += opt_log_prob
+            return response, torch.empty((0,)), mu_log_prob_total
+            
+        mu_log_prob_total += opt_log_prob
+        chosen_target = best_opt["data"]
+        target_entity = chosen_target.get("target_entity_index", -1)
+        
+        history_embeddings = [e_actions[best_opt["node_idx"]].unsqueeze(0)]
+        
+        best_att, att_log_prob, _ = self._decode_and_sample_step(
+            z, history_embeddings, e_actions, chosen_target.get("valid_attacks", []), batch_idx, deterministic
+        )
+        
+        if best_att:
+            mu_log_prob_total += att_log_prob
+            response["selected_entity_id"] = chosen_target.get("source_entity_index", -1)
+            response["attack"] = {"target_id": target_entity, "action_type": best_att.get("action_type", -1)}
+            
+        return response, torch.empty((0,)), mu_log_prob_total
+
+    def get_action(self, hetero_data, mask_tree, deterministic=False):
+        """
+        Forward pass of the agent for inference/sampling.
+        Supports deterministic (greedy) and stochastic (categorical) action selection.
+        Returns: response_dict, v_mean, probs, mu_log_prob
+        """
         # 1. Forward Encoder
         z, x_dict = self.encoder(hetero_data)
         
@@ -155,293 +448,13 @@ class MegaMekAgent(nn.Module):
             
         phase_type = int(hetero_data['action'].x[0, 7].item())
         
-        if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT (assuming similar flat action space)
-            # Re-implement 2-step autoregressive movement decoding as specified by ARCHITECTURE.md
-            active_entity_idx = mask_tree.get("active_entity_index", -1) if mask_tree else -1
-            
-            step_indices = hetero_data['action'].step_idx
-            source_unit_indices = hetero_data['action'].source_unit_idx
-            target_hex_indices = hetero_data['action'].target_hex_idx
-            path_indices = hetero_data['action'].path_idx
-            
-            # Step 0: Destination Hex selection (Tier 0)
-            step0_mask = (step_indices == 0) & (source_unit_indices == active_entity_idx)
-            
-            if not step0_mask.any():
-                # Fallback if no valid Tier 0 options exist for the active entity
-                return {"selected_path_index": -1}, v_mean, torch.empty((0,)), 0.0
-                
-            # Score Step 0
-            s_0 = self.actor_pointer.decode_sequence(z, None)
-            e_step0 = e_actions[step0_mask]
-            step0_batch_idx = batch_idx[step0_mask] if batch_idx is not None else None
-            
-            logits_0 = self.actor_pointer.score_actions(s_0, e_step0, step0_batch_idx)
-            probs_0 = torch.softmax(logits_0, dim=-1)
-            
-            if deterministic:
-                rel_selected_0 = torch.argmax(probs_0).item()
-                mu_log_prob_0 = torch.log(probs_0[rel_selected_0] + 1e-8).item()
-            else:
-                dist_0 = torch.distributions.Categorical(probs_0)
-                rel_selected_0 = dist_0.sample().item()
-                mu_log_prob_0 = dist_0.log_prob(torch.tensor(rel_selected_0, device=probs_0.device)).item()
-                
-            # Map back to global action node index
-            global_indices_0 = torch.where(step0_mask)[0]
-            selected_node_0 = global_indices_0[rel_selected_0].item()
-            
-            selected_hex = target_hex_indices[selected_node_0].item()
-            chosen_embedding_0 = e_actions[selected_node_0]
-            
-            # Step 1: Specific path/facing option selection (Tier 1) conditioned on Step 0 selection
-            step1_mask = (step_indices == 1) & (source_unit_indices == active_entity_idx) & (target_hex_indices == selected_hex)
-            
-            if not step1_mask.any():
-                # Fallback if no valid Tier 1 paths exist for this hex (should not happen in valid states)
-                return {"selected_path_index": -1}, v_mean, torch.empty((0,)), mu_log_prob_0
-                
-            # Decode using history (Step 0 embedding)
-            history_tensor = chosen_embedding_0.unsqueeze(0).unsqueeze(0) # [1, 1, hidden_dim]
-            s_1 = self.actor_pointer.decode_sequence(z, history_tensor)
-            
-            e_step1 = e_actions[step1_mask]
-            step1_batch_idx = batch_idx[step1_mask] if batch_idx is not None else None
-            
-            logits_1 = self.actor_pointer.score_actions(s_1, e_step1, step1_batch_idx)
-            probs_1 = torch.softmax(logits_1, dim=-1)
-            
-            if deterministic:
-                rel_selected_1 = torch.argmax(probs_1).item()
-                mu_log_prob_1 = torch.log(probs_1[rel_selected_1] + 1e-8).item()
-            else:
-                dist_1 = torch.distributions.Categorical(probs_1)
-                rel_selected_1 = dist_1.sample().item()
-                mu_log_prob_1 = dist_1.log_prob(torch.tensor(rel_selected_1, device=probs_1.device)).item()
-                
-            # Map back to global action node index
-            global_indices_1 = torch.where(step1_mask)[0]
-            selected_node_1 = global_indices_1[rel_selected_1].item()
-            
-            # Retrieve Java-compatible path index
-            selected_path_idx = path_indices[selected_node_1].item()
-            
-            total_mu_log_prob = mu_log_prob_0 + mu_log_prob_1
-            
-            return {"selected_path_index": selected_path_idx}, v_mean, probs_1, total_mu_log_prob
-            
+        if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT
+            response_dict, probs, mu_log_prob = self._get_movement_action(z, e_actions, batch_idx, hetero_data, mask_tree, deterministic)
         elif phase_type == 1:
-            # WEAPON_INFERENCE: Autoregressive Decoding
-            response = {"twist": 0, "attacks": []}
-            mu_log_prob_total = 0.0
-            
-            if not mask_tree or "valid_twists" not in mask_tree:
-                return response, v_mean, torch.empty((0,)), 0.0
-                
-            history_embeddings = []
-            
-            # Step 0: Torso Twist
-            s_0 = self.actor_pointer.decode_sequence(z, None)
-            logits_0 = self.actor_pointer.score_actions(s_0, e_actions, batch_idx)
-            
-            valid_twists = mask_tree.get("valid_twists", [])
-            
-            if deterministic:
-                # Beam Search for Evaluation
-                beam_width = 3
-                beams = []
-                twist_indices = [opt.get("node_idx", -1) for opt in valid_twists]
-                twist_logits = logits_0[twist_indices]
-                twist_log_probs = torch.log_softmax(twist_logits, dim=-1)
-                
-                for i, opt_tm in enumerate(valid_twists):
-                    lp = twist_log_probs[i].item()
-                    beams.append({
-                        "twist": opt_tm,
-                        "attacks": [],
-                        "history": [e_actions[opt_tm.get("node_idx")].unsqueeze(0)],
-                        "fired_weapons": set(),
-                        "log_prob_sum": lp,
-                        "done": False
-                    })
-                    
-                beams = sorted(beams, key=lambda x: x["log_prob_sum"], reverse=True)[:beam_width]
-                end_node_idx = mask_tree.get("end_node_idx", -1)
-                
-                while True:
-                    if all(b["done"] for b in beams): break
-                    new_beams = []
-                    for b in beams:
-                        if b["done"]:
-                            new_beams.append(b)
-                            continue
-                            
-                        s_k = self.actor_pointer.decode_sequence(z, torch.stack(b["history"], dim=1))
-                        logits_k = self.actor_pointer.score_actions(s_k, e_actions, batch_idx)
-                        
-                        valid_options = []
-                        if end_node_idx != -1:
-                            valid_options.append({"type": "END", "node_idx": end_node_idx, "data": None})
-                            
-                        for tm in b["twist"].get("valid_targets", []):
-                            unfired = [wm for wm in tm.get("valid_weapons", []) if wm.get("weapon_id", -1) not in b["fired_weapons"]]
-                            if unfired:
-                                valid_options.append({"type": "TARGET", "node_idx": tm.get("node_idx", -1), "data": tm, "unfired": unfired})
-                                
-                        if not valid_options:
-                            b["done"] = True
-                            new_beams.append(b)
-                            continue
-                            
-                        opt_indices = [opt["node_idx"] for opt in valid_options]
-                        opt_log_probs = torch.log_softmax(logits_k[opt_indices], dim=-1)
-                        
-                        for i, opt in enumerate(valid_options):
-                            lp = opt_log_probs[i].item()
-                            if opt["type"] == "END":
-                                new_b = dict(b)
-                                new_b["history"] = list(b["history"])
-                                new_b["attacks"] = list(b["attacks"])
-                                new_b["fired_weapons"] = set(b["fired_weapons"])
-                                new_b["log_prob_sum"] = b["log_prob_sum"] + lp
-                                new_b["done"] = True
-                                new_beams.append(new_b)
-                            else:
-                                target_entity = opt["data"].get("target_entity_index", -1)
-                                temp_history = list(b["history"]) + [e_actions[opt["node_idx"]].unsqueeze(0)]
-                                s_k1 = self.actor_pointer.decode_sequence(z, torch.stack(temp_history, dim=1))
-                                logits_k1 = self.actor_pointer.score_actions(s_k1, e_actions, batch_idx)
-                                
-                                w_opts = opt["unfired"]
-                                w_indices = [w.get("node_idx", -1) for w in w_opts]
-                                w_log_probs = torch.log_softmax(logits_k1[w_indices], dim=-1)
-                                
-                                for j, w_opt in enumerate(w_opts):
-                                    w_lp = w_log_probs[j].item()
-                                    w_id = w_opt.get("weapon_id", -1)
-                                    new_b = dict(b)
-                                    new_b["history"] = temp_history + [e_actions[w_opt["node_idx"]].unsqueeze(0)]
-                                    new_b["attacks"] = list(b["attacks"]) + [{"target_id": target_entity, "weapon_id": w_id}]
-                                    new_b["fired_weapons"] = set(b["fired_weapons"]) | {w_id}
-                                    new_b["log_prob_sum"] = b["log_prob_sum"] + lp + w_lp
-                                    new_b["done"] = False
-                                    new_beams.append(new_b)
-                    beams = sorted(new_beams, key=lambda x: x["log_prob_sum"], reverse=True)[:beam_width]
-                    
-                best_beam = beams[0] if beams else None
-                if best_beam:
-                    response["twist"] = best_beam["twist"].get("twist", 0)
-                    response["selected_entity_id"] = best_beam["twist"].get("source_entity_index", -1)
-                    response["attacks"] = best_beam["attacks"]
-                    mu_log_prob_total = best_beam["log_prob_sum"]
-            else:
-                # Stochastic Sampling
-                best_twist, twist_log_prob = _sample_step(logits_0, valid_twists, deterministic)
-                
-                if not best_twist:
-                    return response, v_mean, torch.empty((0,)), 0.0
-                    
-                mu_log_prob_total += twist_log_prob
-                response["twist"] = best_twist.get("twist", 0)
-                response["selected_entity_id"] = best_twist.get("source_entity_index", -1)
-                chosen_twist_node = best_twist.get("node_idx")
-                history_embeddings.append(e_actions[chosen_twist_node].unsqueeze(0))
-                
-                end_node_idx = mask_tree.get("end_node_idx", -1)
-                fired_weapons = set()
-                
-                while True:
-                    history_tensor = torch.stack(history_embeddings, dim=1)
-                    s_k = self.actor_pointer.decode_sequence(z, history_tensor)
-                    logits_k = self.actor_pointer.score_actions(s_k, e_actions, batch_idx)
-                    
-                    valid_options = []
-                    if end_node_idx != -1:
-                        valid_options.append({"type": "END", "node_idx": end_node_idx, "data": None})
-                        
-                    valid_targets = best_twist.get("valid_targets", [])
-                    for tm in valid_targets:
-                        unfired_weapons = [wm for wm in tm.get("valid_weapons", []) if wm.get("weapon_id", -1) not in fired_weapons]
-                        if unfired_weapons:
-                            n_idx = tm.get("node_idx", -1)
-                            if n_idx != -1:
-                                valid_options.append({"type": "TARGET", "node_idx": n_idx, "data": tm, "unfired": unfired_weapons})
-                                
-                    best_opt, opt_log_prob = _sample_step(logits_k, valid_options, deterministic)
-                            
-                    if not best_opt or best_opt["type"] == "END":
-                        if best_opt:
-                            mu_log_prob_total += opt_log_prob
-                        break
-                        
-                    mu_log_prob_total += opt_log_prob
-                    chosen_target = best_opt["data"]
-                    target_entity = chosen_target.get("target_entity_index", -1)
-                    history_embeddings.append(e_actions[best_opt["node_idx"]].unsqueeze(0))
-                    
-                    s_k1 = self.actor_pointer.decode_sequence(z, torch.stack(history_embeddings, dim=1))
-                    logits_k1 = self.actor_pointer.score_actions(s_k1, e_actions, batch_idx)
-                    
-                    best_w_opt, w_log_prob = _sample_step(logits_k1, best_opt["unfired"], deterministic)
-                            
-                    if not best_w_opt:
-                        break
-                        
-                    mu_log_prob_total += w_log_prob
-                    w_id = best_w_opt.get("weapon_id", -1)
-                    fired_weapons.add(w_id)
-                    history_embeddings.append(e_actions[best_w_opt["node_idx"]].unsqueeze(0))
-                    
-                    response["attacks"].append({"target_id": target_entity, "weapon_id": w_id})
-                    
-            return response, v_mean, torch.empty((0,)), mu_log_prob_total
-            
+            response_dict, probs, mu_log_prob = self._get_weapon_action(z, e_actions, batch_idx, mask_tree, deterministic)
         elif phase_type == 2:
-            # PHYSICAL_INFERENCE
-            response = {"attack": None}
-            mu_log_prob_total = 0.0
-            
-            if not mask_tree or "valid_targets" not in mask_tree:
-                return response, v_mean, torch.empty((0,)), 0.0
-                
-            history_embeddings = []
-            s_0 = self.actor_pointer.decode_sequence(z, None)
-            logits_0 = self.actor_pointer.score_actions(s_0, e_actions, batch_idx)
-            
-            end_node_idx = mask_tree.get("end_node_idx", -1)
-            valid_targets = mask_tree.get("valid_targets", [])
-            
-            valid_options = []
-            if end_node_idx != -1:
-                valid_options.append({"type": "END", "node_idx": end_node_idx, "data": None})
-            for tm in valid_targets:
-                n_idx = tm.get("node_idx", -1)
-                if n_idx != -1:
-                    valid_options.append({"type": "TARGET", "node_idx": n_idx, "data": tm})
-                    
-            best_opt, opt_log_prob = _sample_step(logits_0, valid_options, deterministic)
-                    
-            if not best_opt or best_opt["type"] == "END":
-                if best_opt:
-                    mu_log_prob_total += opt_log_prob
-                return response, v_mean, torch.empty((0,)), mu_log_prob_total
-                
-            mu_log_prob_total += opt_log_prob
-            chosen_target = best_opt["data"]
-            target_entity = chosen_target.get("target_entity_index", -1)
-            history_embeddings.append(e_actions[best_opt["node_idx"]].unsqueeze(0))
-            
-            s_1 = self.actor_pointer.decode_sequence(z, torch.stack(history_embeddings, dim=1))
-            logits_1 = self.actor_pointer.score_actions(s_1, e_actions, batch_idx)
-            
-            best_att, att_log_prob = _sample_step(logits_1, chosen_target.get("valid_attacks", []), deterministic)
-                    
-            if best_att:
-                mu_log_prob_total += att_log_prob
-                response["selected_entity_id"] = chosen_target.get("source_entity_index", -1)
-                response["attack"] = {"target_id": target_entity, "action_type": best_att.get("action_type", -1)}
-                
-            return response, v_mean, torch.empty((0,)), mu_log_prob_total
-            
+            response_dict, probs, mu_log_prob = self._get_physical_action(z, e_actions, batch_idx, mask_tree, deterministic)
         else:
             return {"selected_path_index": -1}, v_mean, torch.empty((0,)), 0.0
+            
+        return response_dict, v_mean, probs, mu_log_prob
