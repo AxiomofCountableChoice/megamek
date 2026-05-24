@@ -26,8 +26,8 @@ public class RLActionResponse {
     public Integer selected_path_index;
     public Integer selected_entity_id;
     public Integer twist;
-    public List<RLAttack> attacks;
-    public RLPhysicalAttack attack;
+    public List<Object> attacks;
+    public Object attack;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RLAttack {

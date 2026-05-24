@@ -29,16 +29,18 @@ def validate_e2e_learning():
     ]
     env_vars = os.environ.copy()
     env_vars["RL_SERVER_PORT"] = str(PORT)
-    proc_mm = subprocess.Popen(cmd_mm, cwd=repo_root, env=env_vars)
+    log_path = os.path.join(os.path.dirname(__file__), "..", "megamek_e2e_server.log")
+    log_file = open(log_path, "w")
+    proc_mm = subprocess.Popen(cmd_mm, cwd=repo_root, env=env_vars, stdout=log_file, stderr=subprocess.STDOUT)
     
     time.sleep(5)
     
-    print("Starting Impala Worker to run a full 2v2 E2E validation for up to 10 turns...")
+    print("Starting Impala Worker to run a full 2v2 E2E validation for up to 100 turns...")
     cmd_worker = [
-        sys.executable, os.path.join(os.path.dirname(__file__), "..", "impala_worker.py"),
+        sys.executable, "-u", os.path.join(os.path.dirname(__file__), "..", "impala_worker.py"),
         "--port", str(PORT + 1000),
         "--dataset_dir", val_dataset_dir,
-        "--max_turns", "10"
+        "--max_turns", "100"
     ]
     proc_worker = subprocess.Popen(cmd_worker, text=True)
     

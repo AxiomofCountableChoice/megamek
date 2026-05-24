@@ -100,6 +100,7 @@ class StateParser:
         
         data = HeteroData()
         data.context = context
+        data.action_mask = mask
         
         if context.startswith("MOVEMENT"):
             phase_type = 0.0

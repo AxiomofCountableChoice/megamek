@@ -72,9 +72,9 @@ class ImpalaWorker:
                         action_dict, v_mean, probs, mu_log_prob = self.agent.get_action(state_graph, mask, deterministic=False)
 
                         
-                    # Check if it was a valid action by looking at the default fallback
+                    # Check if it was a valid action by looking at whether options were available
                     is_valid = True
-                    if "selected_path_index" in action_dict and action_dict["selected_path_index"] == -1:
+                    if (state_graph is None) or ('action' not in state_graph.node_types) or (state_graph['action'].x is None) or (state_graph['action'].x.size(0) == 0):
                         is_valid = False
                         
                     if is_valid:
@@ -83,6 +83,7 @@ class ImpalaWorker:
 
                         trajectory.append({
                             "raw_payload": current_payload,
+                            "action_mask": mask,
                             "action_dict": action_dict,
                             "mu_log_prob": mu_log_prob,
                             "reward": reward
@@ -102,11 +103,11 @@ class ImpalaWorker:
                 self.logger.error(f"Episode terminated abruptly: {e}")
                 self.env.done = False # ensure we don't save aborted games
             finally:
-                if len(trajectory) > 0 and getattr(self.env, "done", False):
+                if len(trajectory) > 0:
                     # Attempt to fetch full game log from server
                     gamelog_html = ""
                     try:
-                        gamelog_path = os.path.join(os.path.dirname(__file__), "..", "megamek", "logs", f"server_{self.port}", "gamelog.html")
+                        gamelog_path = os.path.join(os.path.dirname(__file__), "..", "megamek", "logs", f"server_{self.env.port}", "gamelog.html")
                         if os.path.exists(gamelog_path):
                             with open(gamelog_path, "r", encoding="utf-8") as f:
                                 gamelog_html = f.read()

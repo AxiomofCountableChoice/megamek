@@ -173,78 +173,80 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected void calculateFiringTurn() {
-        List<Entity> shooters = new java.util.ArrayList<>();
-        for (Entity e : getEntitiesOwned()) {
-            if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
-                shooters.add(e);
-            }
-        }
-
-        if (shooters.isEmpty()) {
-            sendDone(true);
-            return;
-        }
-
-        RLActionMask maskData = new RLActionMask();
-        maskData.valid_twists = dataPipeline.buildFiringMask(shooters);
-
-        RLActionResponse response = dataPipeline.queryPython("WEAPON_INFERENCE", maskData, RLActionResponse.class, declaredAttacksTracker);
-
-        Vector<megamek.common.actions.EntityAction> actions = new Vector<>();
-        Entity shooter = null;
-        if (response != null) {
-            System.out.println("[RLBotClient REPORT] WEAPON_INFERENCE executed. Twist: " + response.twist + ", Attacks: " + (response.attacks != null ? response.attacks.size() : 0));
-            
-            if (response.selected_entity_id != null && response.selected_entity_id >= 0 && response.selected_entity_id < game.getEntitiesVector().size()) {
-                shooter = game.getEntitiesVector().get(response.selected_entity_id);
-            } else if (!shooters.isEmpty()) {
-                shooter = shooters.get(0); // Fallback
-            }
-
-            if (shooter != null) {
-                if (response.twist != null && response.twist != 0) {
-                    int newFacing = megamek.client.bot.princess.FireControl.correctFacing(shooter.getFacing() + response.twist);
-                    actions.add(new megamek.common.actions.TorsoTwistAction(shooter.getId(), newFacing));
+        try {
+            List<Entity> shooters = new java.util.ArrayList<>();
+            for (Entity e : getEntitiesOwned()) {
+                if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
+                    shooters.add(e);
                 }
+            }
+
+            if (shooters.isEmpty()) {
+                sendDone(true);
+                return;
+            }
+
+            RLActionMask maskData = new RLActionMask();
+            maskData.valid_twists = dataPipeline.buildFiringMask(shooters);
+
+            RLActionResponse response = dataPipeline.queryPython("WEAPON_INFERENCE", maskData, RLActionResponse.class, declaredAttacksTracker);
+
+            Vector<megamek.common.actions.EntityAction> actions = new Vector<>();
+            Entity shooter = null;
+            if (response != null) {
+                System.out.println("[RLBotClient REPORT] WEAPON_INFERENCE executed. Twist: " + response.twist + ", Attacks: " + (response.attacks != null ? response.attacks.size() : 0));
                 
-                if (response.attacks != null) {
-                    for (Object attObj : response.attacks) {
-                        if (attObj == null) continue;
-                        RLActionResponse.RLAttack att = null;
-                        if (attObj instanceof RLActionResponse.RLAttack) {
-                            att = (RLActionResponse.RLAttack) attObj;
-                        } else if (attObj instanceof java.util.Map) {
-                            java.util.Map<?, ?> map = (java.util.Map<?, ?>) attObj;
-                            att = new RLActionResponse.RLAttack();
-                            if (map.containsKey("target_id") && map.get("target_id") != null) {
-                                att.target_id = ((Number) map.get("target_id")).intValue();
+                if (response.selected_entity_id != null && response.selected_entity_id >= 0 && response.selected_entity_id < game.getEntitiesVector().size()) {
+                    shooter = game.getEntitiesVector().get(response.selected_entity_id);
+                } else if (!shooters.isEmpty()) {
+                    shooter = shooters.get(0); // Fallback
+                }
+
+                if (shooter != null) {
+                    if (response.twist != null && response.twist != 0) {
+                        int newFacing = megamek.client.bot.princess.FireControl.correctFacing(shooter.getFacing() + response.twist);
+                        actions.add(new megamek.common.actions.TorsoTwistAction(shooter.getId(), newFacing));
+                    }
+                    
+                    if (response.attacks != null) {
+                        for (Object attObj : response.attacks) {
+                            if (attObj == null) continue;
+                            RLActionResponse.RLAttack att = null;
+                            if (attObj instanceof RLActionResponse.RLAttack) {
+                                att = (RLActionResponse.RLAttack) attObj;
+                            } else if (attObj instanceof java.util.Map) {
+                                java.util.Map<?, ?> map = (java.util.Map<?, ?>) attObj;
+                                att = new RLActionResponse.RLAttack();
+                                if (map.containsKey("target_id") && map.get("target_id") != null) {
+                                    att.target_id = ((Number) map.get("target_id")).intValue();
+                                }
+                                if (map.containsKey("weapon_id") && map.get("weapon_id") != null) {
+                                    att.weapon_id = ((Number) map.get("weapon_id")).intValue();
+                                }
                             }
-                            if (map.containsKey("weapon_id") && map.get("weapon_id") != null) {
-                                att.weapon_id = ((Number) map.get("weapon_id")).intValue();
-                            }
-                        }
-                        
-                        if (att != null && att.target_id != null && att.weapon_id != null) {
-                            if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
-                                Entity target = game.getEntitiesVector().get(att.target_id);
-                                if (target != null) {
-                                    megamek.common.equipment.Mounted weapon = shooter.getEquipment(att.weapon_id);
-                                    megamek.common.actions.WeaponAttackAction wAction = null;
-                                    if (weapon instanceof megamek.common.equipment.WeaponMounted) {
-                                        megamek.common.equipment.WeaponMounted wm = (megamek.common.equipment.WeaponMounted) weapon;
-                                        if (wm.getType().hasFlag(megamek.common.equipment.WeaponType.F_ARTILLERY) ||
-                                            (wm.getType() instanceof megamek.common.weapons.capitalWeapons.CapitalMissileWeapon &&
-                                             megamek.common.compute.Compute.isGroundToGround(shooter, target))) {
-                                            wAction = new megamek.common.actions.ArtilleryAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id, game);
+                            
+                            if (att != null && att.target_id != null && att.weapon_id != null) {
+                                if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
+                                    Entity target = game.getEntitiesVector().get(att.target_id);
+                                    if (target != null) {
+                                        megamek.common.equipment.Mounted weapon = shooter.getEquipment(att.weapon_id);
+                                        megamek.common.actions.WeaponAttackAction wAction = null;
+                                        if (weapon instanceof megamek.common.equipment.WeaponMounted) {
+                                            megamek.common.equipment.WeaponMounted wm = (megamek.common.equipment.WeaponMounted) weapon;
+                                            if (wm.getType().hasFlag(megamek.common.equipment.WeaponType.F_ARTILLERY) ||
+                                                (wm.getType() instanceof megamek.common.weapons.capitalWeapons.CapitalMissileWeapon &&
+                                                 megamek.common.compute.Compute.isGroundToGround(shooter, target))) {
+                                                wAction = new megamek.common.actions.ArtilleryAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id, game);
+                                            } else {
+                                                wAction = new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id);
+                                            }
                                         } else {
-                                            wAction = new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id);
+                                            wAction = new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getId(), att.weapon_id);
                                         }
-                                    } else {
-                                        wAction = new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getId(), att.weapon_id);
-                                    }
-                                    if (wAction != null) {
-                                        actions.add(wAction);
-                                        declaredAttacksTracker.add(wAction);
+                                        if (wAction != null) {
+                                            actions.add(wAction);
+                                            declaredAttacksTracker.add(wAction);
+                                        }
                                     }
                                 }
                             }
@@ -252,12 +254,16 @@ public class RLBotClient extends BotClient {
                     }
                 }
             }
-        }
-        
-        if (shooter != null && (!actions.isEmpty() || response.twist != null)) {
-            sendAttackData(shooter.getId(), actions);
-        } else {
-            sendDone(true);
+            
+            if (shooter != null && (!actions.isEmpty() || (response != null && response.twist != null))) {
+                sendAttackData(shooter.getId(), actions);
+            } else {
+                sendDone(true);
+            }
+        } catch (Throwable t) {
+            System.err.println("RL_SYNC_DEBUG [calculateFiringTurn]: FATAL THROWABLE: " + t.toString());
+            t.printStackTrace(System.err);
+            sendDone(true); // Fallback to avoid game hangs
         }
     }
 
@@ -269,37 +275,55 @@ public class RLBotClient extends BotClient {
 
     @Override
     protected PhysicalOption calculatePhysicalTurn() {
-        List<Entity> shooters = new java.util.ArrayList<>();
-        for (Entity e : getEntitiesOwned()) {
-            if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
-                shooters.add(e);
+        try {
+            List<Entity> shooters = new java.util.ArrayList<>();
+            for (Entity e : getEntitiesOwned()) {
+                if (e != null && e.isSelectableThisTurn() && !e.isDone()) {
+                    shooters.add(e);
+                }
             }
-        }
 
-        if (shooters.isEmpty()) {
-            return null;
-        }
+            if (shooters.isEmpty()) {
+                return null;
+            }
 
-        RLActionMask maskData = new RLActionMask();
-        maskData.valid_targets = dataPipeline.buildPhysicalMask(shooters);
+            RLActionMask maskData = new RLActionMask();
+            maskData.valid_targets = dataPipeline.buildPhysicalMask(shooters);
 
-        RLActionResponse response = dataPipeline.queryPython("PHYSICAL_INFERENCE", maskData, RLActionResponse.class);
-        
-        if (response != null && response.attack != null) {
-            RLActionResponse.RLPhysicalAttack att = response.attack;
-            if (att.target_id != null && att.action_type != null && response.selected_entity_id != null) {
-                if (response.selected_entity_id >= 0 && response.selected_entity_id < game.getEntitiesVector().size()) {
-                    Entity shooter = game.getEntitiesVector().get(response.selected_entity_id);
-                    if (shooter != null && att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
-                        megamek.common.units.Targetable target = game.getEntitiesVector().get(att.target_id);
-                        if (target != null) {
-                            return new PhysicalOption(shooter, target, 0.0, att.action_type, null);
+            RLActionResponse response = dataPipeline.queryPython("PHYSICAL_INFERENCE", maskData, RLActionResponse.class);
+            
+            if (response != null && response.attack != null) {
+                Object attObj = response.attack;
+                RLActionResponse.RLPhysicalAttack att = null;
+                if (attObj instanceof RLActionResponse.RLPhysicalAttack) {
+                    att = (RLActionResponse.RLPhysicalAttack) attObj;
+                } else if (attObj instanceof java.util.Map) {
+                    java.util.Map<?, ?> map = (java.util.Map<?, ?>) attObj;
+                    att = new RLActionResponse.RLPhysicalAttack();
+                    if (map.containsKey("target_id") && map.get("target_id") != null) {
+                        att.target_id = ((Number) map.get("target_id")).intValue();
+                    }
+                    if (map.containsKey("action_type") && map.get("action_type") != null) {
+                        att.action_type = ((Number) map.get("action_type")).intValue();
+                    }
+                }
+                
+                if (att != null && att.target_id != null && att.action_type != null && response.selected_entity_id != null) {
+                    if (response.selected_entity_id >= 0 && response.selected_entity_id < game.getEntitiesVector().size()) {
+                        Entity shooter = game.getEntitiesVector().get(response.selected_entity_id);
+                        if (shooter != null && att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
+                            megamek.common.units.Targetable target = game.getEntitiesVector().get(att.target_id);
+                            if (target != null) {
+                                return new PhysicalOption(shooter, target, 0.0, att.action_type, null);
+                            }
                         }
                     }
                 }
             }
+        } catch (Throwable t) {
+            System.err.println("RL_SYNC_DEBUG [calculatePhysicalTurn]: FATAL THROWABLE: " + t.toString());
+            t.printStackTrace(System.err);
         }
-
         return null;
     }
 
