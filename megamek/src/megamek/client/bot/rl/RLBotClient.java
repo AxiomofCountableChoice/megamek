@@ -67,10 +67,22 @@ public class RLBotClient extends BotClient {
     protected void initFiring() {}
 
     @Override
-    protected void calculatePreEndDeclarationsTurn() {}
+    protected void calculatePreEndDeclarationsTurn() {
+        Entity entity = game.getFirstEntity(getMyTurn());
+        if (entity != null) {
+            sendAttackData(entity.getId(), new Vector<>(0));
+        }
+        sendDone(true);
+    }
 
     @Override
-    protected void calculateInfantryVsInfantryCombatTurn() {}
+    protected void calculateInfantryVsInfantryCombatTurn() {
+        Entity entity = game.getFirstEntity(getMyTurn());
+        if (entity != null) {
+            sendAttackData(entity.getId(), new Vector<>(0));
+        }
+        sendDone(true);
+    }
 
     @Override
     protected MovePath calculateMoveTurn() {
@@ -257,7 +269,13 @@ public class RLBotClient extends BotClient {
             
             if (shooter != null && (!actions.isEmpty() || (response != null && response.twist != null))) {
                 sendAttackData(shooter.getId(), actions);
+            } else if (shooter != null) {
+                sendAttackData(shooter.getId(), new Vector<>(0));
             } else {
+                int fallbackId = game.getFirstEntityNum(getMyTurn());
+                if (fallbackId != Entity.NONE) {
+                    sendAttackData(fallbackId, new Vector<>(0));
+                }
                 sendDone(true);
             }
         } catch (Throwable t) {
