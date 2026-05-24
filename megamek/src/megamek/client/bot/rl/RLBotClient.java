@@ -241,23 +241,28 @@ public class RLBotClient extends BotClient {
                                 if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
                                     Entity target = game.getEntitiesVector().get(att.target_id);
                                     if (target != null) {
-                                        megamek.common.equipment.Mounted weapon = shooter.getEquipment(att.weapon_id);
-                                        megamek.common.actions.WeaponAttackAction wAction = null;
-                                        if (weapon instanceof megamek.common.equipment.WeaponMounted) {
-                                            megamek.common.equipment.WeaponMounted wm = (megamek.common.equipment.WeaponMounted) weapon;
-                                            if (wm.getType().hasFlag(megamek.common.equipment.WeaponType.F_ARTILLERY) ||
-                                                (wm.getType() instanceof megamek.common.weapons.capitalWeapons.CapitalMissileWeapon &&
-                                                 megamek.common.compute.Compute.isGroundToGround(shooter, target))) {
-                                                wAction = new megamek.common.actions.ArtilleryAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id, game);
+                                        megamek.common.equipment.Mounted weapon = dataPipeline.getWeaponByGlobalId(att.weapon_id);
+                                        if (weapon != null && weapon.getEntity() != null) {
+                                            Entity actualShooter = weapon.getEntity();
+                                            int localWeaponId = actualShooter.getEquipmentNum(weapon);
+                                            
+                                            megamek.common.actions.WeaponAttackAction wAction = null;
+                                            if (weapon instanceof megamek.common.equipment.WeaponMounted) {
+                                                megamek.common.equipment.WeaponMounted wm = (megamek.common.equipment.WeaponMounted) weapon;
+                                                if (wm.getType().hasFlag(megamek.common.equipment.WeaponType.F_ARTILLERY) ||
+                                                    (wm.getType() instanceof megamek.common.weapons.capitalWeapons.CapitalMissileWeapon &&
+                                                     megamek.common.compute.Compute.isGroundToGround(actualShooter, target))) {
+                                                    wAction = new megamek.common.actions.ArtilleryAttackAction(actualShooter.getId(), target.getTargetType(), target.getId(), localWeaponId, game);
+                                                } else {
+                                                    wAction = new megamek.common.actions.WeaponAttackAction(actualShooter.getId(), target.getTargetType(), target.getId(), localWeaponId);
+                                                }
                                             } else {
-                                                wAction = new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getTargetType(), target.getId(), att.weapon_id);
+                                                wAction = new megamek.common.actions.WeaponAttackAction(actualShooter.getId(), target.getId(), localWeaponId);
                                             }
-                                        } else {
-                                            wAction = new megamek.common.actions.WeaponAttackAction(shooter.getId(), target.getId(), att.weapon_id);
-                                        }
-                                        if (wAction != null) {
-                                            actions.add(wAction);
-                                            declaredAttacksTracker.add(wAction);
+                                            if (wAction != null) {
+                                                actions.add(wAction);
+                                                declaredAttacksTracker.add(wAction);
+                                            }
                                         }
                                     }
                                 }

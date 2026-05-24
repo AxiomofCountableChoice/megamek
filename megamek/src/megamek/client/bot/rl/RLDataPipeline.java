@@ -527,6 +527,23 @@ public class RLDataPipeline {
         return -1;
     }
 
+    public Mounted<?> getWeaponByGlobalId(int globalId) {
+        Game game = baseClient.getGame();
+        int currentId = 0;
+        for (Entity e : game.getEntitiesVector()) {
+            if (e == null) continue;
+            for (Mounted<?> m : e.getEquipment()) {
+                if (m.getType() instanceof WeaponType) {
+                    if (currentId == globalId) {
+                        return m;
+                    }
+                    currentId++;
+                }
+            }
+        }
+        return null;
+    }
+
     public Map<String, Object> serializeGameState(List<megamek.common.actions.WeaponAttackAction> declaredAttacks) {
         Game game = (Game) baseClient.getGame();
         Player localPlayer = baseClient.getLocalPlayer();
@@ -1069,10 +1086,13 @@ public class RLDataPipeline {
                     Entity target = baseClient.getGame().getEntity(waa.getTargetId());
 
                     if (target != null) {
-                        RLActionMask.RLAttack att = new RLActionMask.RLAttack();
-                        att.target_entity_index = baseClient.getGame().getEntitiesVector().indexOf(target);
-                        att.weapon_id = waa.getWeaponId();
-                        targetAction.attacks.add(att);
+                        megamek.common.equipment.Mounted weapon = shooter.getEquipment(waa.getWeaponId());
+                        if (weapon != null) {
+                            RLActionMask.RLAttack att = new RLActionMask.RLAttack();
+                            att.target_entity_index = baseClient.getGame().getEntitiesVector().indexOf(target);
+                            att.weapon_id = getGlobalWeaponId(shooter, weapon);
+                            targetAction.attacks.add(att);
+                        }
                     }
                 }
             }
