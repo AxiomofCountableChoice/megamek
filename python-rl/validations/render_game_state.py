@@ -57,7 +57,12 @@ def generate_interactive_html(traj_path, output_path="render.html"):
             "move_tmm_4": state.get("move_type_tmm_4_edges", []),
             "partial_covers": state.get("partial_cover_edges", []),
             "entities_meta": state.get("entities_meta", []),
-            "mask": raw.get("mask", {})
+            "mask": raw.get("mask", {}),
+            "state_info": {
+                "phase": state.get("phase_main", "UNKNOWN"),
+                "round": state.get("round_number", 0),
+                "turn": state.get("turn_number", 0)
+            }
         }
         print(f"Step {len(json_data['steps'])} context: {step_dict['context']} TMM0 edges: {len(step_dict['move_tmm_0'])} TMM1 edges: {len(step_dict['move_tmm_1'])} los_threats: {len(step_dict['los_threats'])} movement_threats: {len(step_dict['movement_threats'])}")
         json_data["steps"].append(step_dict)
@@ -143,6 +148,7 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                 <div class="panel-title">Legend</div>
                 <div style="font-size: 0.85em;">
                     <div class="legend-item" onclick="toggleEdge('los-target')"><span style="color:#ff4f4f; font-weight:bold;">&#x2501;&#x2501;&#x2501;</span> LOS Target</div>
+                    <div class="legend-item"><span style="color:#ff3333; font-weight:bold; letter-spacing: -2px;">- - -</span> Weapon Attack</div>
                     <div class="legend-item" onclick="toggleEdge('los-threat')"><span style="color:orange; font-weight:bold;">- - -</span> LOS Threat</div>
                     <div class="legend-item" onclick="toggleEdge('move-threat')"><span style="color:#c92b2b; font-weight:bold;">- &nbsp;- &nbsp;-</span> Movement Threat</div>
                     <div class="legend-item" onclick="toggleEdge('move-tmm-0')"><span style="color:#555; font-weight:bold;">- - -</span> Move TMM 0</div>
@@ -275,8 +281,16 @@ def generate_interactive_html(traj_path, output_path="render.html"):
             const stepData = steps[currentStep];
             if (!stepData) return;
             
-            document.getElementById("meta-context").innerText = stepData.context;
+            let phaseInfo = stepData.state_info ? `${{stepData.state_info.phase}} (Round ${{stepData.state_info.round}}, Turn ${{stepData.state_info.turn}})` : "UNKNOWN";
+            document.getElementById("meta-context").innerText = `${{stepData.context}} | Phase: ${{phaseInfo}}`;
+            
             let actionStr = JSON.stringify(stepData.action || {{}});
+            if (stepData.context === "MOVEMENT_INFERENCE" && stepData.action && stepData.action.selected_path_index !== undefined && stepData.mask && stepData.mask.valid_paths) {{
+                let p = stepData.mask.valid_paths[stepData.action.selected_path_index];
+                if (p && p.source_entity_index !== undefined) {{
+                    actionStr = actionStr.slice(0, -1) + `, "unit_moved": ${{p.source_entity_index}}}}`;
+                }}
+            }}
             let actionHtml = `<div style="word-wrap: break-word;">${{actionStr}}</div>`;
             
             if (stepData.action && stepData.action.attacks && stepData.action.attacks.length > 0) {{
@@ -507,10 +521,10 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                     <tr><th>Loc</th><th>Armor</th><th>Struct</th></tr>
             `;
             for(let i=0; i<8; i++) {{
-                let a = (u[21+i] * 100).toFixed(0);
-                let ra = (u[29+i] * 100).toFixed(0);
-                let s = (u[37+i] * 100).toFixed(0);
-                html += `<tr><td>${{locs[i]}}</td><td>${{a}}%</td><td>${{ra}}%</td><td>${{s}}%</td></tr>`;
+                let a = u[21+i] < 0 ? "DEST" : (u[21+i] * 100).toFixed(0) + "%";
+                let ra = u[29+i] < 0 ? "DEST" : (u[29+i] * 100).toFixed(0) + "%";
+                let s = u[37+i] < 0 ? "DEST" : (u[37+i] * 100).toFixed(0) + "%";
+                html += `<tr><td>${{locs[i]}}</td><td>${{a}}</td><td>${{ra}}</td><td>${{s}}</td></tr>`;
             }}
             html += `</table>`;
             
