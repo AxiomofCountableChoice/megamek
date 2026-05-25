@@ -138,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_dir", type=str, default="data/rl_selfplay_trajectories", help="Directory to save trajectories")
     parser.add_argument("--test", action="store_true", help="Run in test mode (small limits)")
     parser.add_argument("--max_turns", type=int, default=0, help="Max turns to run (0 for infinite)")
+    parser.add_argument("--max_episodes", type=int, default=1000, help="Max episodes to run (0 for infinite)")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run inference on")
     args = parser.parse_args()
 
@@ -174,4 +175,4 @@ if __name__ == "__main__":
     if args.test:
         worker.run(max_episodes=1, max_steps_per_episode=15)
     else:
-        worker.run(max_turns=args.max_turns)
+        worker.run(max_turns=args.max_turns, max_episodes=args.max_episodes)

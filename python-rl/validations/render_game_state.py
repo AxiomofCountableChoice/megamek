@@ -276,7 +276,39 @@ def generate_interactive_html(traj_path, output_path="render.html"):
             if (!stepData) return;
             
             document.getElementById("meta-context").innerText = stepData.context;
-            document.getElementById("meta-action").innerText = JSON.stringify(stepData.action || {{}});
+            let actionStr = JSON.stringify(stepData.action || {{}});
+            let actionHtml = `<div style="word-wrap: break-word;">${{actionStr}}</div>`;
+            
+            if (stepData.action && stepData.action.attacks && stepData.action.attacks.length > 0) {{
+                actionHtml += `<div style="color: #ffaa88; margin-top: 5px; font-size: 0.9em;"><strong>Declared Attacks:</strong><ul style="margin:2px 0; padding-left:20px;">`;
+                let getWeaponName = (tgtId, wpnId) => {{
+                    if (stepData.mask && stepData.mask.valid_targets) {{
+                        for (let t of stepData.mask.valid_targets) {{
+                            if (t.target_entity_index === tgtId || t.target_id === tgtId) {{
+                                for (let w of t.valid_weapons) {{
+                                    if (w.weapon_id === wpnId) return w.weapon_name;
+                                }}
+                            }}
+                        }}
+                    }}
+                    return `Weapon ${{wpnId}}`;
+                }};
+                stepData.action.attacks.forEach(att => {{
+                    let tgtName = `Target ${{att.target_id}}`;
+                    if (stepData.entities_meta && stepData.entities_meta[att.target_id]) {{
+                        tgtName = stepData.entities_meta[att.target_id].name;
+                    }}
+                    let wpnName = getWeaponName(att.target_id, att.weapon_id);
+                    actionHtml += `<li>${{wpnName}} &rarr; ${{tgtName}}</li>`;
+                }});
+                actionHtml += `</ul></div>`;
+            }}
+            if (stepData.action && stepData.action.twist !== undefined && stepData.action.twist !== 0) {{
+                 let twistDir = stepData.action.twist > 0 ? "Right" : "Left";
+                 actionHtml += `<div style="color: #ffff88; margin-top: 2px; font-size: 0.9em;"><strong>Torso Twist:</strong> ${{twistDir}}</div>`;
+            }}
+            
+            document.getElementById("meta-action").innerHTML = actionHtml;
             document.getElementById("meta-reward").innerText = stepData.reward.toFixed(4);
             document.getElementById("meta-total-reward").innerText = stepData.total_reward.toFixed(4);
             
@@ -375,42 +407,68 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                 }});
             }}
             
-            // Draw Weapon Attack Lasers
-            if ((stepData.context === "WEAPON_INFERENCE" || stepData.context === "WEAPON_BC") && stepData.mask && stepData.mask.valid_targets && stepData.action) {{
-                let activeId = stepData.mask.active_entity;
+            // Draw Weapon Attack Lasers and Torso Twists
+            if ((stepData.context === "WEAPON_INFERENCE" || stepData.context === "WEAPON_BC") && stepData.action) {{
+                let activeId = stepData.action.selected_entity_id;
+                if (activeId === undefined && stepData.mask) activeId = stepData.mask.active_entity;
+                
                 let activeIdx = -1;
-                if (stepData.entities_meta) {{
+                if (stepData.entities_meta && activeId !== undefined) {{
                     stepData.entities_meta.forEach((meta, idx) => {{
                         if (meta && meta.id === activeId) activeIdx = idx;
                     }});
                 }}
                 
                 if (activeIdx !== -1 && stepData.entities[activeIdx]) {{
-                    let shooterPos = getPxPy(stepData.entities[activeIdx][1], stepData.entities[activeIdx][2]);
+                    let shooter = stepData.entities[activeIdx];
+                    let shooterPos = getPxPy(shooter[1], shooter[2]);
                     
-                    let firedTargets = new Set();
-                    for (let key in stepData.action) {{
-                        if (key.startsWith("weapon_") && stepData.action[key] !== -1) {{
-                            firedTargets.add(stepData.action[key]);
-                        }}
+                    // Twist
+                    if (stepData.action.twist !== undefined && stepData.action.twist !== 0) {{
+                        let currentAngleRad = Math.atan2(shooter[3], -shooter[4]); 
+                        let twistRad = currentAngleRad + (stepData.action.twist * Math.PI / 3);
+                        let sinT = Math.sin(twistRad);
+                        let cosT = Math.cos(twistRad);
+                        
+                        let fLen = 22;
+                        let tx = shooterPos[0] + sinT * fLen;
+                        let ty = shooterPos[1] - cosT * fLen;
+                        
+                        let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        line.setAttribute("x1", shooterPos[0]); line.setAttribute("y1", shooterPos[1]);
+                        line.setAttribute("x2", tx); line.setAttribute("y2", ty);
+                        line.setAttribute("stroke", "yellow");
+                        line.setAttribute("stroke-width", "2");
+                        line.setAttribute("stroke-dasharray", "2,2");
+                        line.setAttribute("style", "pointer-events: none;");
+                        svg.appendChild(line);
                     }}
                     
-                    firedTargets.forEach(tgtNodeIdx => {{
-                        let vt = stepData.mask.valid_targets[tgtNodeIdx];
-                        if (vt && stepData.entities[vt.target_entity_index]) {{
-                            let targetIdx = vt.target_entity_index;
-                            let targetPos = getPxPy(stepData.entities[targetIdx][1], stepData.entities[targetIdx][2]);
-                            
-                            let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                            line.setAttribute("x1", shooterPos[0]); line.setAttribute("y1", shooterPos[1]);
-                            line.setAttribute("x2", targetPos[0]); line.setAttribute("y2", targetPos[1]);
-                            line.setAttribute("stroke", "#ff3333");
-                            line.setAttribute("stroke-width", "5");
-                            line.setAttribute("stroke-dasharray", "8,4");
-                            line.setAttribute("style", "filter: drop-shadow(0 0 5px #ff0000); pointer-events: none;");
-                            svg.appendChild(line);
-                        }}
-                    }});
+                    // Attacks
+                    if (stepData.action.attacks && Array.isArray(stepData.action.attacks)) {{
+                        let targetSet = new Set();
+                        stepData.action.attacks.forEach(att => {{
+                            if (att.target_id !== undefined && att.target_id !== -1) {{
+                                targetSet.add(att.target_id);
+                            }}
+                        }});
+                        
+                        targetSet.forEach(tgtNodeIdx => {{
+                            let targetIdx = tgtNodeIdx;
+                            if (stepData.entities[targetIdx]) {{
+                                let targetPos = getPxPy(stepData.entities[targetIdx][1], stepData.entities[targetIdx][2]);
+                                
+                                let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                                line.setAttribute("x1", shooterPos[0]); line.setAttribute("y1", shooterPos[1]);
+                                line.setAttribute("x2", targetPos[0]); line.setAttribute("y2", targetPos[1]);
+                                line.setAttribute("stroke", "#ff3333");
+                                line.setAttribute("stroke-width", "5");
+                                line.setAttribute("stroke-dasharray", "8,4");
+                                line.setAttribute("style", "filter: drop-shadow(0 0 5px #ff0000); pointer-events: none;");
+                                svg.appendChild(line);
+                            }}
+                        }});
+                    }}
                 }}
             }}
             

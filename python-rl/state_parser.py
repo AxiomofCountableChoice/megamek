@@ -204,7 +204,7 @@ class StateParser:
 
         # 7. Dynamic Action Nodes for Autoregressive Trees
         valid_paths = mask.get("valid_paths", [])
-        active_entity_idx = mask.get("active_entity_index")
+        active_entity_idx = mask.get("active_entity")
         if active_entity_idx is None:
             active_entity_idx = -1
         target_action = payload.get("target_action", {})
@@ -304,8 +304,8 @@ class StateParser:
         elif "valid_twists" in mask and context.startswith("WEAPON"):
             valid_twists = mask.get("valid_twists", [])
             chosen_attacks = target_action.get("attacks", [])
-            chosen_twist = target_action.get("torso_twist", 0)
-            chosen_entity_idx = target_action.get("selected_entity_index", -1)
+            chosen_twist = target_action.get("twist", 0)
+            chosen_entity_idx = target_action.get("selected_entity_id", -1)
             
             action_type_flags = []
             action_twist_context = []
@@ -386,7 +386,7 @@ class StateParser:
                     if chosen_attacks:
                         target_to_weapons = {}
                         for att in chosen_attacks:
-                            t_idx = att.get("target_entity_index", -1)
+                            t_idx = att.get("target_id", -1)
                             w_id = att.get("weapon_id", -1)
                             if t_idx not in target_to_weapons:
                                 target_to_weapons[t_idx] = []
@@ -413,8 +413,8 @@ class StateParser:
 
         elif "valid_targets" in mask and context.startswith("PHYSICAL"):
             valid_targets = mask.get("valid_targets", [])
-            chosen_attacks = target_action.get("attacks", [])
-            chosen_entity_idx = target_action.get("selected_entity_index", -1)
+            chosen_attack = target_action.get("attack", None)
+            chosen_entity_idx = target_action.get("selected_entity_id", -1)
             
             action_type_flags = []
             action_type_context = []
@@ -469,19 +469,18 @@ class StateParser:
                 action_type_context.append(-1)
                 
                 if target_action and src_idx == chosen_entity_idx:
-                    if chosen_attacks:
-                        for att in chosen_attacks:
-                            t_idx = att.get("target_entity_index", -1)
-                            p_action = att.get("physical_action_type", -1)
-                            try:
-                                t_node_idx = next(i for i, (type_flag, tgt_idx) in enumerate(zip(action_type_flags, action_target_unit_idx)) 
-                                                if type_flag == 1 and tgt_idx == t_idx)
-                                true_sequence_indices.append(t_node_idx)
-                                a_node_idx_refined = next(i for i in range(t_node_idx+1, len(action_type_flags))
-                                                if action_type_flags[i] == 2 and action_type_context[i] == p_action)
-                                true_sequence_indices.append(a_node_idx_refined)
-                            except StopIteration:
-                                continue
+                    if chosen_attack:
+                        t_idx = chosen_attack.get("target_id", -1)
+                        p_action = chosen_attack.get("action_type", -1)
+                        try:
+                            t_node_idx = next(i for i, (type_flag, tgt_idx) in enumerate(zip(action_type_flags, action_target_unit_idx)) 
+                                            if type_flag == 1 and tgt_idx == t_idx)
+                            true_sequence_indices.append(t_node_idx)
+                            a_node_idx_refined = next(i for i in range(t_node_idx+1, len(action_type_flags))
+                                            if action_type_flags[i] == 2 and action_type_context[i] == p_action)
+                            true_sequence_indices.append(a_node_idx_refined)
+                        except StopIteration:
+                            pass
                     true_sequence_indices.append(end_node_idx)
             
             self._populate_action_nodes(data, action_features, step_indices, action_target_hex_idx, 

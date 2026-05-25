@@ -231,6 +231,11 @@ class ImpalaLearner:
             entropies = torch.stack(entropies_list)
             v_means = torch.stack(v_means_list)
             v_vars = torch.stack(v_vars_list)
+            
+            # DEBUG: Check if we have any valid action log_probs with gradients
+            has_valid_actor_grad = log_pis.requires_grad and (log_pis != 0.0).any().item()
+            if not has_valid_actor_grad:
+                print(f"DEBUG: Batch seq {valid_batches} has no valid log_pis or gradients. log_pis={log_pis.detach().cpu().numpy()}")
                 
             vs, v_enhanced, rhos = self.compute_vtrace_targets(
                 rewards, v_means.detach(), v_vars.detach(), mu_probs, pi_probs.detach(), 

@@ -592,16 +592,23 @@ public class RLDataPipeline {
 
         // Pass 1: Compute reachable hexes for all entities
         java.util.Map<Integer, java.util.Map<Integer, Integer>> entityReachableHexes = new java.util.HashMap<>();
-        java.util.Set<Integer> globalReachableHexes = new java.util.HashSet<>();
+        java.util.Set<Integer> friendlyGlobalReachableHexes = new java.util.HashSet<>();
+        java.util.Set<Integer> enemyOccupiedHexes = new java.util.HashSet<>();
 
         for (int i = 0; i < game.getEntitiesVector().size(); i++) {
             Entity e1 = game.getEntitiesVector().get(i);
-            if (e1 == null) continue;
+            if (e1 == null)
+                continue;
+            boolean isFriendly = (localPlayer != null && e1.getOwnerId() == localPlayer.getId());
             java.util.Map<Integer, Integer> reachableHexes = new java.util.HashMap<>();
 
             // A unit can always "reach" its own hex (stationary TMM = 0)
             if (e1.getPosition() != null) {
-                reachableHexes.put(e1.getPosition().getY() * boardWidth + e1.getPosition().getX(), 0);
+                int startHexIdx = e1.getPosition().getY() * boardWidth + e1.getPosition().getX();
+                reachableHexes.put(startHexIdx, 0);
+                if (!isFriendly) {
+                    enemyOccupiedHexes.add(startHexIdx);
+                }
 
                 try {
                     int groundMove = Math.max(e1.getWalkMP(), e1.getRunMP());
@@ -655,7 +662,9 @@ public class RLDataPipeline {
             }
 
             entityReachableHexes.put(i, reachableHexes);
-            globalReachableHexes.addAll(reachableHexes.keySet());
+            if (isFriendly) {
+                friendlyGlobalReachableHexes.addAll(reachableHexes.keySet());
+            }
         }
 
         // Pass 2: Extract features and build edges
@@ -727,7 +736,10 @@ public class RLDataPipeline {
 
             // LOS Threat and Partial Cover Edges (Restricted to reachable hexes and enemy units)
             if (!isFriendly) {
-                for (int hexIdx : globalReachableHexes) {
+                for (int hexIdx : friendlyGlobalReachableHexes) {
+                    if (enemyOccupiedHexes.contains(hexIdx)) {
+                        continue;
+                    }
                     int hexX = hexIdx % boardWidth;
                     int hexY = hexIdx / boardWidth;
                     megamek.common.board.Coords targetCoords = new megamek.common.board.Coords(hexX, hexY);

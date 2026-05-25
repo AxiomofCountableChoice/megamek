@@ -59,6 +59,7 @@ class MegaMekAgent(nn.Module):
         
         y_seq = getattr(batch, 'y_sequence', None)
         if y_seq is None or y_seq.size(0) == 0:
+            print(f"DEBUG evaluate_actions: y_seq is empty for context {batch.context}")
             return pi_log_prob_total, entropy_total, v_mean, v_variance
             
         e_actions = self.actor_pointer.compute_action_embeddings(x_dict, batch)
@@ -176,14 +177,19 @@ class MegaMekAgent(nn.Module):
         Parses the phase's mask tree into initial DecisionNode choices.
         """
         if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT
-            active_entity_idx = mask_tree.get("active_entity_index", -1) if mask_tree else -1
+            active_entity_idx = mask_tree.get("active_entity") if mask_tree else None
+            if active_entity_idx is None:
+                active_entity_idx = -1
             step_indices = hetero_data['action'].step_idx
             source_unit_indices = hetero_data['action'].source_unit_idx
             target_hex_indices = hetero_data['action'].target_hex_idx
             path_indices = hetero_data['action'].path_idx
             
             # Find Step 0 hex nodes
-            step0_mask = (step_indices == 0) & (source_unit_indices == active_entity_idx)
+            step0_mask = (step_indices == 0)
+            if active_entity_idx != -1:
+                step0_mask = step0_mask & (source_unit_indices == active_entity_idx)
+            
             if not step0_mask.any():
                 return []
                 
@@ -191,8 +197,9 @@ class MegaMekAgent(nn.Module):
             choices = []
             for node_idx in global_indices:
                 selected_hex = target_hex_indices[node_idx].item()
-                # Children are Step 1 path nodes for this hex
-                step1_mask = (step_indices == 1) & (source_unit_indices == active_entity_idx) & (target_hex_indices == selected_hex)
+                parent_src_idx = source_unit_indices[node_idx].item()
+                # Children are Step 1 path nodes for this hex and source unit
+                step1_mask = (step_indices == 1) & (source_unit_indices == parent_src_idx) & (target_hex_indices == selected_hex)
                 child_indices = torch.where(step1_mask)[0].tolist()
                 
                 children = []
