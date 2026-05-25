@@ -3,6 +3,8 @@ import sys
 import torch
 import json
 import math
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from state_parser import StateParser
 
 def generate_interactive_html(traj_path, output_path="render.html"):
     if not os.path.exists(traj_path):
@@ -19,6 +21,9 @@ def generate_interactive_html(traj_path, output_path="render.html"):
         "topology": topology,
         "steps": []
     }
+    
+    parser = StateParser()
+    parser.handle_topology(topology)
     
     all_reports = []
     total_reward = 0.0
@@ -38,6 +43,21 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                 clean_action[k] = v.item() if v.numel() == 1 else v.tolist()
             else:
                 clean_action[k] = v
+                
+        hetero_info = {}
+        try:
+            state_graph, _ = parser.parse_to_heterodata(raw)
+            node_types = {}
+            for ntype in state_graph.node_types:
+                if state_graph[ntype].x is not None:
+                    node_types[ntype] = list(state_graph[ntype].x.shape)
+            edge_types = {}
+            for etype in state_graph.edge_types:
+                if state_graph[etype].edge_index is not None:
+                    edge_types[str(etype)] = list(state_graph[etype].edge_index.shape)
+            hetero_info = {"node_types": node_types, "edge_types": edge_types}
+        except Exception as e:
+            hetero_info = {"error": str(e)}
                 
         step_dict = {
             "context": raw.get("context", "UNKNOWN"),
@@ -62,7 +82,8 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                 "phase": state.get("phase_main", "UNKNOWN"),
                 "round": state.get("round_number", 0),
                 "turn": state.get("turn_number", 0)
-            }
+            },
+            "hetero_info": hetero_info
         }
         print(f"Step {len(json_data['steps'])} context: {step_dict['context']} TMM0 edges: {len(step_dict['move_tmm_0'])} TMM1 edges: {len(step_dict['move_tmm_1'])} los_threats: {len(step_dict['los_threats'])} movement_threats: {len(step_dict['movement_threats'])}")
         json_data["steps"].append(step_dict)
@@ -144,6 +165,11 @@ def generate_interactive_html(traj_path, output_path="render.html"):
                 <div class="panel-title">Selected Unit</div>
                 <div id="entity-details"></div>
             </div>
+            <div class="panel">
+                <div class="panel-title">Data Inspector</div>
+                <button onclick="document.getElementById('hetero-modal').style.display='block'" style="width: 100%; margin-bottom: 5px; padding: 5px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">View HeteroData Structure</button>
+                <button onclick="document.getElementById('mask-modal').style.display='block'" style="width: 100%; padding: 5px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">View Action Mask</button>
+            </div>
             <div class="panel" style="padding-bottom: 5px;">
                 <div class="panel-title">Legend</div>
                 <div style="font-size: 0.85em;">
@@ -170,6 +196,18 @@ def generate_interactive_html(traj_path, output_path="render.html"):
             <div class="panel-title" style="padding: 10px 10px 0 10px; border: none;">Game Reports</div>
             <div id="reports-panel"></div>
         </div>
+    </div>
+    
+    <div id="hetero-modal" style="display:none; position:fixed; top:10%; left:10%; width:80%; height:80%; background:#1e1e1e; border:1px solid #666; z-index:100; overflow:auto; padding:20px; box-shadow: 0 0 20px rgba(0,0,0,0.8);">
+        <h3 style="margin-top:0;">HeteroData Structure</h3>
+        <button onclick="document.getElementById('hetero-modal').style.display='none'" style="position:absolute; top:20px; right:20px; padding: 5px 10px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">Close</button>
+        <pre id="hetero-content" style="white-space: pre-wrap; font-size: 0.9em; background: #111; padding: 15px; border: 1px solid #333;"></pre>
+    </div>
+    
+    <div id="mask-modal" style="display:none; position:fixed; top:10%; left:10%; width:80%; height:80%; background:#1e1e1e; border:1px solid #666; z-index:100; overflow:auto; padding:20px; box-shadow: 0 0 20px rgba(0,0,0,0.8);">
+        <h3 style="margin-top:0;">Action Mask</h3>
+        <button onclick="document.getElementById('mask-modal').style.display='none'" style="position:absolute; top:20px; right:20px; padding: 5px 10px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">Close</button>
+        <pre id="mask-content" style="white-space: pre-wrap; font-size: 0.9em; background: #111; padding: 15px; border: 1px solid #333;"></pre>
     </div>
     
     <script>
@@ -280,6 +318,9 @@ def generate_interactive_html(traj_path, output_path="render.html"):
             
             const stepData = steps[currentStep];
             if (!stepData) return;
+            
+            document.getElementById("hetero-content").innerText = JSON.stringify(stepData.hetero_info, null, 2);
+            document.getElementById("mask-content").innerText = JSON.stringify(stepData.mask, null, 2);
             
             let phaseInfo = stepData.state_info ? `${{stepData.state_info.phase}} (Round ${{stepData.state_info.round}}, Turn ${{stepData.state_info.turn}})` : "UNKNOWN";
             document.getElementById("meta-context").innerText = `${{stepData.context}} | Phase: ${{phaseInfo}}`;
