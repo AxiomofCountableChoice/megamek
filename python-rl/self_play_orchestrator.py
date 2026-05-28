@@ -7,6 +7,8 @@ import random
 import threading
 import sys
 import signal
+import csv
+import torch
 
 from logger_config import setup_logger
 
@@ -21,12 +23,22 @@ def get_random_meks(all_meks, num=1):
         return ""
     return ",".join(random.choices(all_meks, k=num))
 
-def stream_reader(stream, port_logger):
-    """Reads lines from a subprocess stream and logs them."""
+def stream_reader(stream, port_logger, match_log_path=None):
+    """Reads lines from a subprocess stream and logs them, optionally to a specific file."""
+    f = None
+    if match_log_path:
+        f = open(match_log_path, "a", encoding="utf-8")
+        
     for line in iter(stream.readline, b''):
         line_str = line.decode('utf-8', errors='replace').rstrip()
         if line_str:
             port_logger.info(line_str)
+            if f:
+                f.write(line_str + "\n")
+                f.flush()
+                
+    if f:
+        f.close()
     stream.close()
 
 def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario_dir=None, options=None, max_meks=4):
@@ -76,12 +88,17 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
             cmd.append(opt)
             
         try:
+            match_id = int(time.time())
+            log_dir = os.path.join("data", "rl_princess_trajectories" if mode == "princess" else "rl_selfplay_trajectories", "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            match_log_file = os.path.join(log_dir, f"megamek_{port}_{match_id}.log")
+            
             port_logger = setup_logger(f"MegaMek {port}")
-            port_logger.info("Starting match...")
+            port_logger.info(f"Starting match... logging to {match_log_file}")
             proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             
             # Start a thread to read Java stdout
-            t_reader = threading.Thread(target=stream_reader, args=(proc.stdout, port_logger), daemon=True)
+            t_reader = threading.Thread(target=stream_reader, args=(proc.stdout, port_logger, match_log_file), daemon=True)
             t_reader.start()
             
             # Wait for the process to finish or shutdown to be requested
@@ -98,7 +115,7 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
 def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu"):
     """Continuously runs the ImpalaWorker process."""
     cmd = [
-        os.path.join(os.path.dirname(__file__), "venv", "bin", "python"), 
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python")), 
         "impala_worker.py", 
         "--port", str(port), 
         "--dataset_dir", dataset_dir,
@@ -110,8 +127,17 @@ def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu"):
     while not shutdown_event.is_set():
         try:
             # Impala worker handles its own logging so we don't need to pipe it
-            logger.info(f"Starting Worker {port}...")
-            proc = subprocess.Popen(cmd, cwd=cwd)
+            worker_id = int(time.time())
+            log_dir = os.path.join(dataset_dir, "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            worker_log_file = os.path.join(log_dir, f"worker_{port}_{worker_id}.log")
+            
+            logger.info(f"Starting Worker {port}... logging to {worker_log_file}")
+            proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            
+            worker_logger = setup_logger(f"Worker {port}")
+            t_reader = threading.Thread(target=stream_reader, args=(proc.stdout, worker_logger, worker_log_file), daemon=True)
+            t_reader.start()
             
             while proc.poll() is None:
                 if shutdown_event.is_set():
@@ -123,10 +149,76 @@ def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu"):
             logger.error(f"Failed to start Python worker on port {port}: {e}")
             time.sleep(5)
 
+def master_runner(dataset_dir, device, shutdown_event):
+    """Runs the Impala Master trainer."""
+    cmd = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python")), 
+        "impala_master.py",
+        "--device", device,
+        "--force-bootstrap"
+    ]
+    cwd = os.path.dirname(__file__)
+    
+    while not shutdown_event.is_set():
+        try:
+            logger.info("Starting Impala Master...")
+            proc = subprocess.Popen(cmd, cwd=cwd)
+            while proc.poll() is None:
+                if shutdown_event.is_set():
+                    proc.send_signal(signal.SIGINT) # Graceful shutdown
+                    proc.wait()
+                    return
+                time.sleep(1)
+        except Exception as e:
+            logger.error(f"Failed to start Impala Master: {e}")
+            time.sleep(5)
+
+def trajectory_monitor(dataset_dir, shutdown_event):
+    """Monitors the dataset directory for new trajectories and logs metrics to CSV."""
+    csv_path = os.path.join(dataset_dir, "metrics_log.csv")
+    file_exists = os.path.exists(csv_path)
+    processed_files = set()
+    
+    with open(csv_path, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        if not file_exists:
+            writer.writerow(['timestamp', 'worker_id', 'win', 'total_reward'])
+            
+        while not shutdown_event.is_set():
+            worker_dirs = glob.glob(os.path.join(dataset_dir, "*"))
+            for wd in worker_dirs:
+                if not os.path.isdir(wd) or os.path.basename(wd) == "logs": continue
+                
+                files = glob.glob(os.path.join(wd, "*.pt"))
+                for f in files:
+                    if f in processed_files:
+                        continue
+                        
+                    try:
+                        data = torch.load(f, map_location='cpu', weights_only=False)
+                        win = data.get("win", False)
+                        steps = data.get("steps", [])
+                        total_reward = sum([s.get("reward", 0.0) for s in steps])
+                        
+                        # Extract timestamp from filename traj_{ep}_{timestamp}.pt
+                        basename = os.path.basename(f)
+                        parts = basename.replace(".pt", "").split("_")
+                        timestamp = parts[-1] if len(parts) >= 3 else str(int(time.time()))
+                        worker_id = os.path.basename(wd)
+                        
+                        writer.writerow([timestamp, worker_id, str(win), f"{total_reward:.4f}"])
+                        csvfile.flush()
+                        processed_files.add(f)
+                    except Exception as e:
+                        pass
+            
+            time.sleep(5)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-instances", type=int, default=4, help="Number of concurrent MegaMek servers")
-    parser.add_argument("--mode", type=str, choices=["selfplay", "princess"], default="selfplay", help="Opponent mode")
+    parser.add_argument("--mode", type=str, choices=["selfplay", "princess"], default="princess", help="Opponent mode")
+    parser.add_argument("--run-master", action="store_true", help="Spawn the Impala master node alongside the workers")
     parser.add_argument("--base-port", type=int, default=4000)
     parser.add_argument("--scenario", type=str, default="", help="Path to a single .mms scenario file")
     parser.add_argument("--scenario-dir", type=str, default="", help="Directory containing .mms scenarios to randomly sample from")
@@ -145,6 +237,17 @@ def main():
     
     shutdown_event = threading.Event()
     threads = []
+    
+    # Start the trajectory monitor
+    t_monitor = threading.Thread(target=trajectory_monitor, args=(dataset_dir, shutdown_event), daemon=True)
+    t_monitor.start()
+    threads.append(t_monitor)
+    
+    if args.run_master:
+        t_master = threading.Thread(target=master_runner, args=(dataset_dir, args.device, shutdown_event), daemon=True)
+        t_master.start()
+        threads.append(t_master)
+        time.sleep(2) # Give master a moment to initialize
     
     def signal_handler(sig, frame):
         logger.info("Shutdown signal received! Terminating cluster...")

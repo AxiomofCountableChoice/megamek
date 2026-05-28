@@ -76,14 +76,12 @@ class ActionConditionedPointer(nn.Module):
         # Apply positional encodings
         seq_inputs = self.pos_encoder(seq_inputs)
         
-        # Causal inference generation (if sequence is larger than 1)
-        if seq_len > 1:
-            causal_mask = nn.Transformer.generate_square_subsequent_mask(seq_len, device=z.device)
-            decoded_seq = self.transformer_decoder(seq_inputs, mask=causal_mask, is_causal=True)
-        else:
-            decoded_seq = self.transformer_decoder(seq_inputs)
+        # Causal inference generation
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(seq_len, device=z.device)
+        decoded_seq = self.transformer_decoder(seq_inputs, mask=causal_mask, is_causal=True)
             
         # The hidden representation corresponding to the most recent step context
+        # Extract the last token in the sequence dimension (-1) for all batches
         s_k = decoded_seq[:, -1, :] # (B, hidden_dim)
         return s_k
 

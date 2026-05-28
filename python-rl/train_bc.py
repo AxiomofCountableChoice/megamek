@@ -2,74 +2,66 @@ import torch
 from torch.optim import Adam
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import IterableDataset
 from torch.utils.tensorboard import SummaryWriter
 from models.agent import MegaMekAgent
 import os
 import glob
+import random
+import math
+
+class BCIterableDataset(IterableDataset):
+    def __init__(self, file_paths, shuffle=False):
+        self.file_paths = file_paths
+        self.shuffle = shuffle
+        
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            files_to_process = self.file_paths
+        else:
+            per_worker = int(math.ceil(len(self.file_paths) / float(worker_info.num_workers)))
+            worker_id = worker_info.id
+            files_to_process = self.file_paths[worker_id * per_worker:(worker_id + 1) * per_worker]
+            
+        if self.shuffle:
+            files_to_process = files_to_process.copy()
+            random.shuffle(files_to_process)
+            
+        for f in files_to_process:
+            try:
+                match_data = torch.load(f, weights_only=False, map_location='cpu')
+                trajectories = match_data.get('trajectories', [])
+                if self.shuffle:
+                    random.shuffle(trajectories)
+                for data in trajectories:
+                    if hasattr(data, 'y_sequence'):
+                        data.y_len = torch.tensor([data.y_sequence.size(0)], dtype=torch.long)
+                    else:
+                        data.y_len = torch.tensor([0], dtype=torch.long)
+                        
+                    if 'weapon' in data.node_types and hasattr(data['weapon'], 'x') and data['weapon'].x.size(0) > 0:
+                        data['weapon'].x[data['weapon'].x < -1000.0] = 0.0
+                        
+                    yield data
+            except Exception as e:
+                print(f"Error loading {f}: {e}")
 
 def process_batch(agent, batch, device, is_training=False, accumulation_steps=32):
     batch = batch.to(device)
         
-    if getattr(batch, 'y_sequence', None) is None:
+    pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total = agent.evaluate_actions(batch)
+    
+    mask = (steps_total > 0)
+    if not mask.any():
         return 0.0, 0, 0, False
         
-    y_seq = batch.y_sequence
-    seq_len = y_seq.size(0)
+    loss = -pi_log_prob_total[mask].mean() / accumulation_steps
     
-    z, x_dict = agent.encoder(batch)
-    e_actions = agent.actor_pointer.compute_action_embeddings(x_dict, batch)
-    
-    if e_actions.size(0) == 0:
-        return 0.0, 0, 0, False
+    if is_training:
+        loss.backward()
         
-    step_indices = batch['action'].step_idx
-    
-    seq_loss = 0
-    correct = 0
-    steps = 0
-    chosen_embeddings = []
-    
-    for k in range(seq_len):
-        target_idx = y_seq[k].item()
-        
-        if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
-            valid_mask = (step_indices == k)
-        else:
-            target_type = batch['action'].x[target_idx, 6].item()
-            valid_mask = (batch['action'].x[:, 6] == target_type)
-            
-        if not valid_mask.any() or not valid_mask[target_idx]:
-            break
-            
-        history_tensor = None if len(chosen_embeddings) == 0 else torch.stack(chosen_embeddings).unsqueeze(0)
-        s_k = agent.actor_pointer.decode_sequence(z, history_tensor)
-        
-        e_tier = e_actions[valid_mask]
-        tier_batch_idx = batch['action'].batch[valid_mask] if hasattr(batch['action'], 'batch') and getattr(batch['action'], 'batch') is not None else None
-        
-        logits = agent.actor_pointer.score_actions(s_k, e_tier, tier_batch_idx)
-        
-        global_indices = torch.where(valid_mask)[0]
-        relative_target = (global_indices == target_idx).nonzero(as_tuple=True)[0]
-        
-        if relative_target.numel() == 0:
-            break
-            
-        loss_k = F.cross_entropy(logits.unsqueeze(0), relative_target)
-        seq_loss += loss_k
-        
-        if logits.argmax(dim=-1) == relative_target[0]:
-            correct += 1
-        steps += 1
-        
-        chosen_embeddings.append(e_actions[target_idx])
-        
-    if type(seq_loss) != int and seq_loss > 0:
-        if is_training:
-            scaled_loss = seq_loss / accumulation_steps
-            scaled_loss.backward()
-        return seq_loss.item(), correct, steps, True
+    return loss.item() * accumulation_steps, int(correct_total.sum().item()), int(steps_total.sum().item()), True
         
     return 0.0, 0, 0, False
 
@@ -82,32 +74,22 @@ def train():
         print(f"Dataset directory not found or empty at {dataset_dir}. Please run bc_generator.py first.")
         return
         
-    dataset = []
-    for f in glob.glob(os.path.join(dataset_dir, '*.pt')):
-        match_data = torch.load(f, weights_only=False, map_location='cpu')
-        dataset.extend(match_data.get('trajectories', []))
-        
-    print(f"Loaded {len(dataset)} trajectories across all matches for Behavioral Cloning.")
+    all_files = glob.glob(os.path.join(dataset_dir, '*.pt'))
+    all_files.sort()
+    random.seed(42)
+    random.shuffle(all_files)
     
-    for key in ['hex', 'unit', 'weapon', 'action']:
-        all_x = []
-        for data in dataset:
-            if 'weapon' in data.node_types and hasattr(data['weapon'], 'x') and data['weapon'].x.size(0) > 0:
-                data['weapon'].x[data['weapon'].x < -1000.0] = 0.0
-            if key in data.node_types and hasattr(data[key], 'x') and data[key].x.size(0) > 0:
-                all_x.append(data[key].x)
-        if all_x:
-            all_x = torch.cat(all_x, dim=0)
-            print(f'[{key}] shape: {all_x.shape}, min: {all_x.min().item():.4f}, max: {all_x.max().item():.4f}, mean: {all_x.mean().item():.4f}')
-            
-    val_size = int(len(dataset) * 0.2)
-    train_size = len(dataset) - val_size
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+    val_size = int(len(all_files) * 0.2)
+    val_files = all_files[:val_size]
+    train_files = all_files[val_size:]
     
-    print(f"Dataset split: {train_size} training samples, {val_size} validation samples.")
+    print(f"Dataset split by files: {len(train_files)} training files, {len(val_files)} validation files.")
     
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    train_dataset = BCIterableDataset(train_files, shuffle=True)
+    val_dataset = BCIterableDataset(val_files, shuffle=False)
+    
+    train_loader = DataLoader(train_dataset, batch_size=32)
+    val_loader = DataLoader(val_dataset, batch_size=32)
     
     writer = SummaryWriter(log_dir='runs/bc_training_logs')
     
@@ -135,10 +117,14 @@ def train():
                 total_train_steps += steps
                 valid_train_batches += 1
                 
-            if (i + 1) % accumulation_steps == 0 or (i + 1) == len(train_loader):
+            if (i + 1) % accumulation_steps == 0:
                 torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.0)
                 optimizer.step()
                 optimizer.zero_grad()
+                
+        torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.0)
+        optimizer.step()
+        optimizer.zero_grad()
                 
         avg_train_loss = total_train_loss / valid_train_batches if valid_train_batches > 0 else 0
         train_acc = total_train_correct / total_train_steps if total_train_steps > 0 else 0

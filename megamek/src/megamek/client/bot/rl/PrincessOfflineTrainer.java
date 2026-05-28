@@ -290,6 +290,14 @@ public class PrincessOfflineTrainer {
                             if (g == null) break;
                             megamek.common.enums.GamePhase phase = g.getPhase();
                             if (phase == null || phase.isVictory() || phase.isEnd() || phase.isLounge() || !watcher.isConnected()) {
+                                System.out.println("Game Loop Breaking! Reason:");
+                                if (phase == null) System.out.println("- phase is null");
+                                else {
+                                    System.out.println("- phase.isVictory(): " + phase.isVictory());
+                                    System.out.println("- phase.isEnd(): " + phase.isEnd());
+                                    System.out.println("- phase.isLounge(): " + phase.isLounge());
+                                }
+                                System.out.println("- watcher.isConnected(): " + watcher.isConnected());
                                 break;
                             }
                         } catch (Exception ex) {
@@ -301,6 +309,34 @@ public class PrincessOfflineTrainer {
                     
                     System.out.println("Game Ended! Shutting down MegaMek server.");
                     
+                    try {
+                        megamek.common.game.IGame g = server.getGame();
+                        if (g != null && p1 instanceof RLBotClient) {
+                            megamek.common.Player agentPlayer = null;
+                            for (megamek.common.Player p : ((megamek.common.game.Game)g).getPlayersList()) {
+                                if ("RL_Agent".equals(p.getName())) {
+                                    agentPlayer = p;
+                                    break;
+                                }
+                            }
+                            
+                            if (agentPlayer != null) {
+                                boolean p1Won = ((megamek.common.game.Game)g).isPlayerVictor(agentPlayer);
+                                System.out.println("P1 (RLBotClient) inferred won? " + p1Won);
+                                ((RLBotClient)p1).sendGameOver(p1Won);
+                            } else {
+                                System.out.println("WARNING: Could not find RL_Agent player in game to infer victory. Defaulting to false.");
+                                ((RLBotClient)p1).sendGameOver(false);
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error sending final game state: " + e.getMessage());
+                    }
+
+                    // Sleep briefly to ensure socket flush before hard close
+                    Thread.sleep(500);
+
+                    server.die();
                 } else {
                     System.out.println("Could not find players!");
                 }

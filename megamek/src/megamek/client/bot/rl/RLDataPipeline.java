@@ -83,6 +83,28 @@ public class RLDataPipeline {
         return pythonSocket != null && pythonSocket.isConnected();
     }
 
+    public void sendGameOver(boolean didWin) {
+        if (pythonOut == null || !isConnected()) return;
+        try {
+            // Context "END_GAME"
+            byte[] contextBytes = "END_GAME".getBytes("UTF-8");
+            byte[] contextLenBytes = java.nio.ByteBuffer.allocate(4).putInt(contextBytes.length).array();
+            pythonOut.write(contextLenBytes);
+            pythonOut.write(contextBytes);
+            
+            // Generate simple JSON payload
+            String payload = "{\"game_over\": true, \"win\": " + didWin + "}";
+            byte[] payloadBytes = payload.getBytes("UTF-8");
+            byte[] payloadLenBytes = java.nio.ByteBuffer.allocate(4).putInt(payloadBytes.length).array();
+            pythonOut.write(payloadLenBytes);
+            pythonOut.write(payloadBytes);
+            pythonOut.flush();
+            logger.info("RLDataPipeline: Sent END_GAME payload (win=" + didWin + ")");
+        } catch (Exception e) {
+            logger.error(e, "Failed to send END_GAME");
+        }
+    }
+
     public void close() {
         try {
             if (pythonIn != null)

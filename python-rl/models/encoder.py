@@ -125,13 +125,25 @@ class MegaMekHGTEncoder(nn.Module):
         
         # batch tensor handles disconnected subgraphs in PyG, defaulting to 0 for a single graph
         if flat_nodes.size(0) > 0:
-            batch = torch.zeros(flat_nodes.size(0), dtype=torch.long, device=flat_nodes.device)
+            if hasattr(hetero_data['hex'], 'batch'):
+                batch_hex = hetero_data['hex'].batch
+                batch_unit = hetero_data['unit'].batch if hasattr(hetero_data['unit'], 'batch') else torch.zeros(x_dict['unit'].size(0), dtype=torch.long, device=flat_nodes.device)
+                batch_weapon = hetero_data['weapon'].batch if hasattr(hetero_data['weapon'], 'batch') else torch.zeros(x_dict['weapon'].size(0), dtype=torch.long, device=flat_nodes.device)
+                batch = torch.cat([batch_hex, batch_unit, batch_weapon], dim=0)
+            else:
+                batch = torch.zeros(flat_nodes.size(0), dtype=torch.long, device=flat_nodes.device)
+                
             z_graph = self.global_pool(flat_nodes, batch)
         else:
-            z_graph = torch.zeros((1, self.hidden_dim), device=flat_nodes.device)
+            batch_size = hetero_data.global_context.size(0) if hetero_data.global_context.dim() > 1 else 1
+            z_graph = torch.zeros((batch_size, self.hidden_dim), device=flat_nodes.device)
         
         # 4. Context processing
-        z_context = self.context_mlp(hetero_data.global_context.unsqueeze(0))
+        if hetero_data.global_context.dim() == 1:
+            global_context = hetero_data.global_context.unsqueeze(0)
+        else:
+            global_context = hetero_data.global_context
+        z_context = self.context_mlp(global_context)
         
         # 5. Latent Fusion
         z = torch.cat([z_graph, z_context], dim=-1)

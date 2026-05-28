@@ -54,67 +54,91 @@ class MegaMekAgent(nn.Module):
         v_mean = v_preds.mean(dim=-1).squeeze(1) # [batch_size]
         v_variance = v_preds.var(dim=-1, unbiased=False).squeeze(1) # [batch_size]
         
-        pi_log_prob_total = torch.zeros(z.size(0), device=z.device)
-        entropy_total = torch.zeros(z.size(0), device=z.device)
+        batch_size = z.size(0)
+        pi_log_prob_total = torch.zeros(batch_size, device=z.device)
+        entropy_total = torch.zeros(batch_size, device=z.device)
+        correct_total = torch.zeros(batch_size, device=z.device)
+        steps_total = torch.zeros(batch_size, device=z.device)
         
-        y_seq = getattr(batch, 'y_sequence', None)
-        if y_seq is None or y_seq.size(0) == 0:
-            print(f"DEBUG evaluate_actions: y_seq is empty for context {batch.context}")
-            return pi_log_prob_total, entropy_total, v_mean, v_variance
-            
-        e_actions = self.actor_pointer.compute_action_embeddings(x_dict, batch)
-        if e_actions.size(0) == 0:
-            return pi_log_prob_total, entropy_total, v_mean, v_variance
-            
-        step_indices = batch['action'].step_idx
-        seq_len = y_seq.size(0)
-        chosen_embeddings = []
+        y_seq_concat = getattr(batch, 'y_sequence', None)
+        y_lens = getattr(batch, 'y_len', None)
+        contexts = getattr(batch, 'context', [""] * batch_size)
         
-        for k in range(seq_len):
-            target_idx = y_seq[k].item()
+        if y_seq_concat is None or y_seq_concat.size(0) == 0:
+            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
             
-            if getattr(batch, 'context', [""])[0] == "MOVEMENT_BC":
-                valid_mask = (step_indices == k)
-            else:
-                target_type = batch['action'].x[target_idx, 6].item()
-                valid_mask = (batch['action'].x[:, 6] == target_type)
+        e_actions_batched = self.actor_pointer.compute_action_embeddings(x_dict, batch)
+        if e_actions_batched.size(0) == 0:
+            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
+            
+        action_batch_idx = batch['action'].batch if hasattr(batch['action'], 'batch') else torch.zeros(e_actions_batched.size(0), dtype=torch.long, device=z.device)
+        step_indices_concat = batch['action'].step_idx
+        action_x_concat = batch['action'].x
+        
+        y_offset = 0
+        for b in range(batch_size):
+            y_len = y_lens[b].item() if y_lens is not None else (y_seq_concat.size(0) if y_seq_concat.dim() > 0 else 0)
+            if y_len == 0:
+                continue
                 
-            if not valid_mask.any():
-                break
+            y_seq = y_seq_concat[y_offset : y_offset + y_len]
+            
+            mask_b = (action_batch_idx == b)
+            e_actions = e_actions_batched[mask_b]
+            step_indices = step_indices_concat[mask_b]
+            action_x = action_x_concat[mask_b]
+            context = contexts[b] if isinstance(contexts, list) else contexts
+            
+            chosen_embeddings = []
+            
+            for k in range(y_len):
+                target_idx = y_seq[k].item()
                 
-            if not valid_mask[target_idx]:
-                break
+                if context == "MOVEMENT_BC":
+                    valid_mask = (step_indices == k)
+                else:
+                    target_type = action_x[target_idx, 6].item()
+                    valid_mask = (action_x[:, 6] == target_type)
+                    
+                if not valid_mask.any():
+                    break
+                    
+                if not valid_mask[target_idx]:
+                    break
+                    
+                if len(chosen_embeddings) == 0:
+                    history_tensor = None
+                else:
+                    history_tensor = torch.stack(chosen_embeddings).unsqueeze(0)
+                    
+                s_k = self.actor_pointer.decode_sequence(z[b:b+1], history_tensor)
                 
-            if len(chosen_embeddings) == 0:
-                history_tensor = None
-            else:
-                history_tensor = torch.stack(chosen_embeddings).unsqueeze(0)
+                e_tier = e_actions[valid_mask]
                 
-            s_k = self.actor_pointer.decode_sequence(z, history_tensor)
-            
-            e_tier = e_actions[valid_mask]
-            tier_batch_idx = batch['action'].batch[valid_mask] if hasattr(batch['action'], 'batch') and getattr(batch['action'], 'batch') is not None else None
-            
-            logits = self.actor_pointer.score_actions(s_k, e_tier, tier_batch_idx) # (num_tier_actions,)
-            probs = torch.softmax(logits, dim=-1)
-            
-            global_indices = torch.where(valid_mask)[0]
-            relative_target = (global_indices == target_idx).nonzero(as_tuple=True)[0]
-            
-            if relative_target.numel() == 0:
-                break
+                logits = self.actor_pointer.score_actions(s_k, e_tier, None) # No batch idx needed
+                probs = torch.softmax(logits, dim=-1)
                 
-            # Log prob
-            pi_prob = probs[relative_target]
-            pi_log_prob_total += torch.log(pi_prob + 1e-10).sum()
+                global_indices = torch.where(valid_mask)[0]
+                relative_target = (global_indices == target_idx).nonzero(as_tuple=True)[0]
+                
+                if relative_target.numel() == 0:
+                    break
+                    
+                pi_prob = probs[relative_target]
+                pi_log_prob_total[b] += torch.log(pi_prob + 1e-10).sum()
+                
+                entropy = -(probs * torch.log(probs + 1e-10)).sum()
+                entropy_total[b] += entropy
+                
+                if logits.argmax() == relative_target:
+                    correct_total[b] += 1
+                steps_total[b] += 1
+                
+                chosen_embeddings.append(e_actions[target_idx])
+                
+            y_offset += y_len
             
-            # Entropy
-            entropy = -(probs * torch.log(probs + 1e-10)).sum()
-            entropy_total += entropy
-            
-            chosen_embeddings.append(e_actions[target_idx])
-            
-        return pi_log_prob_total, entropy_total, v_mean, v_variance
+        return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
 
     def _decode_and_sample_step(self, z, history_embeddings, e_actions, candidates, batch_idx, deterministic=False):
         """
@@ -222,13 +246,52 @@ class MegaMekAgent(nn.Module):
             
         elif phase_type == 1: # WEAPON
             valid_twists = mask_tree.get("valid_twists", [])
+            
+            # Find END node index dynamically
+            end_node_idx = -1
+            if valid_twists:
+                src_idx = valid_twists[0].get("source_entity_index", -1)
+                action_x = hetero_data['action'].x
+                source_unit_indices = hetero_data['action'].source_unit_idx
+                end_mask = (action_x[:, 6] == 3.0) & (source_unit_indices == src_idx)
+                if end_mask.any():
+                    end_node_idx = torch.where(end_mask)[0][0].item()
+
             choices = []
             for twist in valid_twists:
+                children = []
+                if end_node_idx != -1:
+                    children.append({
+                        "node_idx": end_node_idx,
+                        "type": "END",
+                        "data": None,
+                        "children": []
+                    })
+                
+                valid_targets = twist.get("valid_targets", [])
+                for target in valid_targets:
+                    target_children = []
+                    valid_weapons = target.get("valid_weapons", [])
+                    for weapon in valid_weapons:
+                        target_children.append({
+                            "node_idx": weapon.get("node_idx", -1),
+                            "type": "WEAPON",
+                            "data": weapon,
+                            "children": []
+                        })
+                    
+                    children.append({
+                        "node_idx": target.get("node_idx", -1),
+                        "type": "TARGET",
+                        "data": target,
+                        "children": target_children
+                    })
+                
                 choices.append({
                     "node_idx": twist.get("node_idx", -1),
                     "type": "TWIST",
                     "data": twist,
-                    "children": []
+                    "children": children
                 })
             return choices
             

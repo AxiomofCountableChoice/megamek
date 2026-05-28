@@ -397,4 +397,9 @@ public class RLBotClient extends BotClient {
         }
         super.die();
     }
+    public void sendGameOver(boolean didWin) {
+        if (dataPipeline != null) {
+            dataPipeline.sendGameOver(didWin);
+        }
+    }
 }

@@ -7,7 +7,9 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 import random
+import random
 import argparse
+from torch_geometric.data import Batch
 
 from models.agent import MegaMekAgent
 from env import MegaMekEnvironment
@@ -81,6 +83,7 @@ class ImpalaReplayBuffer:
             topology = traj.get("topology_payload", None)
             steps = traj.get("steps", [])
             total_reward = sum([s.get("reward", 0.0) for s in steps])
+            win = traj.get("win", False)
             
             if len(steps) == 0:
                 continue
@@ -93,12 +96,12 @@ class ImpalaReplayBuffer:
                 start_idx = random.randint(0, max_start)
                 sampled_steps = steps[start_idx : start_idx + sequence_length + 1]
                 
-            batch_data.append((topology, sampled_steps, total_reward))
+            batch_data.append((topology, sampled_steps, total_reward, win))
             
         return batch_data
 
 class ImpalaLearner:
-    def __init__(self, device='cpu', dataset_dirs=None, batch_size=4):
+    def __init__(self, device='cpu', dataset_dirs=None, batch_size=4, force_bootstrap=False):
         self.device = device
         self.batch_size = batch_size
         self.agent = MegaMekAgent(hidden_dim=128, ensemble_size=8).to(self.device)
@@ -109,19 +112,21 @@ class ImpalaLearner:
         
         self.global_step = 0
         
-        # Load BC bootstrapping if impala_latest doesn't exist
+        # Load BC bootstrapping if impala_latest doesn't exist or if forced
         self.latest_model_path = os.path.join("model_objects", "impala_agent_latest.pt")
         bc_model_path = os.path.join("model_objects", "bc_agent.pt")
         
         os.makedirs("model_objects", exist_ok=True)
         
-        if os.path.exists(self.latest_model_path):
+        if not force_bootstrap and os.path.exists(self.latest_model_path):
             logger.info(f"Resuming from {self.latest_model_path}")
             self.agent.load_state_dict(torch.load(self.latest_model_path, map_location=device))
         elif os.path.exists(bc_model_path):
             logger.info(f"Bootstrapping Learner from BC weights: {bc_model_path}")
             self.agent.load_state_dict(torch.load(bc_model_path, map_location=device))
             self.save_checkpoint()
+        else:
+            logger.info("No existing weights found. Starting from scratch.")
             
         # Dummy environment to parse raw payloads
         self.env = MegaMekEnvironment(port=0, device=self.device, connect_on_init=False)
@@ -180,18 +185,20 @@ class ImpalaLearner:
         self.agent.train()
         self.optimizer.zero_grad()
         
-        total_actor_loss = 0
-        total_critic_loss = 0
-        total_entropy_loss = 0
+        total_actor_loss = 0.0
+        total_critic_loss = 0.0
+        total_entropy_loss = 0.0
         valid_batches = 0
         total_game_rewards = []
+        total_wins = []
         
-        for topology, steps, total_reward in batch_data:
+        for topology, steps, total_reward, win in batch_data:
             actual_seq_len = len(steps) - 1
             if actual_seq_len <= 0: continue
             
             valid_batches += 1
             total_game_rewards.append(total_reward)
+            total_wins.append(1.0 if win else 0.0)
             
             transitions = steps[:-1]
             
@@ -202,35 +209,31 @@ class ImpalaLearner:
             log_pis_list = []
             entropies_list = []
             
-            v_means_list = []
-            v_vars_list = []
+            # Batch parse and collate the entire sequence!
+            graphs = []
+            for t, s in enumerate(steps):
+                graph, mask = self.parse_state(s["raw_payload"], s.get("action_dict", {}), topology)
+                graphs.append(graph)
+                
+            batched_graphs = Batch.from_data_list(graphs)
+            
+            # Single massive forward pass for the entire sequence!
+            pi_log_probs, entropies_all, v_means, v_vars, _, _ = self.agent.evaluate_actions(batched_graphs)
+            
+            z, _ = self.agent.encoder(batched_graphs)
+            v_preds_all = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(1) # [actual_seq_len+1, E]
             
             v_preds_ensemble = []
             
-            # Recompute graph forward pass using CURRENT weights for ALL N+1 states
-            for t, s in enumerate(steps):
-                graph, mask = self.parse_state(s["raw_payload"], s.get("action_dict", {}), topology)
-                
-                pi_log_prob, entropy, v_mean, v_variance = self.agent.evaluate_actions(graph)
-                
-                v_means_list.append(v_mean[0] if v_mean.numel() > 0 else torch.tensor(0.0, device=self.device, requires_grad=True))
-                v_vars_list.append(v_variance[0] if v_variance.numel() > 0 else torch.tensor(0.0, device=self.device))
-                
-                # Only extract actor targets for the N transitions
-                if t < actual_seq_len:
-                    pi_probs_list.append(torch.exp(pi_log_prob[0]) if pi_log_prob.numel() > 0 else torch.tensor(1.0, device=self.device))
-                    log_pis_list.append(pi_log_prob[0] if pi_log_prob.numel() > 0 else torch.tensor(0.0, device=self.device, requires_grad=True))
-                    entropies_list.append(entropy[0] if entropy.numel() > 0 else torch.tensor(0.0, device=self.device, requires_grad=True))
-                    
-                    z, _ = self.agent.encoder(graph)
-                    v_preds = torch.stack([critic(z) for critic in self.agent.ensembles], dim=-1).squeeze(0).squeeze(0) # [E]
-                    v_preds_ensemble.append(v_preds)
+            for t in range(actual_seq_len):
+                pi_probs_list.append(torch.exp(pi_log_probs[t]))
+                log_pis_list.append(pi_log_probs[t])
+                entropies_list.append(entropies_all[t])
+                v_preds_ensemble.append(v_preds_all[t])
                     
             pi_probs = torch.stack(pi_probs_list)
             log_pis = torch.stack(log_pis_list)
             entropies = torch.stack(entropies_list)
-            v_means = torch.stack(v_means_list)
-            v_vars = torch.stack(v_vars_list)
             
             # DEBUG: Check if we have any valid action log_probs with gradients
             has_valid_actor_grad = log_pis.requires_grad and (log_pis != 0.0).any().item()
@@ -282,6 +285,10 @@ class ImpalaLearner:
         if len(total_game_rewards) > 0:
             avg_game_reward = sum(total_game_rewards) / len(total_game_rewards)
             self.writer.add_scalar("System/Average_Game_Total_Reward", avg_game_reward, self.global_step)
+            
+        if len(total_wins) > 0:
+            win_rate = sum(total_wins) / len(total_wins)
+            self.writer.add_scalar("System/Win_Rate", win_rate, self.global_step)
         
         self.global_step += 1
         return True
@@ -311,8 +318,9 @@ class ImpalaLearner:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default="cpu", help="Device to run master trainer on")
+    parser.add_argument("--force-bootstrap", action="store_true", help="Force bootstrap from BC weights, overwriting impala latest weights")
     args = parser.parse_args()
     
     device = torch.device(args.device)
-    learner = ImpalaLearner(device=device)
+    learner = ImpalaLearner(device=device, force_bootstrap=args.force_bootstrap)
     learner.run()

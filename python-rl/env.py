@@ -116,6 +116,10 @@ class MegaMekEnvironment:
             self.done = True
             return None, None, True, None 
             
+        if payload.get("game_over"):
+            self.done = True
+            return None, None, True, payload
+            
         state, mask = self.state_parser.parse_to_heterodata(payload)
         if (self.device is not None) and (state is not None):
             state = state.to(self.device)

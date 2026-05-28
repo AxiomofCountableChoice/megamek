@@ -92,6 +92,9 @@ class ImpalaWorker:
                     state_graph, mask, done, current_payload = self.env.step(action_dict)
 
                     if done:
+                        if current_payload and current_payload.get("game_over"):
+                            win_status = current_payload.get("win", False)
+                            self.logger.info(f"Game finished properly. Win: {win_status}")
                         break
                     
                     if max_turns > 0 and current_payload and current_payload.get("turn_number", 0) >= max_turns:
@@ -104,7 +107,10 @@ class ImpalaWorker:
                 self.env.done = False # ensure we don't save aborted games
             finally:
                 if len(trajectory) > 0:
-                    # Attempt to fetch full game log from server
+                    win_status = False
+                    if current_payload and isinstance(current_payload, dict) and current_payload.get("game_over"):
+                        win_status = current_payload.get("win", False)
+                    
                     gamelog_html = ""
                     try:
                         gamelog_path = os.path.join(os.path.dirname(__file__), "..", "megamek", "logs", f"server_{self.env.port}", "gamelog.html")
@@ -117,12 +123,13 @@ class ImpalaWorker:
                     traj_data = {
                         "topology_payload": topology_payload,
                         "steps": trajectory,
-                        "gamelog_html": gamelog_html
+                        "gamelog_html": gamelog_html,
+                        "win": win_status
                     }
                     
                     traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
                     torch.save(traj_data, traj_file)
-                    self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file}")
+                    self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file} with win={win_status}")
                     
                     try:
                         import subprocess

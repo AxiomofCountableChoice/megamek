@@ -83,6 +83,9 @@ class StateParser:
             
             if true_sequence_indices and target_action:
                 data.y_sequence = torch.tensor(true_sequence_indices, dtype=torch.long)
+            else:
+                data.y_sequence = torch.empty((0,), dtype=torch.long)
+            data.y_len = torch.tensor([data.y_sequence.size(0)], dtype=torch.long)
         else:
             data['action'].x = torch.empty((0, 8), dtype=torch.float32)
             data['action'].step_idx = torch.empty((0,), dtype=torch.long)
@@ -91,6 +94,8 @@ class StateParser:
             data['action'].target_weapon_idx = torch.empty((0,), dtype=torch.long)
             data['action'].source_unit_idx = torch.empty((0,), dtype=torch.long)
             data['action'].path_idx = torch.empty((0,), dtype=torch.long)
+            data.y_sequence = torch.empty((0,), dtype=torch.long)
+            data.y_len = torch.tensor([0], dtype=torch.long)
 
     def parse_to_heterodata(self, payload):
         context = payload.get("context", "UNKNOWN")
@@ -114,7 +119,7 @@ class StateParser:
         # 1. Global Phase Features
         phase_str = raw_state.get('phase_main', "UNKNOWN")
         turn = raw_state.get('turn_number', 0)
-        data.global_context = torch.tensor([turn, len(phase_str)], dtype=torch.float32)
+        data.global_context = torch.tensor([[turn, len(phase_str)]], dtype=torch.float32)
         
         # 2. Dynamic Entity Nodes
         raw_entities = raw_state.get("entities", [])
