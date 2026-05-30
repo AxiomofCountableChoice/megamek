@@ -149,18 +149,7 @@ public class RLBotClient extends BotClient {
                         System.err.println("RL_SYNC_DEBUG [continueMovementFor]: Successfully parsed path index " + idx + " out of " + calculatedPaths.size() + " paths.");
                     }
                     MovePath chosenPath = calculatedPaths.get(idx);
-                    if (chosenPath != null) {
-                        java.util.ListIterator<megamek.common.moves.MoveStep> it = chosenPath.getSteps();
-                        while (it.hasNext()) {
-                            megamek.common.moves.MoveStep step = it.next();
-                            megamek.common.Hex hex = game.getBoard(chosenPath.getFinalBoardId()).getHex(step.getPosition());
-                            if (hex == null) {
-                                System.err.println("RL_SYNC_DEBUG [continueMovementFor]: WARNING! Intercepted a MovePath with an off-board hex. Scrubbing path to prevent server crash.");
-                                return new MovePath(game, entity);
-                            }
-                        }
-                    }
-                    return chosenPath;
+                    return truncateInvalidSteps(chosenPath, entity);
                 } else {
                     if (RLDataPipeline.DEBUG_RL_SYNC) {
                         System.err.println("RL_SYNC_DEBUG [continueMovementFor]: WARNING! Python returned an out-of-bounds selected_path_index: " + idx + " (max " + calculatedPaths.size() + "). Defaulting to standing still.");
@@ -181,7 +170,35 @@ public class RLBotClient extends BotClient {
         return new MovePath(game, entity);
     }
 
-
+    /**
+     * Helper to safely truncate out-of-bounds steps from a generated path.
+     */
+    private MovePath truncateInvalidSteps(MovePath path, Entity entity) {
+        if (path == null) return null;
+        try {
+            java.util.Vector<megamek.common.moves.MoveStep> steps = path.getStepVector();
+            int badIndex = -1;
+            for (int i = 0; i < steps.size(); i++) {
+                megamek.common.moves.MoveStep step = steps.get(i);
+                megamek.common.board.Board b = game.getBoard(step.getBoardId());
+                if (b == null || !b.contains(step.getPosition())) {
+                    badIndex = i;
+                    break;
+                }
+            }
+            if (badIndex != -1) {
+                System.err.println("RL_SYNC_DEBUG [truncateInvalidSteps]: WARNING! Intercepted a MovePath with an off-board hex at step " + badIndex + ". Truncating path to prevent server crash.");
+                int toRemove = steps.size() - badIndex;
+                for (int i = 0; i < toRemove; i++) {
+                    path.removeLastStep();
+                }
+            }
+            return path;
+        } catch (Exception e) {
+            System.err.println("RL_SYNC_DEBUG [truncateInvalidSteps]: Exception while validating MovePath: " + e.getMessage());
+            return new MovePath(game, entity);
+        }
+    }
 
     @Override
     protected void calculateFiringTurn() {

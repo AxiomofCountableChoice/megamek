@@ -275,6 +275,7 @@ class ImpalaLearner:
         # Normalize the loss by the number of valid batches
         loss = (total_actor_loss + 0.5 * total_critic_loss + entropy_coef * total_entropy_loss) / valid_batches
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.agent.parameters(), max_norm=0.5)
         self.optimizer.step()
         
         self.writer.add_scalar("Loss/Total", loss.item(), self.global_step)

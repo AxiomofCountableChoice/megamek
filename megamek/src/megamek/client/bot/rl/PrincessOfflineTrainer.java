@@ -34,6 +34,15 @@ public class PrincessOfflineTrainer {
     private static final MMLogger logger = MMLogger.create(PrincessOfflineTrainer.class);
 
     public static void start(String[] args) {
+        // Prevent MegaMek's default uncaught exception handler from popping up a Swing dialog on headless servers
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread t, Throwable e) {
+                System.err.println("CRITICAL: Uncaught exception in thread " + t.getName());
+                e.printStackTrace();
+            }
+        });
+
         System.out.println("PrincessOfflineTrainer start() called! autoGen check incoming...");
         boolean autoGen = false;
         boolean selfPlay = false;
@@ -92,8 +101,12 @@ public class PrincessOfflineTrainer {
         Server server;
 
         try {
-            server = new Server(resolver.password, resolver.port, new TWGameManager(), resolver.registerServer,
-                    resolver.announceUrl, null, true);
+            server = new Server(resolver.password, resolver.port, new megamek.server.totalWarfare.TWGameManager() {
+                @Override
+                public void autoSave() {
+                    // Disable autosave to avoid disk IO bottlenecks and server deadlocks during RL matches
+                }
+            }, resolver.registerServer, resolver.announceUrl, null, true);
         } catch (Throwable ex) {
             System.err.println("FATAL THROWABLE IN SERVER START: " + ex);
             ex.printStackTrace(System.err);
@@ -168,6 +181,7 @@ public class PrincessOfflineTrainer {
                 // Enforce a hard Round/Turn limit so offline bots don't stalemate infinitely
                 game.getOptions().getOption(megamek.common.options.OptionsConstants.VICTORY_USE_GAME_TURN_LIMIT).setValue(true);
                 game.getOptions().getOption(megamek.common.options.OptionsConstants.VICTORY_GAME_TURN_LIMIT).setValue(30);
+                game.getOptions().getOption(megamek.common.options.OptionsConstants.BASE_MAX_NUMBER_ROUND_SAVES).setValue(0);
                 
                 // Get Players
                 System.out.println("Waiting for Princess players to appear in lobby...");
@@ -321,7 +335,12 @@ public class PrincessOfflineTrainer {
                             }
                             
                             if (agentPlayer != null) {
-                                boolean p1Won = ((megamek.common.game.Game)g).isPlayerVictor(agentPlayer);
+                                boolean p1Won = false;
+                                if (agentPlayer.getTeam() == megamek.common.Player.TEAM_NONE) {
+                                    p1Won = agentPlayer.getId() == ((megamek.common.game.Game)g).getVictoryPlayerId();
+                                } else {
+                                    p1Won = agentPlayer.getTeam() == ((megamek.common.game.Game)g).getVictoryTeam();
+                                }
                                 System.out.println("P1 (RLBotClient) inferred won? " + p1Won);
                                 ((RLBotClient)p1).sendGameOver(p1Won);
                             } else {

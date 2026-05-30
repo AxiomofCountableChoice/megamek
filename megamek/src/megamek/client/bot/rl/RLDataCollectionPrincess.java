@@ -57,19 +57,7 @@ public class RLDataCollectionPrincess extends Princess {
             chosenPath = super.continueMovementFor(entity);
             
             // Validate the path against off-board hexes to prevent headless Server NullPointerExceptions
-            if (chosenPath != null) {
-                java.util.ListIterator<megamek.common.moves.MoveStep> it = chosenPath.getSteps();
-                while (it.hasNext()) {
-                    megamek.common.moves.MoveStep step = it.next();
-                    megamek.common.Hex hex = getGame().getBoard(chosenPath.getFinalBoardId()).getHex(step.getPosition());
-                    if (hex == null) {
-                        logger.error("RLDataCollectionPrincess intercepted a MovePath with an off-board hex. Scrubbing path to prevent server crash.");
-                        MovePath safePath = new MovePath(getGame(), entity);
-                        chosenPath = safePath;
-                        break;
-                    }
-                }
-            }
+            chosenPath = truncateInvalidSteps(chosenPath);
         } catch (Exception e) {
             logger.error(e, "RLDataCollectionPrincess encountered an exception during Movement calculation. Returning empty path to prevent server hang.");
             MovePath safePath = new MovePath(getGame(), entity);
@@ -91,6 +79,36 @@ public class RLDataCollectionPrincess extends Princess {
         }
         
         return chosenPath;
+    }
+    
+    /**
+     * Helper to safely truncate out-of-bounds steps from a generated path.
+     */
+    private MovePath truncateInvalidSteps(MovePath path) {
+        if (path == null) return null;
+        try {
+            java.util.Vector<megamek.common.moves.MoveStep> steps = path.getStepVector();
+            int badIndex = -1;
+            for (int i = 0; i < steps.size(); i++) {
+                megamek.common.moves.MoveStep step = steps.get(i);
+                megamek.common.board.Board b = getGame().getBoard(step.getBoardId());
+                if (b == null || !b.contains(step.getPosition())) {
+                    badIndex = i;
+                    break;
+                }
+            }
+            if (badIndex != -1) {
+                logger.error("RLDataCollectionPrincess intercepted a MovePath with an off-board hex at step " + badIndex + ". Truncating path to prevent server crash.");
+                int toRemove = steps.size() - badIndex;
+                for (int i = 0; i < toRemove; i++) {
+                    path.removeLastStep();
+                }
+            }
+            return path;
+        } catch (Exception e) {
+            logger.error(e, "Exception while validating MovePath. Returning empty path.");
+            return new MovePath(getGame(), path.getEntity());
+        }
     }
     
     @Override

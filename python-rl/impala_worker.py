@@ -104,7 +104,7 @@ class ImpalaWorker:
                     step_idx += 1
             except Exception as e:
                 self.logger.error(f"Episode terminated abruptly: {e}")
-                self.env.done = False # ensure we don't save aborted games
+                self.env.done = True # force reset on next episode to avoid infinite broken pipe loops
             finally:
                 if len(trajectory) > 0:
                     win_status = False

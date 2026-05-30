@@ -83,22 +83,13 @@ public class RLDataPipeline {
         return pythonSocket != null && pythonSocket.isConnected();
     }
 
-    public void sendGameOver(boolean didWin) {
+    public synchronized void sendGameOver(boolean didWin) {
         if (pythonOut == null || !isConnected()) return;
         try {
-            // Context "END_GAME"
-            byte[] contextBytes = "END_GAME".getBytes("UTF-8");
-            byte[] contextLenBytes = java.nio.ByteBuffer.allocate(4).putInt(contextBytes.length).array();
-            pythonOut.write(contextLenBytes);
-            pythonOut.write(contextBytes);
-            
-            // Generate simple JSON payload
-            String payload = "{\"game_over\": true, \"win\": " + didWin + "}";
-            byte[] payloadBytes = payload.getBytes("UTF-8");
-            byte[] payloadLenBytes = java.nio.ByteBuffer.allocate(4).putInt(payloadBytes.length).array();
-            pythonOut.write(payloadLenBytes);
-            pythonOut.write(payloadBytes);
-            pythonOut.flush();
+            java.util.Map<String, Object> payloadMap = new java.util.HashMap<>();
+            payloadMap.put("game_over", true);
+            payloadMap.put("win", didWin);
+            sendPayload(payloadMap);
             logger.info("RLDataPipeline: Sent END_GAME payload (win=" + didWin + ")");
         } catch (Exception e) {
             logger.error(e, "Failed to send END_GAME");
@@ -270,7 +261,7 @@ public class RLDataPipeline {
         return queryPython(actionContext, mask, responseType, null);
     }
 
-    public <T> T queryPython(String actionContext, Object mask, Class<T> responseType, List<megamek.common.actions.WeaponAttackAction> declaredAttacks) {
+    public synchronized <T> T queryPython(String actionContext, Object mask, Class<T> responseType, List<megamek.common.actions.WeaponAttackAction> declaredAttacks) {
         if (!isConnected()) {
             return null;
         }
@@ -748,6 +739,7 @@ public class RLDataPipeline {
                     continue;
                 Entity e2 = game.getEntitiesVector().get(j);
             if (e2 == null || !e1.isEnemyOf(e2)) continue;
+                if (e1.getPosition() == null || e2.getPosition() == null) continue;
                 megamek.common.LosEffects los = megamek.common.LosEffects.calculateLOS(game, e1, e2);
                 if (los.canSee()) {
                     losTargetEdges.add(new int[] { i, j });
@@ -757,7 +749,7 @@ public class RLDataPipeline {
             boolean isFriendly = (localPlayer != null && e1.getOwnerId() == localPlayer.getId());
 
             // LOS Threat and Partial Cover Edges (Restricted to reachable hexes and enemy units)
-            if (!isFriendly) {
+            if (!isFriendly && e1.getPosition() != null) {
                 for (int hexIdx : friendlyGlobalReachableHexes) {
                     if (enemyOccupiedHexes.contains(hexIdx)) {
                         continue;
@@ -1040,6 +1032,9 @@ public class RLDataPipeline {
                         continue;
                     }
 
+                    if (shooter.getPosition() == null || target.getPosition() == null) {
+                        continue;
+                    }
                     boolean inFrontArc = megamek.common.compute.ComputeArc.isInArc(shooter.getPosition(),
                             shooter.getSecondaryFacing(), target, shooter.getForwardArc());
                     int secondaryPenalty = 2;

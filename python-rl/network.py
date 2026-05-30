@@ -78,7 +78,12 @@ class MegaMekNetwork:
                 return None
             data += packet
             
-        payload = msgpack.unpackb(data, raw=False)
+        try:
+            payload = msgpack.unpackb(data, raw=False)
+        except msgpack.exceptions.ExtraData as e:
+            if self.logger:
+                self.logger.error(f"msgpack ExtraData error! payload_len={payload_len}, data={data}")
+            raise e
         return payload
 
     def close(self):
