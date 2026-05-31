@@ -50,6 +50,7 @@ public class PrincessOfflineTrainer {
         boolean randomMap = false;
         String p1Meks = "";
         String p2Meks = "";
+        int randomBVTarget = 0;
         
         java.util.List<String> cleanArgs = new java.util.ArrayList<>();
         System.out.println("Args passed to PrincessOfflineTrainer:");
@@ -69,6 +70,8 @@ public class PrincessOfflineTrainer {
                 p1Meks = args[++i];
             } else if (args[i].equalsIgnoreCase("-p2meks")) {
                 p2Meks = args[++i];
+            } else if (args[i].equalsIgnoreCase("-randomBV")) {
+                randomBVTarget = Integer.parseInt(args[++i]);
             } else {
                 cleanArgs.add(args[i]);
             }
@@ -270,6 +273,47 @@ public class PrincessOfflineTrainer {
                         }
                     }
                     
+                    if (p1Meks.isEmpty() && p2Meks.isEmpty() && randomBVTarget > 0) {
+                        System.out.println("Generating random forces with target BV: " + randomBVTarget);
+                        logger.info("Generating random forces with target BV: " + randomBVTarget);
+                        
+                        megamek.common.loaders.MekSummary[] allMeks = megamek.common.loaders.MekSummaryCache.getInstance().getAllMeks();
+                        java.util.List<megamek.common.loaders.MekSummary> validMeks = new java.util.ArrayList<>();
+                        for (megamek.common.loaders.MekSummary ms : allMeks) {
+                            if (ms.getUnitType() == megamek.common.units.UnitType.MEK) {
+                                validMeks.add(ms);
+                            }
+                        }
+                        
+                        if (!validMeks.isEmpty()) {
+                            // Generate force 1
+                            java.util.List<megamek.common.units.Entity> force1 = generateForceByBV(randomBVTarget, validMeks);
+                            for (megamek.common.units.Entity ent : force1) {
+                                ent.setOwner(player1);
+                                ent.setDeployed(true);
+                                int x = megamek.common.compute.Compute.randomInt(4);
+                                int y = megamek.common.compute.Compute.randomInt(game.getBoard().getHeight());
+                                ent.setPosition(new megamek.common.board.Coords(x, y));
+                                ent.setId(game.getNextEntityId());
+                                game.addEntity(ent);
+                                game.getForces().addEntity(ent, f1Id);
+                            }
+                            
+                            // Generate force 2
+                            java.util.List<megamek.common.units.Entity> force2 = generateForceByBV(randomBVTarget, validMeks);
+                            for (megamek.common.units.Entity ent : force2) {
+                                ent.setOwner(player2);
+                                ent.setDeployed(true);
+                                int x = game.getBoard().getWidth() - 1 - megamek.common.compute.Compute.randomInt(4);
+                                int y = megamek.common.compute.Compute.randomInt(game.getBoard().getHeight());
+                                ent.setPosition(new megamek.common.board.Coords(x, y));
+                                ent.setId(game.getNextEntityId());
+                                game.addEntity(ent);
+                                game.getForces().addEntity(ent, f2Id);
+                            }
+                        }
+                    }
+                    
                     System.out.println("Broadcasting entities...");
                     // Broadcast the newly added entities to the clients.
                     try {
@@ -360,5 +404,32 @@ public class PrincessOfflineTrainer {
                 System.exit(0);
             }
         }
+    }
+
+    private static java.util.List<megamek.common.units.Entity> generateForceByBV(int targetBV, java.util.List<megamek.common.loaders.MekSummary> validMeks) {
+        java.util.List<megamek.common.units.Entity> force = new java.util.ArrayList<>();
+        int currentBV = 0;
+        int maxAttempts = 200;
+        
+        while (currentBV < targetBV && maxAttempts > 0) {
+            megamek.common.loaders.MekSummary candidate = validMeks.get(megamek.common.compute.Compute.randomInt(validMeks.size()));
+            if (candidate.getBV() > 0 && currentBV + candidate.getBV() <= targetBV + (targetBV * 0.15)) {
+                try {
+                    megamek.common.units.Entity ent = new megamek.common.loaders.MekFileParser(candidate.getSourceFile()).getEntity();
+                    if (ent != null) {
+                        force.add(ent);
+                        currentBV += candidate.getBV();
+                        if (currentBV >= targetBV - (targetBV * 0.15)) {
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("Exception parsing Mek: " + e.getMessage());
+                }
+            }
+            maxAttempts--;
+        }
+        
+        return force;
     }
 }

@@ -41,7 +41,7 @@ def stream_reader(stream, port_logger, match_log_path=None):
         f.close()
     stream.close()
 
-def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario_dir=None, options=None, max_meks=4):
+def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario_dir=None, options=None, max_meks=4, use_bv_balancer=False, min_bv=3000, max_bv=8000):
     """Continuously runs the MegaMek server on the specified port until shutdown."""
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
     env = os.environ.copy()
@@ -68,6 +68,12 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
         
         if current_scenario:
             cmd.extend(["-scenario", current_scenario])
+        elif use_bv_balancer:
+            target_bv = random.randint(min_bv, max_bv)
+            cmd.extend([
+                "-randomMap",
+                "-randomBV", str(target_bv)
+            ])
         else:
             p1_num = random.randint(1, max_meks)
             p2_num = random.randint(1, max_meks)
@@ -223,6 +229,9 @@ def main():
     parser.add_argument("--scenario", type=str, default="", help="Path to a single .mms scenario file")
     parser.add_argument("--scenario-dir", type=str, default="", help="Directory containing .mms scenarios to randomly sample from")
     parser.add_argument("--max-meks", type=int, default=12, help="Maximum number of meks per side for random matches")
+    parser.add_argument("--use-bv-balancer", action="store_true", help="Use MegaMek's force builder to create BV-balanced random forces")
+    parser.add_argument("--min-bv", type=int, default=3000, help="Minimum BV target for random forces")
+    parser.add_argument("--max-bv", type=int, default=8000, help="Maximum BV target for random forces")
     parser.add_argument("--options", type=str, nargs="*", default=[], help="List of game options like -VICTORY_USE_KILL_COUNT=true")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run workers on (cpu, cuda:0, etc)")
     args = parser.parse_args()
@@ -262,7 +271,7 @@ def main():
         worker2_port = server_port + 1001
         
         # Start Server Thread
-        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.scenario_dir, args.options, args.max_meks))
+        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.scenario_dir, args.options, args.max_meks, args.use_bv_balancer, args.min_bv, args.max_bv))
         t_server.start()
         threads.append(t_server)
         
