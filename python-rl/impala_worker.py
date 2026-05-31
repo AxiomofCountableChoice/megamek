@@ -128,14 +128,15 @@ class ImpalaWorker:
                 self.logger.error(f"Episode terminated abruptly: {e}")
                 self.env.done = True # force reset on next episode to avoid infinite broken pipe loops
             finally:
-                if len(trajectory) > 1 or (done and len(trajectory) > 0):
+                is_done = getattr(self.env, "done", False)
+                if len(trajectory) > 1 or (is_done and len(trajectory) > 0):
                     win_status = False
                     if current_payload and isinstance(current_payload, dict) and current_payload.get("game_over"):
                         win_status = current_payload.get("win", False)
                     
                     gamelog_html = ""
                     try:
-                        gamelog_path = os.path.join(os.path.dirname(__file__), "..", "megamek", "logs", f"server_{self.env.port}", "gamelog.html")
+                        gamelog_path = os.path.join(self.traj_dir, "logs", "gamelog.html")
                         if os.path.exists(gamelog_path):
                             with open(gamelog_path, "r", encoding="utf-8") as f:
                                 gamelog_html = f.read()
@@ -144,17 +145,17 @@ class ImpalaWorker:
 
                     self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status, gamelog_html)
                     
-                    try:
-                        import subprocess
-                        render_script = os.path.join(os.path.dirname(__file__), "validations", "render_game_state.py")
-                        # Get the most recently saved chunk for rendering if needed
-                        chunk_id = int(time.time() * 1000)
-                        traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{chunk_id}.pt")
-                        out_html = traj_file.replace(".pt", ".html")
-                        # This may fail if traj_file isn't exactly the one saved, but auto-render is just a debug tool
-                        # subprocess.Popen([sys.executable, render_script, traj_file, out_html], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    except Exception as re:
-                        self.logger.warning(f"Failed to trigger auto-render: {re}")
+                    if is_done:
+                        try:
+                            import subprocess
+                            render_script = os.path.join(os.path.dirname(__file__), "validations", "render_game_state.py")
+                            # Get the most recently saved chunk for rendering if needed
+                            chunk_id = int(time.time() * 1000)
+                            traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{chunk_id}.pt")
+                            out_html = traj_file.replace(".pt", ".html")
+                            subprocess.Popen([sys.executable, render_script, traj_file, out_html], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except Exception as re:
+                            self.logger.warning(f"Failed to trigger auto-render: {re}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -164,6 +165,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_turns", type=int, default=0, help="Max turns to run (0 for infinite)")
     parser.add_argument("--max_episodes", type=int, default=1000, help="Max episodes to run (0 for infinite)")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run inference on")
+    parser.add_argument("--worker_id", type=str, default=None, help="Explicit worker ID for directory organization")
     args = parser.parse_args()
 
     worker = None
@@ -195,7 +197,7 @@ if __name__ == "__main__":
         temp_logger.info(f"Bootstrapping worker from BC weights: {bc_model_path}")
         agent.load_state_dict(torch.load(bc_model_path, map_location=device))
         
-    worker = ImpalaWorker(agent, port=args.port, device=device, dataset_dir=args.dataset_dir)
+    worker = ImpalaWorker(agent, worker_id=args.worker_id, port=args.port, device=device, dataset_dir=args.dataset_dir)
     if args.test:
         worker.run(max_episodes=1, max_steps_per_episode=15)
     else:

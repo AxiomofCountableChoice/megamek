@@ -41,13 +41,17 @@ def stream_reader(stream, port_logger, match_log_path=None):
         f.close()
     stream.close()
 
-def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario_dir=None, options=None, max_meks=4, use_bv_balancer=False, min_bv=3000, max_bv=8000):
+def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario_dir=None, options=None, max_meks=4, use_bv_balancer=False, min_bv=3000, max_bv=8000, worker_id="default_worker", dataset_dir="data/rl_selfplay_trajectories"):
     """Continuously runs the MegaMek server on the specified port until shutdown."""
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
+    
+    abs_log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), dataset_dir, worker_id, "logs"))
+    os.makedirs(abs_log_dir, exist_ok=True)
+    
     env = os.environ.copy()
     env["JAVA_HOME"] = java_home
     env["PATH"] = f"{os.path.join(java_home, 'bin')}:{env.get('PATH', '')}"
-    env["MEGAMEK_OPTS"] = f"-DlogPath=logs/server_{port}"
+    env["MEGAMEK_OPTS"] = f"-DlogPath={abs_log_dir}"
     env["RL_SERVER_PORT"] = str(port)
     
     if options is None:
@@ -95,9 +99,7 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
             
         try:
             match_id = int(time.time())
-            log_dir = os.path.join("data", "rl_princess_trajectories" if mode == "princess" else "rl_selfplay_trajectories", "logs")
-            os.makedirs(log_dir, exist_ok=True)
-            match_log_file = os.path.join(log_dir, f"megamek_{port}_{match_id}.log")
+            match_log_file = os.path.join(abs_log_dir, f"megamek_{port}_{match_id}.log")
             
             port_logger = setup_logger(f"MegaMek {port}")
             port_logger.info(f"Starting match... logging to {match_log_file}")
@@ -118,25 +120,26 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
             logger.error(f"Failed to start MegaMek server on port {port}: {e}")
             time.sleep(5)
 
-def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu"):
+def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu", worker_id="default_worker"):
     """Continuously runs the ImpalaWorker process."""
     cmd = [
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python")), 
         "impala_worker.py", 
         "--port", str(port), 
         "--dataset_dir", dataset_dir,
-        "--device", device
+        "--device", device,
+        "--worker_id", worker_id
     ]
     
     cwd = os.path.dirname(__file__)
+    abs_log_dir = os.path.abspath(os.path.join(cwd, dataset_dir, worker_id, "logs"))
+    os.makedirs(abs_log_dir, exist_ok=True)
     
     while not shutdown_event.is_set():
         try:
             # Impala worker handles its own logging so we don't need to pipe it
-            worker_id = int(time.time())
-            log_dir = os.path.join(dataset_dir, "logs")
-            os.makedirs(log_dir, exist_ok=True)
-            worker_log_file = os.path.join(log_dir, f"worker_{port}_{worker_id}.log")
+            worker_run_id = int(time.time())
+            worker_log_file = os.path.join(abs_log_dir, f"worker_{port}_{worker_run_id}.log")
             
             logger.info(f"Starting Worker {port}... logging to {worker_log_file}")
             proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -214,6 +217,7 @@ def trajectory_monitor(dataset_dir, shutdown_event):
                         
                         writer.writerow([timestamp, worker_id, str(win), f"{total_reward:.4f}"])
                         csvfile.flush()
+                        os.fsync(csvfile.fileno())
                         processed_files.add(f)
                     except Exception as e:
                         pass
@@ -270,8 +274,10 @@ def main():
         worker1_port = server_port + 1000
         worker2_port = server_port + 1001
         
+        worker_id = f"worker_{server_port}"
+        
         # Start Server Thread
-        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.scenario_dir, args.options, args.max_meks, args.use_bv_balancer, args.min_bv, args.max_bv))
+        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.scenario_dir, args.options, args.max_meks, args.use_bv_balancer, args.min_bv, args.max_bv, worker_id, dataset_dir))
         t_server.start()
         threads.append(t_server)
         
@@ -279,12 +285,12 @@ def main():
         time.sleep(2)
         
         # Start Python Worker Thread(s)
-        t_w1 = threading.Thread(target=python_worker_runner, args=(worker1_port, dataset_dir, shutdown_event, args.device))
+        t_w1 = threading.Thread(target=python_worker_runner, args=(worker1_port, dataset_dir, shutdown_event, args.device, worker_id))
         t_w1.start()
         threads.append(t_w1)
         
         if args.mode == "selfplay":
-            t_w2 = threading.Thread(target=python_worker_runner, args=(worker2_port, dataset_dir, shutdown_event, args.device))
+            t_w2 = threading.Thread(target=python_worker_runner, args=(worker2_port, dataset_dir, shutdown_event, args.device, worker_id))
             t_w2.start()
             threads.append(t_w2)
             
