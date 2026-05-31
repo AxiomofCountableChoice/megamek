@@ -34,6 +34,7 @@ class ImpalaReplayBuffer:
         self.ingest_thread.start()
         
     def _ingest_loop(self):
+        last_cleanup_time = time.time()
         while True:
             for d in self.dataset_dirs:
                 if not os.path.exists(d):
@@ -63,7 +64,34 @@ class ImpalaReplayBuffer:
                                         pass
                         except Exception as e:
                             logger.error(f"[ReplayBuffer] Error loading {f}: {e}")
+                            
+            if time.time() - last_cleanup_time > 60:
+                self._cleanup_old_trajectories()
+                last_cleanup_time = time.time()
+                
             time.sleep(2)
+
+    def _cleanup_old_trajectories(self, max_age_seconds=1800):
+        """Deletes .consumed files and their corresponding .pt files if they are older than max_age_seconds."""
+        now = time.time()
+        for d in self.dataset_dirs:
+            if not os.path.exists(d):
+                continue
+            worker_dirs = glob.glob(os.path.join(d, "*"))
+            for wd in worker_dirs:
+                if not os.path.isdir(wd): continue
+                
+                consumed_files = glob.glob(os.path.join(wd, "*.pt.consumed"))
+                for cf in consumed_files:
+                    try:
+                        mtime = os.path.getmtime(cf)
+                        if now - mtime > max_age_seconds:
+                            pt_file = cf.replace(".consumed", "")
+                            os.remove(cf)
+                            if os.path.exists(pt_file):
+                                os.remove(pt_file)
+                    except Exception as e:
+                        pass # Ignore cleanup errors gracefully
 
     def sample_batch(self, batch_size=4, sequence_length=16):
         """
@@ -215,7 +243,7 @@ class ImpalaLearner:
                 graph, mask = self.parse_state(s["raw_payload"], s.get("action_dict", {}), topology)
                 graphs.append(graph)
                 
-            batched_graphs = Batch.from_data_list(graphs)
+            batched_graphs = Batch.from_data_list(graphs).to(self.device)
             
             # Single massive forward pass for the entire sequence!
             pi_log_probs, entropies_all, v_means, v_vars, _, _ = self.agent.evaluate_actions(batched_graphs)

@@ -139,11 +139,7 @@ class MegaMekHGTEncoder(nn.Module):
             z_graph = torch.zeros((batch_size, self.hidden_dim), device=flat_nodes.device)
         
         # 4. Context processing
-        if hetero_data.global_context.dim() == 1:
-            global_context = hetero_data.global_context.unsqueeze(0)
-        else:
-            global_context = hetero_data.global_context
-        z_context = self.context_mlp(global_context)
+        z_context = self.context_mlp(hetero_data.global_context)
         
         # 5. Latent Fusion
         z = torch.cat([z_graph, z_context], dim=-1)

@@ -4,6 +4,7 @@ import time
 import subprocess
 import torch
 import shutil
+import argparse
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from impala_master import ImpalaLearner
@@ -12,7 +13,7 @@ PORT = 4052
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "megamek"))
 mm_data_root = os.path.abspath(os.path.join(repo_root, "..", "..", "mm-data"))
 
-def validate_e2e_learning():
+def validate_e2e_learning(device_str="cpu"):
     val_dataset_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "rl_val_trajectories"))
     if os.path.exists(val_dataset_dir):
         shutil.rmtree(val_dataset_dir)
@@ -41,7 +42,8 @@ def validate_e2e_learning():
         "--port", str(PORT + 1000),
         "--dataset_dir", val_dataset_dir,
         "--max_turns", "100",
-        "--max_episodes", "1"
+        "--max_episodes", "1",
+        "--device", device_str
     ]
     proc_worker = subprocess.Popen(cmd_worker, text=True)
     
@@ -70,7 +72,7 @@ def validate_e2e_learning():
         stdout, stderr = proc_worker.communicate()
     
     # Initialize Learner
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(device_str)
     print(f"\nInitializing ImpalaLearner on {device}...")
     learner = ImpalaLearner(device=device)
     
@@ -118,4 +120,7 @@ def validate_e2e_learning():
     return True
 
 if __name__ == "__main__":
-    validate_e2e_learning()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--device", type=str, default="cpu", help="Device to run validation on (e.g. cpu, cuda:0)")
+    args = parser.parse_args()
+    validate_e2e_learning(args.device)

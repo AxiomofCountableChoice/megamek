@@ -24,7 +24,7 @@ class ImpalaWorker:
         self.env = MegaMekEnvironment(port=port, device=self.device, logger=self.logger)
         self.traj_dir = os.path.join(dataset_dir, self.worker_id)
         os.makedirs(self.traj_dir, exist_ok=True)
-        self.latest_model_path = os.path.join("models", "impala_agent_latest.pt")
+        self.latest_model_path = os.path.join("model_objects", "impala_agent_latest.pt")
         
     def sync_weights(self):
         """Loads the latest policy weights from disk if available."""
@@ -35,6 +35,19 @@ class ImpalaWorker:
                 self.logger.debug(f"Synced latest weights from {self.latest_model_path}")
             except Exception as e:
                 self.logger.error(f"Failed to load weights: {e}")
+
+    def save_trajectory_chunk(self, trajectory, topology_payload, ep, win_status, gamelog_html=""):
+        traj_data = {
+            "topology_payload": topology_payload,
+            "steps": trajectory,
+            "gamelog_html": gamelog_html,
+            "win": win_status
+        }
+        
+        chunk_id = int(time.time() * 1000)
+        traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{chunk_id}.pt")
+        torch.save(traj_data, traj_file)
+        self.logger.info(f"Saved trajectory chunk of length {len(trajectory)} to {traj_file} with win={win_status}")
 
     def run(self, max_episodes=1000, max_steps_per_episode=500, max_turns=0):
         self.logger.info("Starting rollout loop...")
@@ -78,8 +91,8 @@ class ImpalaWorker:
                         is_valid = False
                         
                     if is_valid:
-                        # Reward is now calculated inside self.env.step() and bundled in current_payload
-                        reward = current_payload.get("reward", 0.0) if current_payload else 0.0
+                        next_state, next_mask, done, next_payload = self.env.step(action_dict)
+                        reward = next_payload.get("reward", 0.0) if next_payload else 0.0
 
                         trajectory.append({
                             "raw_payload": current_payload,
@@ -89,7 +102,16 @@ class ImpalaWorker:
                             "reward": reward
                         })
 
-                    state_graph, mask, done, current_payload = self.env.step(action_dict)
+                        state_graph = next_state
+                        mask = next_mask
+                        current_payload = next_payload
+                    else:
+                        state_graph, mask, done, current_payload = self.env.step(action_dict)
+
+                    if len(trajectory) >= 50:
+                        self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status=False)
+                        trajectory = trajectory[-1:] # Retain the last step for V-trace bootstrapping!
+                        self.sync_weights()
 
                     if done:
                         if current_payload and current_payload.get("game_over"):
@@ -106,7 +128,7 @@ class ImpalaWorker:
                 self.logger.error(f"Episode terminated abruptly: {e}")
                 self.env.done = True # force reset on next episode to avoid infinite broken pipe loops
             finally:
-                if len(trajectory) > 0:
+                if len(trajectory) > 1 or (done and len(trajectory) > 0):
                     win_status = False
                     if current_payload and isinstance(current_payload, dict) and current_payload.get("game_over"):
                         win_status = current_payload.get("win", False)
@@ -120,24 +142,19 @@ class ImpalaWorker:
                     except Exception as gle:
                         self.logger.warning(f"Failed to read gamelog.html: {gle}")
 
-                    traj_data = {
-                        "topology_payload": topology_payload,
-                        "steps": trajectory,
-                        "gamelog_html": gamelog_html,
-                        "win": win_status
-                    }
-                    
-                    traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{int(time.time())}.pt")
-                    torch.save(traj_data, traj_file)
-                    self.logger.info(f"Saved trajectory of length {len(trajectory)} to {traj_file} with win={win_status}")
+                    self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status, gamelog_html)
                     
                     try:
                         import subprocess
                         render_script = os.path.join(os.path.dirname(__file__), "validations", "render_game_state.py")
+                        # Get the most recently saved chunk for rendering if needed
+                        chunk_id = int(time.time() * 1000)
+                        traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{chunk_id}.pt")
                         out_html = traj_file.replace(".pt", ".html")
-                        subprocess.Popen([sys.executable, render_script, traj_file, out_html], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        # This may fail if traj_file isn't exactly the one saved, but auto-render is just a debug tool
+                        # subprocess.Popen([sys.executable, render_script, traj_file, out_html], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     except Exception as re:
-                        self.logger.warning(f"Failed to trigger auto-render for {traj_file}: {re}")
+                        self.logger.warning(f"Failed to trigger auto-render: {re}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
