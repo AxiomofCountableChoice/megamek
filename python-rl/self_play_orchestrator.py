@@ -205,9 +205,12 @@ def trajectory_monitor(dataset_dir, shutdown_event):
                         
                     try:
                         data = torch.load(f, map_location='cpu', weights_only=False)
+                        if not data.get("is_done", False):
+                            processed_files.add(f)
+                            continue
+                            
                         win = data.get("win", False)
-                        steps = data.get("steps", [])
-                        total_reward = sum([s.get("reward", 0.0) for s in steps])
+                        total_reward = data.get("episode_reward", 0.0)
                         
                         # Extract timestamp from filename traj_{ep}_{timestamp}.pt
                         basename = os.path.basename(f)

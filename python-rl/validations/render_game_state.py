@@ -6,17 +6,32 @@ import math
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from state_parser import StateParser
 
-def generate_interactive_html(traj_path, output_path="render.html"):
-    if not os.path.exists(traj_path):
-        print(f"File not found: {traj_path}")
+def generate_interactive_html(traj_paths, output_path="render.html"):
+    if isinstance(traj_paths, str):
+        traj_paths = [traj_paths]
+        
+    traj_paths.sort(key=os.path.getctime)
+    
+    topology = {}
+    steps = []
+    
+    for tp in traj_paths:
+        if not os.path.exists(tp):
+            print(f"File not found: {tp}")
+            continue
+            
+        print(f"Loading trajectory chunk: {tp}")
+        traj_data = torch.load(tp, map_location='cpu', weights_only=False)
+        
+        if not topology:
+            topology = traj_data.get("topology_payload", {})
+            
+        steps.extend(traj_data.get("steps", []))
+    
+    if not steps:
+        print("No steps found in any trajectory chunk.")
         return
         
-    print(f"Loading trajectory: {traj_path}")
-    traj_data = torch.load(traj_path, map_location='cpu', weights_only=False)
-    
-    topology = traj_data.get("topology_payload", {})
-    steps = traj_data.get("steps", [])
-    
     json_data = {
         "topology": topology,
         "steps": []
@@ -619,9 +634,19 @@ def generate_interactive_html(traj_path, output_path="render.html"):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python render_game_state.py <path_to_trajectory.pt> [output.html]")
+        print("Usage: python render_game_state.py <traj1.pt> [traj2.pt ...] [output.html]")
         sys.exit(1)
         
-    traj = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "render.html"
-    generate_interactive_html(traj, out)
+    # If the last argument ends in .html, it's the output path. Otherwise, default to render.html
+    if sys.argv[-1].endswith(".html"):
+        out = sys.argv[-1]
+        trajs = sys.argv[1:-1]
+    else:
+        out = "render.html"
+        trajs = sys.argv[1:]
+        
+    if not trajs:
+        print("No trajectory files provided.")
+        sys.exit(1)
+        
+    generate_interactive_html(trajs, out)

@@ -36,12 +36,14 @@ class ImpalaWorker:
             except Exception as e:
                 self.logger.error(f"Failed to load weights: {e}")
 
-    def save_trajectory_chunk(self, trajectory, topology_payload, ep, win_status, gamelog_html=""):
+    def save_trajectory_chunk(self, trajectory, topology_payload, ep, win_status, gamelog_html="", is_done=False, episode_reward=0.0):
         traj_data = {
             "topology_payload": topology_payload,
             "steps": trajectory,
             "gamelog_html": gamelog_html,
-            "win": win_status
+            "win": win_status,
+            "is_done": is_done,
+            "episode_reward": episode_reward
         }
         
         chunk_id = int(time.time() * 1000)
@@ -74,6 +76,7 @@ class ImpalaWorker:
             # State graphs handled natively via environment
     
             step_idx = 0
+            episode_reward = 0.0
             try:
                 while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
                     # Fallback action if no valid actions
@@ -93,6 +96,7 @@ class ImpalaWorker:
                     if is_valid:
                         next_state, next_mask, done, next_payload = self.env.step(action_dict)
                         reward = next_payload.get("reward", 0.0) if next_payload else 0.0
+                        episode_reward += reward
 
                         trajectory.append({
                             "raw_payload": current_payload,
@@ -109,7 +113,7 @@ class ImpalaWorker:
                         state_graph, mask, done, current_payload = self.env.step(action_dict)
 
                     if len(trajectory) >= 50:
-                        self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status=False)
+                        self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status=False, is_done=False, episode_reward=episode_reward)
                         trajectory = trajectory[-1:] # Retain the last step for V-trace bootstrapping!
                         self.sync_weights()
 
@@ -143,17 +147,19 @@ class ImpalaWorker:
                     except Exception as gle:
                         self.logger.warning(f"Failed to read gamelog.html: {gle}")
 
-                    self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status, gamelog_html)
+                    self.save_trajectory_chunk(trajectory, topology_payload, ep, win_status, gamelog_html, is_done=is_done, episode_reward=episode_reward)
                     
                     if is_done:
                         try:
                             import subprocess
+                            import glob
                             render_script = os.path.join(os.path.dirname(__file__), "validations", "render_game_state.py")
-                            # Get the most recently saved chunk for rendering if needed
-                            chunk_id = int(time.time() * 1000)
-                            traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{chunk_id}.pt")
-                            out_html = traj_file.replace(".pt", ".html")
-                            subprocess.Popen([sys.executable, render_script, traj_file, out_html], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            
+                            chunk_files = glob.glob(os.path.join(self.traj_dir, f"traj_{ep}_*.pt"))
+                            if chunk_files:
+                                out_html = os.path.join(self.traj_dir, f"traj_{ep}_full.html")
+                                cmd = [sys.executable, render_script] + chunk_files + [out_html]
+                                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception as re:
                             self.logger.warning(f"Failed to trigger auto-render: {re}")
 
