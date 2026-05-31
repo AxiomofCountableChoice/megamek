@@ -326,25 +326,17 @@ public class PrincessOfflineTrainer {
                     try {
                         megamek.common.game.IGame g = server.getGame();
                         if (g != null && p1 instanceof RLBotClient) {
-                            megamek.common.Player agentPlayer = null;
-                            for (megamek.common.Player p : ((megamek.common.game.Game)g).getPlayersList()) {
-                                if ("RL_Agent".equals(p.getName())) {
-                                    agentPlayer = p;
-                                    break;
-                                }
-                            }
-                            
-                            if (agentPlayer != null) {
+                            if (player1 != null) {
                                 boolean p1Won = false;
-                                if (agentPlayer.getTeam() == megamek.common.Player.TEAM_NONE) {
-                                    p1Won = agentPlayer.getId() == ((megamek.common.game.Game)g).getVictoryPlayerId();
+                                if (player1.getTeam() == megamek.common.Player.TEAM_NONE) {
+                                    p1Won = player1.getId() == ((megamek.common.game.Game)g).getVictoryPlayerId();
                                 } else {
-                                    p1Won = agentPlayer.getTeam() == ((megamek.common.game.Game)g).getVictoryTeam();
+                                    p1Won = player1.getTeam() == ((megamek.common.game.Game)g).getVictoryTeam();
                                 }
                                 System.out.println("P1 (RLBotClient) inferred won? " + p1Won);
                                 ((RLBotClient)p1).sendGameOver(p1Won);
                             } else {
-                                System.out.println("WARNING: Could not find RL_Agent player in game to infer victory. Defaulting to false.");
+                                System.out.println("WARNING: player1 was null. Defaulting to false.");
                                 ((RLBotClient)p1).sendGameOver(false);
                             }
                         }
