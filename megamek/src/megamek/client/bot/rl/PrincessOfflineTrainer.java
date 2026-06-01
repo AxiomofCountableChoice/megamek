@@ -138,7 +138,7 @@ public class PrincessOfflineTrainer {
                 p2 = new RLBotClient("RL_Agent_Beta", "localhost", resolver.port, resolver.port + 1001);
             } else if (autoGen && !bcDataGen) {
                 p1 = new RLBotClient("RL_Agent", "localhost", resolver.port, resolver.port + 1000);
-                Princess p2Bot = new Princess("Princess_Beta", "localhost", resolver.port);
+                RLDataCollectionPrincess p2Bot = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
                 megamek.client.bot.princess.BehaviorSettings bs = p2Bot.getBehaviorSettings().getCopy();
                 bs.setAutoFlee(false);
                 bs.setForcedWithdrawal(false);
@@ -192,7 +192,7 @@ public class PrincessOfflineTrainer {
                 megamek.common.Player player1 = null;
                 megamek.common.Player player2 = null;
                 int attempts = 0;
-                while ((player1 == null || player2 == null) && attempts < 20) {
+                while ((player1 == null || player2 == null) && attempts < 120) {
                     for (megamek.common.Player p : game.getPlayersList()) {
                         System.out.println("Found player: " + p.getName());
                         if (p.getName().equals("RL_Agent") || p.getName().equals("Princess_Alpha") || p.getName().equals("RL_Agent_Alpha")) player1 = p;
@@ -280,7 +280,7 @@ public class PrincessOfflineTrainer {
                         megamek.common.loaders.MekSummary[] allMeks = megamek.common.loaders.MekSummaryCache.getInstance().getAllMeks();
                         java.util.List<megamek.common.loaders.MekSummary> validMeks = new java.util.ArrayList<>();
                         for (megamek.common.loaders.MekSummary ms : allMeks) {
-                            if (ms.getUnitType() == megamek.common.units.UnitType.MEK) {
+                            if ("Mek".equals(ms.getUnitType())) {
                                 validMeks.add(ms);
                             }
                         }
@@ -347,12 +347,11 @@ public class PrincessOfflineTrainer {
                             megamek.common.game.IGame g = server.getGame();
                             if (g == null) break;
                             megamek.common.enums.GamePhase phase = g.getPhase();
-                            if (phase == null || phase.isVictory() || phase.isEnd() || phase.isLounge() || !watcher.isConnected()) {
+                            if (phase == null || phase.isVictory() || phase.isLounge() || !watcher.isConnected()) {
                                 System.out.println("Game Loop Breaking! Reason:");
                                 if (phase == null) System.out.println("- phase is null");
                                 else {
                                     System.out.println("- phase.isVictory(): " + phase.isVictory());
-                                    System.out.println("- phase.isEnd(): " + phase.isEnd());
                                     System.out.println("- phase.isLounge(): " + phase.isLounge());
                                 }
                                 System.out.println("- watcher.isConnected(): " + watcher.isConnected());
@@ -415,7 +414,7 @@ public class PrincessOfflineTrainer {
             megamek.common.loaders.MekSummary candidate = validMeks.get(megamek.common.compute.Compute.randomInt(validMeks.size()));
             if (candidate.getBV() > 0 && currentBV + candidate.getBV() <= targetBV + (targetBV * 0.15)) {
                 try {
-                    megamek.common.units.Entity ent = new megamek.common.loaders.MekFileParser(candidate.getSourceFile()).getEntity();
+                    megamek.common.units.Entity ent = new megamek.common.loaders.MekFileParser(candidate.getSourceFile(), candidate.getEntryName()).getEntity();
                     if (ent != null) {
                         force.add(ent);
                         currentBV += candidate.getBV();

@@ -25,6 +25,7 @@ class ImpalaWorker:
         self.traj_dir = os.path.join(dataset_dir, self.worker_id)
         os.makedirs(self.traj_dir, exist_ok=True)
         self.latest_model_path = os.path.join("model_objects", "impala_agent_latest.pt")
+        self.run_id = int(time.time())
         
     def sync_weights(self):
         """Loads the latest policy weights from disk if available."""
@@ -47,9 +48,10 @@ class ImpalaWorker:
         }
         
         chunk_id = int(time.time() * 1000)
-        traj_file = os.path.join(self.traj_dir, f"traj_{ep}_{chunk_id}.pt")
+        traj_file = os.path.join(self.traj_dir, f"traj_{self.run_id}_{ep}_{chunk_id}.pt")
         torch.save(traj_data, traj_file)
         self.logger.info(f"Saved trajectory chunk of length {len(trajectory)} to {traj_file} with win={win_status}")
+        return traj_file
 
     def run(self, max_episodes=1000, max_steps_per_episode=500, max_turns=0):
         self.logger.info("Starting rollout loop...")
@@ -155,9 +157,11 @@ class ImpalaWorker:
                             import glob
                             render_script = os.path.join(os.path.dirname(__file__), "validations", "render_game_state.py")
                             
-                            chunk_files = glob.glob(os.path.join(self.traj_dir, f"traj_{ep}_*.pt"))
+                            chunk_files = glob.glob(os.path.join(self.traj_dir, f"traj_{self.run_id}_{ep}_*.pt"))
+                            chunk_files.sort(key=os.path.getctime)
+                            
                             if chunk_files:
-                                out_html = os.path.join(self.traj_dir, f"traj_{ep}_full.html")
+                                out_html = os.path.join(self.traj_dir, f"traj_{self.run_id}_{ep}_full.html")
                                 cmd = [sys.executable, render_script] + chunk_files + [out_html]
                                 subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception as re:

@@ -252,8 +252,10 @@ class StateParser:
                 unique_hex_list = list(tier0_hexes.keys())
                 
                 # Tier 0 Candidates for this entity
+                tier0_idx_map = {}
                 for c_idx, dest_idx in enumerate(unique_hex_list):
                     action_idx = len(action_features)
+                    tier0_idx_map[dest_idx] = action_idx
                     step_indices.append(0)
                     action_features.append([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, phase_type])
                     action_target_hex_idx.append(dest_idx)
@@ -268,6 +270,8 @@ class StateParser:
                 for dest_idx, valid_tier1_paths in tier0_hexes.items():
                     for raw_path_idx, p_dict in valid_tier1_paths:
                         action_idx = len(action_features)
+                        p_dict["node_idx"] = action_idx
+                        p_dict["tier0_node_idx"] = tier0_idx_map[dest_idx]
                         step_indices.append(1)
                         
                         facing = float(p_dict.get("dest_facing", 0))

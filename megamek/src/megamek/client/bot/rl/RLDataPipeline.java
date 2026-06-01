@@ -67,7 +67,15 @@ public class RLDataPipeline {
             logger.info("RLDataPipeline waiting for Python connection on port " + listenPort);
             try {
                 pythonSocket = pythonServerSocket.accept();
-                pythonSocket.setSoTimeout(60000); // 60 seconds read timeout on actual communications
+                int timeout = 60000;
+                if (System.getenv("RL_DEBUG_TIMEOUT") != null) {
+                    try {
+                        timeout = Integer.parseInt(System.getenv("RL_DEBUG_TIMEOUT"));
+                    } catch (NumberFormatException e) {
+                        logger.warn("Invalid RL_DEBUG_TIMEOUT format, defaulting to 60000");
+                    }
+                }
+                pythonSocket.setSoTimeout(timeout);
                 pythonIn = pythonSocket.getInputStream();
                 pythonOut = pythonSocket.getOutputStream();
                 logger.info("Python connected on port " + listenPort);
@@ -385,6 +393,16 @@ public class RLDataPipeline {
                         tp += 1; // ammo explosion
                 }
             }
+            
+            // Apply massive VP penalty for fleeing
+            for (Entity e : game.getOutOfGameEntitiesVector()) {
+                if (e != null && e.getOwnerId() == p.getId()) {
+                    if (e.getRemovalCondition() == megamek.common.interfaces.IEntityRemovalConditions.REMOVE_IN_RETREAT) {
+                        vp -= e.calculateBattleValue() * 2.0;
+                    }
+                }
+            }
+            
             if (baseClient.getLocalPlayer() != null && p.getTeam() == baseClient.getLocalPlayer().getTeam()) {
                 bv1 += bv;
                 vp1 += vp;

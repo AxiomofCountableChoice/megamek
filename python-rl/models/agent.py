@@ -98,7 +98,10 @@ class MegaMekAgent(nn.Module):
                     valid_mask = (step_indices == k)
                 else:
                     target_type = action_x[target_idx, 6].item()
-                    valid_mask = (action_x[:, 6] == target_type)
+                    if context == "WEAPON_INFERENCE" and (target_type == 1 or target_type == 3):
+                        valid_mask = (action_x[:, 6] == 1) | (action_x[:, 6] == 3)
+                    else:
+                        valid_mask = (action_x[:, 6] == target_type)
                     
                 if not valid_mask.any():
                     break
@@ -228,11 +231,12 @@ class MegaMekAgent(nn.Module):
                 
                 children = []
                 for c_node_idx in child_indices:
-                    raw_path_idx = path_indices[c_node_idx].item()
+                    raw_path_idx = int(path_indices[c_node_idx].item())
+                    actual_path_dict = mask_tree["valid_paths"][raw_path_idx] if mask_tree and "valid_paths" in mask_tree and raw_path_idx < len(mask_tree["valid_paths"]) else {"path_index": raw_path_idx}
                     children.append({
                         "node_idx": c_node_idx,
                         "type": "PATH",
-                        "data": {"path_index": raw_path_idx},
+                        "data": actual_path_dict,
                         "children": []
                     })
                 
@@ -575,7 +579,6 @@ class MegaMekAgent(nn.Module):
             
         target_node = trajectory[0]
         attack_node = trajectory[1]
-        
         target_entity = target_node["data"].get("target_entity_index", -1)
         action_type = attack_node["data"].get("action_type", -1)
         
@@ -585,6 +588,125 @@ class MegaMekAgent(nn.Module):
             "action_type": action_type
         }
         return response
+
+    def score_partial_weapon_trajectory(self, state_graph, mask_tree, hetero_data, partial_action):
+        """
+        Dynamically scores the *next* possible steps given a partial weapon action (e.g. while building an attack).
+        partial_action: dict e.g. {"twist": 0, "attacks": [{"target_id": 3, "weapon_id": 7}]}
+        Returns a dictionary mapping node_idx to probability for the *next* valid choices.
+        """
+        with torch.no_grad():
+            z, x_dict = self.encoder(hetero_data)
+            e_actions = self.actor_pointer.compute_action_embeddings(x_dict, hetero_data)
+            batch_idx = hetero_data['action'].batch if hasattr(hetero_data['action'], 'batch') and getattr(hetero_data['action'], 'batch') is not None else None
+            
+            fired_weapons = set()
+            trajectory_indices = []
+            
+            # 1. Start with root choices (Twists)
+            current_choices = self._get_root_choices(1, mask_tree, hetero_data)
+            
+            if not current_choices:
+                return {}
+                
+            # If no twist is selected yet, score roots
+            if "twist" not in partial_action or partial_action["twist"] is None:
+                s_0 = self.actor_pointer.decode_sequence(z, None)
+                e_cands = e_actions[[c["node_idx"] for c in current_choices]]
+                logits = self.actor_pointer.score_actions(s_0, e_cands, None)
+                probs = torch.softmax(logits, dim=-1)
+                return {c["node_idx"]: p.item() for c, p in zip(current_choices, probs)}
+                
+            # Follow twist
+            twist_val = partial_action["twist"]
+            selected_node = next((c for c in current_choices if c["data"].get("twist", -1) == twist_val), None)
+            
+            if not selected_node:
+                return {}
+                
+            trajectory_indices.append(selected_node["node_idx"])
+            mask_tree["_active_twist_data"] = selected_node["data"]
+            current_choices = self._get_dynamic_children(selected_node, fired_weapons, mask_tree, hetero_data)
+            
+            # 2. Follow attacks
+            for attack in partial_action.get("attacks", []):
+                target_id = attack.get("target_id", -1)
+                weapon_id = attack.get("weapon_id", -1)
+                
+                # Match target
+                target_node = next((c for c in current_choices if c["type"] == "TARGET" and c["data"].get("target_entity_index", -1) == target_id), None)
+                if not target_node:
+                    mask_tree.pop("_active_twist_data", None)
+                    return {}
+                    
+                trajectory_indices.append(target_node["node_idx"])
+                current_choices = self._get_dynamic_children(target_node, fired_weapons, mask_tree, hetero_data)
+                
+                # Match weapon
+                weapon_node = next((c for c in current_choices if c["type"] == "WEAPON" and c["data"].get("weapon_id", -1) == weapon_id), None)
+                if not weapon_node:
+                    mask_tree.pop("_active_twist_data", None)
+                    return {}
+                    
+                trajectory_indices.append(weapon_node["node_idx"])
+                fired_weapons.add(weapon_id)
+                current_choices = self._get_dynamic_children(weapon_node, fired_weapons, mask_tree, hetero_data)
+                
+            mask_tree.pop("_active_twist_data", None)
+            
+            # 3. Score the next step using the full history
+            if not current_choices:
+                return {}
+                
+            history_embeddings = torch.stack([e_actions[idx] for idx in trajectory_indices]).unsqueeze(0)
+            s_next = self.actor_pointer.decode_sequence(z, history_embeddings)
+            
+            child_indices = [c["node_idx"] for c in current_choices]
+            e_cands = e_actions[child_indices]
+            
+            logits = self.actor_pointer.score_actions(s_next, e_cands, None)
+            probs = torch.softmax(logits, dim=-1)
+            
+            res = {}
+            for i, child in enumerate(current_choices):
+                # Using string keys to map nicely to JSON
+                res[str(child["node_idx"])] = probs[i].item()
+                
+            return res
+
+    def _populate_tree_probabilities(self, z, e_actions, batch_idx, choices, history_embeddings_list, current_prob=1.0, parent_data=None):
+        if not choices:
+            return
+            
+        if not history_embeddings_list:
+            s_k = self.actor_pointer.decode_sequence(z, None)
+        else:
+            history = torch.stack(history_embeddings_list).unsqueeze(0)
+            s_k = self.actor_pointer.decode_sequence(z, history)
+            
+        choice_indices = [c["node_idx"] for c in choices]
+        e_cands = e_actions[choice_indices]
+        cand_batch_idx = batch_idx[choice_indices] if batch_idx is not None else None
+        
+        logits = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx)
+        probs = torch.softmax(logits, dim=-1)
+        
+        for i, choice in enumerate(choices):
+            p = probs[i].item()
+            cumulative_p = current_prob * p
+            
+            node_data = choice.get("data")
+            if node_data is not None:
+                node_data["prob"] = p
+                node_data["cumulative_prob"] = cumulative_p
+            elif choice["type"] == "END" and parent_data is not None:
+                parent_data["end_prob"] = p
+                
+            children = choice.get("children", [])
+            if children:
+                next_history = history_embeddings_list + [e_actions[choice["node_idx"]]]
+                self._populate_tree_probabilities(z, e_actions, batch_idx, children, next_history, cumulative_p, node_data)
+
 
     def get_action(self, hetero_data, mask_tree, deterministic=False):
         """
@@ -621,10 +743,26 @@ class MegaMekAgent(nn.Module):
         # 5. Decode trajectory back to megamek format using opinionated decoders
         if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT
             response_dict = self._decode_movement_action(trajectory)
-            probs = torch.empty((0,))
+            
+            # Compute probabilities for the UI for all valid paths
+            probs_list = []
+            if mask_tree and "valid_paths" in mask_tree and len(mask_tree["valid_paths"]) > 0:
+                root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
+                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [])
+                
+                for path in mask_tree["valid_paths"]:
+                    probs_list.append(path.get("cumulative_prob", 0.0))
+            
+            probs = torch.tensor(probs_list) if probs_list else torch.empty((0,))
         elif phase_type == 1:
             response_dict = self._decode_weapon_action(trajectory)
             probs = torch.empty((0,))
+            
+            # Compute probabilities for UI weapon tree
+            if mask_tree and "valid_twists" in mask_tree:
+                root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
+                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [])
+
         elif phase_type == 2:
             response_dict = self._decode_physical_action(trajectory)
             probs = torch.empty((0,))

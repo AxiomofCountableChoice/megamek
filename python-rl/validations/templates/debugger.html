@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live MegaMek Debugger</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1e1e1e; color: #ddd; }
+        #header { background: #333; padding: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; }
+        #main { display: flex; flex: 1; overflow: hidden; }
+        #map-container { flex: 1; overflow: auto; position: relative; background: #2a2a2a; padding: 20px; }
+        #sidebar { width: 450px; background: #333; display: flex; flex-direction: column; border-left: 1px solid #444; overflow-y: auto;}
+        .panel { padding: 10px; border-bottom: 1px solid #444; }
+        .panel-title { font-weight: bold; margin-bottom: 5px; color: #fff; border-bottom: 1px solid #555; padding-bottom: 3px; }
+        #reports-panel { flex: 1; overflow-y: auto; font-size: 0.85em; padding: 10px; }
+        .report-line { padding: 2px 0; border-bottom: 1px solid #3a3a3a; white-space: pre-wrap; font-family: monospace; font-size: 0.95em; }
+        button { background: #555; color: white; border: none; padding: 5px 15px; cursor: pointer; }
+        button:hover { background: #666; }
+        button:disabled { background: #444; color: #777; cursor: not-allowed; }
+        
+        textarea { width: 100%; height: 150px; background: #222; color: #0f0; border: 1px solid #555; font-family: monospace; }
+        
+        svg { background: #222; }
+        .hex { stroke: #444; stroke-width: 1; transition: fill 0.2s; }
+        .hex-woods { fill: #2d5a27; }
+        .hex-water { fill: #1c5277; }
+        .hex-swamp { fill: #4a345a; }
+        .hex-clear { fill: #3a3a3a; }
+        .hex-impassable { fill: #111; }
+        .unit { stroke: #fff; stroke-width: 1.5; cursor: pointer; }
+        .unit-friendly { fill: #2b70c9; }
+        .unit-enemy { fill: #c92b2b; }
+        .unit-text { fill: white; font-size: 10px; font-weight: bold; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+        .facing-line { stroke: yellow; stroke-width: 2; pointer-events: none; }
+        .los-threat { stroke: orange; stroke-width: 2; stroke-dasharray: 4; }
+        .los-target { stroke: red; stroke-width: 3; }
+        .move-threat { stroke: #c92b2b; stroke-width: 2; stroke-dasharray: 3; opacity: 0.7; }
+        .move-tmm-0 { stroke: #555; stroke-width: 2; stroke-dasharray: 2; opacity: 0.8; }
+        .move-tmm-1 { stroke: #2b70c9; stroke-width: 2; stroke-dasharray: 2; opacity: 0.8; }
+        .move-tmm-2 { stroke: #2bc970; stroke-width: 2; stroke-dasharray: 2; opacity: 0.8; }
+        .move-tmm-3 { stroke: #c9a72b; stroke-width: 2; stroke-dasharray: 2; opacity: 0.8; }
+        .move-tmm-4 { stroke: #c9522b; stroke-width: 2; stroke-dasharray: 2; opacity: 0.8; }
+        
+        .action-box { background: #111; padding: 10px; margin-top: 5px; border: 1px solid #444; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div>
+            <h2 style="margin: 0; font-size: 1.2em;">Interactive Live Debugger</h2>
+        </div>
+        <div id="status-text" style="color: yellow;">Waiting for Game State...</div>
+    </div>
+    <div id="main">
+        <div id="map-container">
+            <svg id="map" width="100%" height="100%"></svg>
+        </div>
+        <div id="sidebar">
+            <div class="panel">
+                <div class="panel-title">Current Context</div>
+                <div style="margin-bottom: 5px;">Context: <strong id="meta-context"></strong></div>
+                <div style="margin-bottom: 5px; font-size: 0.9em;" id="meta-phase"></div>
+                <div style="color: #88ff88;">V-Mean Estimate: <span id="meta-vmean"></span></div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-title">Action Override & Forward Pass</div>
+                <div style="font-size: 0.85em; color: #aaa; margin-bottom: 5px;">Agent's default action and probabilities:</div>
+                <pre id="meta-probs" style="background:#111; padding:5px; max-height:100px; overflow:auto; font-size:0.8em; border:1px solid #444;"></pre>
+                
+                <div id="quick-options" style="margin-top: 5px; margin-bottom: 10px; max-height: 150px; overflow-y: auto; border: 1px solid #444; padding: 5px; background: #222;">
+                </div>
+                
+                <div class="action-box">
+                    <div style="margin-bottom:5px;">Edit JSON Action Dict before submitting:</div>
+                    <textarea id="action-input">{}</textarea>
+                    <button id="btn-submit" onclick="submitAction()" style="width:100%; margin-top:5px; background: #28a745; font-weight:bold;">Submit Action</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">Data Inspector</div>
+                <button onclick="document.getElementById('mask-modal').style.display='block'" style="width: 100%; padding: 5px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">View Action Mask</button>
+            </div>
+            <div class="panel-title" style="padding: 10px 10px 0 10px; border: none;">Game Reports</div>
+            <div id="reports-panel"></div>
+        </div>
+    </div>
+    
+    <div id="mask-modal" style="display:none; position:fixed; top:10%; left:10%; width:80%; height:80%; background:#1e1e1e; border:1px solid #666; z-index:100; overflow:auto; padding:20px; box-shadow: 0 0 20px rgba(0,0,0,0.8);">
+        <h3 style="margin-top:0;">Action Mask</h3>
+        <button onclick="document.getElementById('mask-modal').style.display='none'" style="position:absolute; top:20px; right:20px; padding: 5px 10px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">Close</button>
+        <pre id="mask-content" style="white-space: pre-wrap; font-size: 0.9em; background: #111; padding: 15px; border: 1px solid #333;"></pre>
+    </div>
+    
+    <script>
+        let currentStepId = -1;
+        let stepData = null;
+        let topology = null;
+        let width = 16, height = 16;
+        let hexes = [];
+        let isWaitingForUser = false;
+        
+        const SVG_PAD = 50;
+        const HEX_SIZE = 30;
+        const HEX_WIDTH = HEX_SIZE * 2;
+        const HEX_HEIGHT = HEX_SIZE * 1.732;
+        
+        const svg = document.getElementById("map");
+        
+        function getPxPy(x, y) {
+            let px = SVG_PAD + x * HEX_WIDTH * 0.75;
+            let py = SVG_PAD + y * HEX_HEIGHT + (x % 2 !== 0 ? HEX_HEIGHT/2 : 0);
+            return [px, py];
+        }
+        
+        function drawHexGrid() {
+            svg.innerHTML = '';
+            for(let y=0; y<height; y++) {
+                for(let x=0; x<width; x++) {
+                    let idx = y * width + x;
+                    let hexFeat = hexes[idx] || Array(14).fill(0);
+                    let className = "hex hex-clear";
+                    if (hexFeat[13] > 0) className = "hex hex-impassable";
+                    else if (hexFeat[1] > 0) className = "hex hex-woods";
+                    else if (hexFeat[2] > 0) className = "hex hex-water";
+                    else if (hexFeat[7] > 0) className = "hex hex-swamp";
+                    
+                    let pos = getPxPy(x, y);
+                    let points = [];
+                    for(let i=0; i<6; i++) {
+                        let angle_rad = i * Math.PI / 3;
+                        points.push(`${pos[0] + HEX_SIZE * Math.cos(angle_rad)},${pos[1] + HEX_SIZE * Math.sin(angle_rad)}`);
+                    }
+                    
+                    let poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                    poly.setAttribute("points", points.join(" "));
+                    poly.setAttribute("class", className);
+                    poly.style.cursor = "pointer";
+                    poly.onclick = () => {
+                        let terrain = [];
+                        if (hexFeat[13] > 0) terrain.push("Impassable");
+                        if (hexFeat[1] > 0) terrain.push("Woods");
+                        if (hexFeat[2] > 0) terrain.push("Water");
+                        if (hexFeat[7] > 0) terrain.push("Swamp");
+                        
+                        let msg = `Hex ID: ${idx}\nCoordinates: X=${x}, Y=${y}\nElevation: ${hexFeat[0]}\nTerrain: ${terrain.length > 0 ? terrain.join(", ") : "Clear"}`;
+                        alert(msg);
+                    };
+                    svg.appendChild(poly);
+                    
+                    if (hexFeat[0] > 0) {
+                        let txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                        txt.setAttribute("x", pos[0]); txt.setAttribute("y", pos[1] - HEX_SIZE/2 + 5);
+                        txt.setAttribute("fill", "#888"); txt.setAttribute("font-size", "10");
+                        txt.setAttribute("text-anchor", "middle"); txt.textContent = hexFeat[0];
+                        svg.appendChild(txt);
+                    }
+                }
+            }
+        }
+        
+        function renderState() {
+            if (!stepData) return;
+            topology = stepData.topology;
+            width = topology.width || 16;
+            height = topology.height || 16;
+            hexes = topology.hex_nodes || [];
+            
+            const totalW = width * HEX_WIDTH * 0.75 + HEX_WIDTH * 0.25 + SVG_PAD*2;
+            const totalH = height * HEX_HEIGHT + HEX_HEIGHT * 0.5 + SVG_PAD*2;
+            svg.setAttribute("viewBox", `0 0 ${totalW} ${totalH}`);
+            
+            document.getElementById("meta-context").innerText = stepData.context;
+            let phaseInfo = stepData.state_info ? `${stepData.state_info.phase} (Round ${stepData.state_info.round}, Turn ${stepData.state_info.turn})` : "UNKNOWN";
+            document.getElementById("meta-phase").innerText = `Phase: ${phaseInfo}`;
+            document.getElementById("meta-vmean").innerText = stepData.v_mean !== null ? stepData.v_mean.toFixed(4) : "N/A";
+            
+            document.getElementById("mask-content").innerText = JSON.stringify(stepData.mask, null, 2);
+            document.getElementById("meta-probs").innerText = JSON.stringify(stepData.probs, null, 2);
+            
+            // Set the default action in the text area
+            document.getElementById("action-input").value = JSON.stringify(stepData.action, null, 2);
+            
+            // Build Quick Options UI
+            const optionsDiv = document.getElementById("quick-options");
+            optionsDiv.innerHTML = '<div style="font-size: 0.85em; color: #aaa; margin-bottom: 5px;">Quick Actions:</div>';
+            
+            // Track highlighted elements to clean them up
+            let highlightedElements = [];
+            const clearHighlights = () => {
+                highlightedElements.forEach(el => el.remove());
+                highlightedElements = [];
+            };
+
+            if (stepData.context === "MOVEMENT_INFERENCE" && stepData.mask && stepData.mask.valid_paths) {
+                // Combine paths with their probabilities and original indices for sorting
+                let pathsWithProbs = stepData.mask.valid_paths.map((path, idx) => {
+                    return {
+                        originalIndex: idx,
+                        path: path,
+                        prob: (stepData.probs && stepData.probs[idx] !== undefined) ? stepData.probs[idx] : 0.0
+                    };
+                });
+                
+                // Sort by descending probability
+                pathsWithProbs.sort((a, b) => b.prob - a.prob);
+
+                pathsWithProbs.forEach(item => {
+                    let idx = item.originalIndex;
+                    let path = item.path;
+                    let probStr = (stepData.probs && stepData.probs[idx] !== undefined) ? item.prob.toFixed(3) : "N/A";
+                    let hexNodes = path.step_hex_nodes || [];
+                    let dest = path.dest_index !== undefined ? path.dest_index : "Stand Still";
+                    let mpInfo = path.mp_used !== undefined ? `${path.mp_used} MP` : `${hexNodes.length} steps`;
+                    let btn = document.createElement("button");
+                    btn.style.width = "100%";
+                    btn.style.marginBottom = "4px";
+                    btn.style.textAlign = "left";
+                    btn.style.fontSize = "0.85em";
+                    btn.style.background = "#2a4b6c";
+                    btn.style.border = "1px solid #5a7b9c";
+                    let srcIdxStr = path.source_entity_index !== undefined ? `Source ${path.source_entity_index}` : `Source N/A`;
+                    btn.innerText = `[Prob: ${probStr}] ${srcIdxStr} -> Dest Node ${dest} (${mpInfo})`;
+                    
+                    // Highlight logic
+                    const highlightPath = () => {
+                        clearHighlights();
+                        let srcIdx = path.source_entity_index;
+                        if (srcIdx !== undefined && stepData.entities && stepData.entities[srcIdx]) {
+                            let u = stepData.entities[srcIdx];
+                            let uPos = getPxPy(u[1], u[2]);
+                            
+                            // Draw circle around source mech
+                            let srcCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                            srcCircle.setAttribute("cx", uPos[0]);
+                            srcCircle.setAttribute("cy", uPos[1]);
+                            srcCircle.setAttribute("r", hexRadius * 0.8);
+                            srcCircle.setAttribute("fill", "none");
+                            srcCircle.setAttribute("stroke", "#00ff00");
+                            srcCircle.setAttribute("stroke-width", "3");
+                            svg.appendChild(srcCircle);
+                            highlightedElements.push(srcCircle);
+                            
+                            if (path.dest_index !== undefined) {
+                                let hx = path.dest_index % width;
+                                let hy = Math.floor(path.dest_index / width);
+                                let dPos = getPxPy(hx, hy);
+                                
+                                // Draw circle around dest hex
+                                let dstCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                                dstCircle.setAttribute("cx", dPos[0]);
+                                dstCircle.setAttribute("cy", dPos[1]);
+                                dstCircle.setAttribute("r", hexRadius * 0.8);
+                                dstCircle.setAttribute("fill", "none");
+                                dstCircle.setAttribute("stroke", "#ff00ff");
+                                dstCircle.setAttribute("stroke-width", "3");
+                                svg.appendChild(dstCircle);
+                                highlightedElements.push(dstCircle);
+                                
+                                // Draw line connecting them
+                                let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                                line.setAttribute("x1", uPos[0]);
+                                line.setAttribute("y1", uPos[1]);
+                                line.setAttribute("x2", dPos[0]);
+                                line.setAttribute("y2", dPos[1]);
+                                line.setAttribute("stroke", "#ffff00");
+                                line.setAttribute("stroke-width", "2");
+                                line.setAttribute("stroke-dasharray", "5,5");
+                                svg.appendChild(line);
+                                highlightedElements.push(line);
+                                
+                                // Draw facing arrow
+                                if (path.dest_facing !== undefined) {
+                                    // Facing: 0=N, 1=NE, 2=SE, 3=S, 4=SW, 5=NW
+                                    let angle = (path.dest_facing * 60 - 90) * Math.PI / 180;
+                                    let length = hexRadius * 1.5;
+                                    let ex = dPos[0] + Math.cos(angle) * length;
+                                    let ey = dPos[1] + Math.sin(angle) * length;
+                                    
+                                    let arrow = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                                    arrow.setAttribute("x1", dPos[0]);
+                                    arrow.setAttribute("y1", dPos[1]);
+                                    arrow.setAttribute("x2", ex);
+                                    arrow.setAttribute("y2", ey);
+                                    arrow.setAttribute("stroke", "#ffaa00");
+                                    arrow.setAttribute("stroke-width", "3");
+                                    svg.appendChild(arrow);
+                                    highlightedElements.push(arrow);
+                                    
+                                    // Arrow head
+                                    let headAngle = Math.PI / 6; // 30 degrees
+                                    let p1x = ex - Math.cos(angle - headAngle) * 10;
+                                    let p1y = ey - Math.sin(angle - headAngle) * 10;
+                                    let p2x = ex - Math.cos(angle + headAngle) * 10;
+                                    let p2y = ey - Math.sin(angle + headAngle) * 10;
+                                    
+                                    let head = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                                    head.setAttribute("points", `${ex},${ey} ${p1x},${p1y} ${p2x},${p2y}`);
+                                    head.setAttribute("fill", "#ffaa00");
+                                    svg.appendChild(head);
+                                    highlightedElements.push(head);
+                                }
+                            }
+                        }
+                    };
+                    
+                    btn.onmouseenter = highlightPath;
+                    
+                    btn.onclick = () => {
+                        highlightPath();
+                        let action = { selected_path_index: idx };
+                        document.getElementById("action-input").value = JSON.stringify(action, null, 2);
+                    };
+                    optionsDiv.appendChild(btn);
+                });
+            } else if (stepData.context === "WEAPON_INFERENCE") {
+                let btn = document.createElement("button");
+                btn.style.width = "100%";
+                btn.style.marginBottom = "4px";
+                btn.style.textAlign = "left";
+                btn.style.fontSize = "0.85em";
+                btn.style.background = "#4b2a6c";
+                btn.style.border = "1px solid #7b5a9c";
+                btn.innerText = "Load Agent's Predicted Attack Action";
+                btn.onclick = () => {
+                    document.getElementById("action-input").value = JSON.stringify(stepData.action, null, 2);
+                };
+                optionsDiv.appendChild(btn);
+                
+                // Track dynamic attack action
+                let current_attack = { twist: null, attacks: [] };
+                
+                let updateWeaponActionInput = () => {
+                    let out = { ...current_attack };
+                    if (out.twist !== null && stepData.mask && stepData.mask.valid_twists) {
+                        let tObj = stepData.mask.valid_twists.find(t => t.twist === out.twist);
+                        if (tObj) out.selected_entity_id = tObj.source_entity_index;
+                    }
+                    document.getElementById("action-input").value = JSON.stringify(out, null, 2);
+                };
+                
+                let fetchConditionalProbs = () => {
+                    fetch('/api/score_weapon_tree', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(current_attack)
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            let probs = data.probs;
+                            for (let node_idx in probs) {
+                                let el = document.getElementById("node-prob-" + node_idx);
+                                if (el) {
+                                    el.innerText = probs[node_idx].toFixed(3);
+                                }
+                            }
+                        }
+                    });
+                };
+
+                let getEntityName = (idx) => {
+                    if (stepData.entities_meta && stepData.entities_meta[idx]) {
+                        return stepData.entities_meta[idx].short_name || `Entity ${idx}`;
+                    }
+                    return `Entity ${idx}`;
+                };
+                
+                let highlightEntity = (idx, color) => {
+                    if (idx !== undefined && stepData.entities && stepData.entities[idx]) {
+                        let u = stepData.entities[idx];
+                        let uPos = getPxPy(u[1], u[2]);
+                        let circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                        circle.setAttribute("cx", uPos[0]);
+                        circle.setAttribute("cy", uPos[1]);
+                        circle.setAttribute("r", hexRadius * 0.9);
+                        circle.setAttribute("fill", "none");
+                        circle.setAttribute("stroke", color);
+                        circle.setAttribute("stroke-width", "4");
+                        svg.appendChild(circle);
+                        highlightedElements.push(circle);
+                    }
+                };
+                
+                // Render tree
+                if (stepData.mask && stepData.mask.valid_twists) {
+                    let treeDiv = document.createElement("div");
+                    treeDiv.style.marginTop = "10px";
+                    treeDiv.style.borderTop = "1px solid #444";
+                    treeDiv.style.paddingTop = "10px";
+                    treeDiv.style.fontSize = "0.85em";
+                    
+                    let title = document.createElement("div");
+                    title.innerText = "Dynamic Action Probability Tree:";
+                    title.style.color = "#aaa";
+                    title.style.marginBottom = "5px";
+                    treeDiv.appendChild(title);
+                    
+                    stepData.mask.valid_twists.forEach(twist => {
+                        let twistDiv = document.createElement("div");
+                        twistDiv.style.marginLeft = "5px";
+                        twistDiv.style.marginBottom = "5px";
+                        
+                        let attackerName = getEntityName(twist.source_entity_index);
+                        
+                        let tProb = twist.prob !== undefined ? twist.prob.toFixed(3) : "N/A";
+                        let tLabel = document.createElement("div");
+                        tLabel.innerHTML = `<span style="color:#a8e6cf">TWIST ${twist.twist}</span> [${attackerName}] (Prob: <span id="node-prob-${twist.node_idx}">${tProb}</span>)`;
+                        tLabel.style.cursor = "pointer";
+                        tLabel.onmouseenter = () => { clearHighlights(); highlightEntity(twist.source_entity_index, "#00ff00"); };
+                        tLabel.onmouseleave = clearHighlights;
+                        twistDiv.appendChild(tLabel);
+                        
+                        if (twist.end_prob !== undefined && twist.children && twist.children.length > 0) {
+                             // Find the END node if it exists
+                             let endNode = twist.children.find(c => c.type === "END");
+                             let endIdx = endNode ? endNode.node_idx : -1;
+                             
+                             let endDiv = document.createElement("div");
+                             endDiv.style.marginLeft = "15px";
+                             endDiv.style.marginTop = "2px";
+                             
+                             let selBtn = document.createElement("button");
+                             selBtn.innerText = "Select Twist";
+                             selBtn.style.fontSize = "0.7em";
+                             selBtn.style.padding = "1px 4px";
+                             selBtn.style.marginRight = "5px";
+                             selBtn.style.cursor = "pointer";
+                             selBtn.onclick = () => {
+                                 current_attack.twist = twist.twist;
+                                 current_attack.attacks = [];
+                                 updateWeaponActionInput();
+                                 fetchConditionalProbs();
+                             };
+                             
+                             let eLabel = document.createElement("span");
+                             eLabel.innerHTML = `<span style="color:#ff8b94">TWIST (No attacks)</span> (Prob: <span id="node-prob-${endIdx}">${twist.end_prob.toFixed(3)}</span>)`;
+                             
+                             endDiv.appendChild(selBtn);
+                             endDiv.appendChild(eLabel);
+                             twistDiv.appendChild(endDiv);
+                        }
+                        
+                        let targets = twist.valid_targets || [];
+                        targets.forEach(target => {
+                            let targetDiv = document.createElement("div");
+                            targetDiv.style.marginLeft = "15px";
+                            targetDiv.style.marginTop = "2px";
+                            let tgProb = target.prob !== undefined ? target.prob.toFixed(3) : "N/A";
+                            let targetName = getEntityName(target.target_entity_index);
+                            
+                            let tgLabel = document.createElement("div");
+                            tgLabel.innerHTML = `<span style="color:#dcedc1">TARGET ${target.target_entity_index}</span> [${targetName}] (Prob: <span id="node-prob-${target.node_idx}">${tgProb}</span>)`;
+                            tgLabel.style.cursor = "pointer";
+                            tgLabel.onmouseenter = () => { clearHighlights(); highlightEntity(twist.source_entity_index, "#00ff00"); highlightEntity(target.target_entity_index, "#ff0000"); };
+                            tgLabel.onmouseleave = clearHighlights;
+                            targetDiv.appendChild(tgLabel);
+                            
+                            let weapons = target.valid_weapons || [];
+                            weapons.forEach(weapon => {
+                                let weaponDiv = document.createElement("div");
+                                weaponDiv.style.marginLeft = "15px";
+                                weaponDiv.style.marginTop = "2px";
+                                let wProb = weapon.prob !== undefined ? weapon.prob.toFixed(3) : "N/A";
+                                
+                                let selBtn = document.createElement("button");
+                                selBtn.innerText = "Add";
+                                selBtn.style.fontSize = "0.7em";
+                                selBtn.style.padding = "1px 4px";
+                                selBtn.style.marginRight = "5px";
+                                selBtn.style.cursor = "pointer";
+                                selBtn.onclick = () => {
+                                    if (current_attack.twist !== twist.twist) {
+                                        current_attack.twist = twist.twist;
+                                        current_attack.attacks = [];
+                                    }
+                                    current_attack.attacks.push({ target_id: target.target_entity_index, weapon_id: weapon.weapon_id });
+                                    updateWeaponActionInput();
+                                    fetchConditionalProbs();
+                                    selBtn.disabled = true;
+                                    selBtn.innerText = "Added";
+                                };
+                                
+                                let wLabel = document.createElement("span");
+                                wLabel.innerHTML = `<span style="color:#ffd3b6">WEAPON ${weapon.weapon_name || weapon.weapon_id}</span> (Prob: <span id="node-prob-${weapon.node_idx}">${wProb}</span>, To-Hit: ${weapon.to_hit})`;
+                                
+                                weaponDiv.appendChild(selBtn);
+                                weaponDiv.appendChild(wLabel);
+                                targetDiv.appendChild(weaponDiv);
+                            });
+                            twistDiv.appendChild(targetDiv);
+                        });
+                        treeDiv.appendChild(twistDiv);
+                    });
+                    optionsDiv.appendChild(treeDiv);
+                }
+            }
+            
+            // Reports
+            const repPanel = document.getElementById("reports-panel");
+            repPanel.innerHTML = (stepData.reports && stepData.reports.length > 0) ? 
+                stepData.reports.map(r => `<div class="report-line">${r}</div>`).join('') :
+                '<div style="color: #666; font-style: italic;">No reports</div>';
+            repPanel.scrollTop = repPanel.scrollHeight;
+            
+            drawHexGrid();
+            
+            // Draw edges
+            if (stepData.context === "MOVEMENT_INFERENCE") {
+                const drawEdgeToHex = (edges, className) => {
+                    if (!edges) return;
+                    edges.forEach(t => {
+                        let u = stepData.entities[t[0]];
+                        if (!u) return;
+                        let uPos = getPxPy(u[1], u[2]);
+                        let hx = t[1] % width;
+                        let hy = Math.floor(t[1] / width);
+                        let hPos = getPxPy(hx, hy);
+                        let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                        line.setAttribute("x1", uPos[0]); line.setAttribute("y1", uPos[1]);
+                        line.setAttribute("x2", hPos[0]); line.setAttribute("y2", hPos[1]);
+                        line.setAttribute("class", className);
+                        svg.appendChild(line);
+                    });
+                };
+                drawEdgeToHex(stepData.los_threats, "los-threat");
+                drawEdgeToHex(stepData.movement_threats, "move-threat");
+                drawEdgeToHex(stepData.move_tmm_0, "move-tmm-0");
+                drawEdgeToHex(stepData.move_tmm_1, "move-tmm-1");
+                drawEdgeToHex(stepData.move_tmm_2, "move-tmm-2");
+                drawEdgeToHex(stepData.move_tmm_3, "move-tmm-3");
+                drawEdgeToHex(stepData.move_tmm_4, "move-tmm-4");
+            }
+            
+            if (stepData.los_targets) {
+                stepData.los_targets.forEach(t => {
+                    let u1 = stepData.entities[t[0]];
+                    let u2 = stepData.entities[t[1]];
+                    if(!u1 || !u2) return;
+                    let uPos1 = getPxPy(u1[1], u1[2]);
+                    let uPos2 = getPxPy(u2[1], u2[2]);
+                    let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", uPos1[0]); line.setAttribute("y1", uPos1[1]);
+                    line.setAttribute("x2", uPos2[0]); line.setAttribute("y2", uPos2[1]);
+                    line.setAttribute("class", "los-target");
+                    svg.appendChild(line);
+                });
+            }
+            
+            // Draw units
+            if (stepData.entities) {
+                stepData.entities.forEach((u, i) => {
+                    if (u[1] < 0 || u[2] < 0) return;
+                    let isFriendly = u[0] > 0.5;
+                    let pos = getPxPy(u[1], u[2]);
+                    
+                    let g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    let circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    circle.setAttribute("cx", pos[0]); circle.setAttribute("cy", pos[1]);
+                    circle.setAttribute("r", 14);
+                    circle.setAttribute("class", isFriendly ? "unit unit-friendly" : "unit unit-enemy");
+                    
+                    let label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    label.setAttribute("x", pos[0]); label.setAttribute("y", pos[1]);
+                    label.setAttribute("class", "unit-text");
+                    let meta = stepData.entities_meta ? stepData.entities_meta[i] : null;
+                    label.textContent = meta ? `${i} [${meta.name || 'Unknown'}]` : `${i}`;
+                    
+                    // Facing line
+                    let facingRad = (u[3] * 60 - 90) * Math.PI / 180;
+                    let fx = pos[0] + 14 * Math.cos(facingRad);
+                    let fy = pos[1] + 14 * Math.sin(facingRad);
+                    let fline = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    fline.setAttribute("x1", pos[0]); fline.setAttribute("y1", pos[1]);
+                    fline.setAttribute("x2", fx); fline.setAttribute("y2", fy);
+                    fline.setAttribute("class", "facing-line");
+                    
+                    g.appendChild(circle);
+                    g.appendChild(fline);
+                    g.appendChild(label);
+                    g.style.cursor = "pointer";
+                    g.onclick = () => {
+                        if (meta) {
+                            alert(`Unit ID: ${i}\nName: ${meta.name}\nArmor: ${meta.armor_percent || 'N/A'}%\nStructure: ${meta.structure_percent || 'N/A'}%\n\nFull Meta:\n${JSON.stringify(meta, null, 2)}`);
+                        } else {
+                            alert(`Unit ID: ${i}\n(No detailed meta available)`);
+                        }
+                    };
+                    svg.appendChild(g);
+                });
+            }
+        }
+        
+        async function submitAction() {
+            if (!isWaitingForUser) return;
+            const actionJson = document.getElementById("action-input").value;
+            let actionObj;
+            try {
+                actionObj = JSON.parse(actionJson);
+            } catch (e) {
+                alert("Invalid JSON action dict!");
+                return;
+            }
+            
+            document.getElementById("btn-submit").disabled = true;
+            document.getElementById("status-text").innerText = "Executing action...";
+            
+            try {
+                await fetch('/api/action', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(actionObj)
+                });
+                isWaitingForUser = false;
+            } catch (e) {
+                alert("Failed to submit action");
+                document.getElementById("btn-submit").disabled = false;
+            }
+        }
+        
+        async function pollState() {
+            if (isWaitingForUser) {
+                setTimeout(pollState, 1000);
+                return;
+            }
+            try {
+                let res = await fetch('/api/state');
+                let data = await res.json();
+                
+                if (data.status === 'ready' && data.step_id !== currentStepId) {
+                    currentStepId = data.step_id;
+                    stepData = data.data;
+                    isWaitingForUser = true;
+                    document.getElementById("status-text").innerText = "Waiting for User Action...";
+                    document.getElementById("status-text").style.color = "#0f0";
+                    document.getElementById("btn-submit").disabled = false;
+                    renderState();
+                } else if (data.status === 'waiting') {
+                    document.getElementById("status-text").innerText = "Waiting for MegaMek to finish step...";
+                    document.getElementById("status-text").style.color = "yellow";
+                }
+            } catch (e) {
+                document.getElementById("status-text").innerText = "Disconnected from backend";
+                document.getElementById("status-text").style.color = "red";
+            }
+            setTimeout(pollState, 1000);
+        }
+        
+        // Start polling
+        pollState();
+    </script>
+</body>
+</html>
