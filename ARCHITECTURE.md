@@ -133,7 +133,7 @@ where $\mathcal{M}_{\mathcal{G}}$ is the space of probability measures over $\ma
 ### 1.4 Reward Structure ($R$)
 To guarantee a competitive Nash Equilibrium and prevent cooperative local minima (e.g., a "Truce" where agents refuse to act to avoid penalties), the environment strictly enforces a Zero-Sum constraint at every time-step: $\mathcal{R}^{(1)}_t = -\mathcal{R}^{(2)}_t$. Furthermore, while the ideal reward (to match the true game reward and Nash Equilibrium) is just the win-loss state, given how sparse the rewards are, we introduce auxiliary dense rewards.
 
-The rewards cover the change in Battle Value (BV) experienced by players during combat, Victory Points (VP) covering normally the win-loss state but extending to interim scores for objective-based scenarios, and Tertiary Penalties (TP). We introduce hyper-parameters $\beta_{obj}, \beta_{BV}, \beta_{TP} \in [0, \infty)$ (where we would likely have $\beta_{obj} > \beta_{BV}S > \beta_{TP}$) provide weightings of each reward:
+The rewards cover the change in Battle Value (BV) experienced by players during combat, Victory Points (VP) covering normally the win-loss state but extending to interim scores for objective-based scenarios, and Tertiary Penalties (TP). We introduce hyper-parameters $\beta_{obj}, \beta_{BV}, \beta_{TP} \in [0, \infty)$ (where we would likely have $\beta_{obj} > \beta_{BV} > \beta_{TP}$) provide weightings of each reward:
 
 $$\mathcal{R}^{(1)}_t = \beta_{BV} \left( \Delta \text{BV}^{(2)}_t - \Delta \text{BV}^{(1)}_t \right) + \beta_{obj} \left(\Delta \text{VP}_t^{(1)} - \Delta \text{VP}_t^{(2)} \right) + \beta_{TP} \left( \sum_{i \in \texttt{units}_2}\text{TP}^{(2)}_{i, t} - \sum_{j \in \texttt{units}_1} \text{TP}^{(1)}_{j, t} \right)$$
 
@@ -150,10 +150,12 @@ $$\mathcal{M} = \langle \mathcal{G}, \mathcal{A}^1, \mathcal{A}^2, \mathbb{P}, \
 
 ## 2. Neural Network Architecture
 
-### 2.1 Heterogeneous Graph Transformer (HGT)
-The state graph $g_t = (b_t, p_t)$, of board state $b_t$ and phase meta-data $p_t$ is processed via an HGT layer. We introduce the nodes $`n \in \mathcal{V}_{b_t}`$ and edges $`\varepsilon \in \mathcal{E}_{b_t}`$ as the edges and nodes of the current state graph $b_t$. Let $\tau$ and $\phi$ be the node type and edge type identifier functions and $\mathcal{N}_{b_t}(n)$ represent the 1-hop neighbourhood of node $n$ across all edge types.
+The architecture explicitly aligns with allowing computation of both Macro-Strategy (Value Estimation) and Micro-Tactics (Actor Policy), utilising the Heterogeneous Graph Transformer (HGT) to process the raw board state. We then extract a strategic summary ($z_{global}$) using a Perceiver-style latent query mechanism on top of the node embeddings, which acts as a sufficient statistic for the Critic. However as this global summary dissolves the exact spatial indices required to express target nodes and locations, the Actor conditions its policy on $z_{global}$ but relies on a separate Multi-Head Cross-Attention mechanism to query the un-pooled HGT graph for tactical execution.
 
-For discrete node types $\tau(n)$ and edge types $\phi(e)$ select specific learned weight matrices to dynamically route messages. For a directed edge $\varepsilon_{s,\iota}$ from source $n_s$ to target $n_{\iota}$:
+### 2.1 Heterogeneous Graph Transformer & Node Preservation
+The state graph $g_t = (b_t, p_t)$, consisting of the board state $b_t$ and phase meta-data $p_t$, is processed via an HGT layer. We introduce the nodes $n \in \mathcal{V}_{b_t}$ and edges $\varepsilon \in \mathcal{E}_{b_t}$ of the current state graph $b_t$. Let $\tau$ and $\phi$ be the node type and edge type identifier functions and $\mathcal{N}_{b_t}(n)$ represent the 1-hop neighbourhood of node $n$ across all edge types.
+
+For discrete node types $\tau(n)$ and edge types $\phi(e)$, we select specific learned weight matrices to dynamically route messages. For a directed edge $\varepsilon_{s,\iota}$ from source $n_s$ to target $n_{\iota}$:
 
 $$Q(n_{\iota}) = h_{n_{\iota}}^{(l-1)} W_{Q\text{-}\tau(n_{\iota})}, \quad K(n_s) = h_{n_s}^{(l-1)} W_{K\text{-}\tau(n_s)}, \quad V(n_s) = h_{n_s}^{(l-1)} W_{V\text{-}\tau(n_s)}$$
 
@@ -161,42 +163,73 @@ $$\text{Attention}(n_s, \varepsilon_{s,\iota}, n_{\iota}) = \underset{\forall n_
 
 $$h_{n_{\iota}}^{(l)} = \text{GELU} \left( \sum_{n_s \in \mathcal{N}_{b_t}(n_{\iota})} \text{Attention}(n_s, \varepsilon_{s,\iota}, n_{\iota}) \cdot \left(V(n_s) W^{MSG}_{\phi(\varepsilon_{s,\iota})}\right) W_{A\text{-}\tau(n_{\iota})} \right) + h_{n_{\iota}}^{(l-1)}$$
 
-The dynamically sized node matrix is compressed into a fixed-size graph embedding via Global Attention Pooling and concatenated with the phase context MLP to form the global latent state $z_t$:
+We may take the direct sum of the final output node embeddings to form $H_{b_t} \in \mathbb{R}^{N \times d}$ (where $N = |\mathcal{V}_{b_t}|$). We further denote the subset of embeddings corresponding strictly to active entities (units and weapons) as $H_{\text{entities}_t} \in \mathbb{R}^{N_E \times d}$. These matrices serve as the spatial Key-Value memories for the subsequent Actor and Critic mechanisms.
 
-```math
-\begin{aligned}
-z_{graph} &= \text{GlobalAttentionPooling}\left(\text{HGT}(b_t)\right)\\
-&= \text{GlobalAttentionPooling}\left(\left\lbrace h_{n_i}\right\rbrace_{n_i \in \mathcal{V}_{b_t}}\right)\\
-&= \sum_{n_i \in \mathcal{V}_{b_t}} \text{softmax}(W_{gate} h_{n_i}) \odot (W_{feat} h_{n_i})\\
-\implies z_t &= z_{graph} \oplus \text{MLP}(p_t).
-\end{aligned}
-```
+### 2.2 Latent Board Representation (Perceiver Pooling)
+Representing a highly heterogeneous, dynamically sized, board state as a single fixed-dimension vector using traditional methods destroys critical localized extrema (e.g., an exposed enemy torso or a vulnerable objective hex) via feature washout - preventing it from forming an adequate sufficient satistic for the game state and hence downstream inference. 
 
-### 2.2 Action-Conditioned Pointer Execution (Actor)
-The Actor policy $\pi_{\theta}$ navigates the valid action space $\mathcal{A}_{g_t}^{\eta}$ using an autoregressive causal transformer. Candidates sub-actions are mapped to continuous embeddings via an `ActionMLP`:
+To extract sufficient statistics from the dynamically sized graph without losing multi-modal heterogeneity, we employ a Perceiver-style Latent Query mechanism. We define a fixed set of $K$ learnable latent vectors $L \in \mathbb{R}^{K \times d}$, which act as specialized state-summarization queries. 
 
-$$e_{a_k} = \text{ActionMLP}( h_{\text{activeUnit}} \oplus h_{\text{targetNode}} \oplus x_{a_k} ) \quad \forall a_k \in V_{\mathcal{A}_g^{\eta}}$$
+Because the preceding HGT layers natively bake terrain properties (cover, elevation, hazards) into the embeddings of the units occupying them via the spatial edges, the Latent Queries do not need to compute attention over empty hexes (analogous to the AlphaStar architecture). Thus, the queries attend strictly to the subset of active entities $H_{entities}$ via Multi-Head Cross-Attention, massively reducing computational overhead:
 
-where $x_{a_k}$ represents features that we compute for the given sub-action $a_k$, and $`V_{\mathcal{A}_g^{\eta}}`$ is the set of nodes in the tree defined by $`\mathcal{A}_{g_t}^{\eta}`$. The causal transformer processes the latent state $z_t$ and prefix embeddings to generate a query vector $s_k$. Policy logits are evaluated via a pointer-network dot product:
+$$Z_{latent} = \text{MultiHeadAttention}(Q=L, \; K=H_{entities}, \; V=H_{entities}) \quad \in \mathbb{R}^{K \times d}$$
 
-$$s_k = \text{TransformerDecoder}\left(z_t, [e_{a_0}, \dots, e_{a_{k-1}}] \right), \quad \text{Logits}(a_k) = s_k^T \cdot e_{a_k}.$$
+Through end-to-end gradient descent, these $K$ queries naturally specialize to extract macro and micro heuristics from the board (e.g., aggregating friendly force projection or isolating critical enemy vulnerabilities). 
 
-Letting $\varphi(a)$ be the index for the terminal node of action $a$, and $\mathcal{C}(a)$ be the children of node $a$, this then defines the actor policy as:
+The output is flattened and concatenated with the phase meta-data $p_t$ to form a rich, constant-sized global state representation $z_{global}$. This vector natively encapsulates the entire strategic snapshot of the board to seed the sequential Actor and feed the Value Critic:
 
-$$\pi_{\theta}(a \mid g_t) = \prod_{k=1}^{\varphi(a)} \frac{\exp\left(s_{k}^T \cdot e_{a_k}\right)}{\sum_{\zeta \in \mathcal{C}(a_{k-1})} \exp\left(s_{k}^T \cdot e_{\zeta}\right)}$$
+$$z_{global} = \text{Flatten}(Z_{latent}) \oplus \text{MLP}(p_t)$$
 
-where the root node $a_0$ is fixed and hence ignored in the above conditional probability mechanism.
+### 2.3 Action-Conditioned Cross-Attention Execution (Actor)
+While $z_{global}$ is sufficient for determining *who is winning*, it suffers from a loss of "Index Resolution"—it has lost the exact topological tensor indices required to mathematically point to specific target nodes. Thus, the Actor policy $\pi_{\theta}$ navigates the valid action space $\mathcal{A}_{g_t}^{\eta}$ using an autoregressive causal decoder equipped with its own Multi-Head Cross-Attention mechanism. This allows the agent to dynamically query the preserved spatial geometry conditioned on the specific action being evaluated.
 
-### 2.3 Aleatoric & Epistemic Uncertainty Considerations
-To model the heavy-tailed aleatoric variance of the 2d6 and target-number randomisation mechanism in BattleTech, Distributional RL (e.g., Implicit Quantile Networks - IQN) was considered to model the future-return distribution. However, the additional computational cost and complexity in representation means this will be reserved for future extensions. Note that the value estimator $V_{\omega}$ is defined as:
+First, candidate sub-actions are mapped to continuous embeddings. To ensure numerical stability within the dot-product attention, continuous heuristics $x_{a_k}$ (such as expected hit probabilities or normalized MP expended) are strictly scaled to bounded ranges before concatenation:
 
-$$V_{\omega}(g_t) = \text{ValueMLP}(z_t), \quad z_t = \text{GlobalAttentionPooling}\left(\text{HGT}(b_t) \right) \oplus \text{MLP}(p_t)$$
+$$e_{a_k} = \text{ActionMLP}\Big( h_{\text{activeUnit}} \oplus h_{\text{targetNode}} \oplus \text{Scale}(x_{a_k}) \Big) \quad \forall a_k \in \mathcal{V}_{\mathcal{A}_g^{\eta}}$$
 
-Epistemic uncertainty is approached via an ensemble of $E$ independent critic heads $V_{\omega_e}(z_t)$. The balance between exploration and exploitation is naturally driven by the posterior concentration of the ensemble variance
+To account for the sequential dependencies of atomic declarations (e.g., Target $\to$ Weapon), an autoregressive decoder updates a step-context vector $s_k$ using the sequence of previously chosen actions. Crucially, the decoder is seeded by the comprehensive global summary $z_{global}$:
+
+$$s_k = \text{TransformerDecoder}\left(z_{global}, [e_{a_0}, \dots, e_{a_{k-1}}] \right)$$
+
+For each candidate action $a_k$, we generate a specific Query vector $q_{a_k}$ combining the current autoregressive step-context and the candidate's embedding:
+
+$$q_{a_k} = \text{QueryMLP}(s_k \oplus e_{a_k})$$
+
+To resolve the exact spatial validity of the action, the query attends to the entirety of the un-pooled board graph via Multi-Head Cross-Attention. Unlike the Critic, the Actor must query the full $H_{nodes}$ matrix (including empty hexes) to properly evaluate navigational paths and line-of-sight angles:
+
+$$\text{Context}_{a_k} = \text{MultiHeadAttention}\left(Q=q_{a_k}, \; K=H_{nodes}, \; V=H_{nodes} \right)$$
+
+The final policy logits are evaluated by scoring the query against its retrieved spatial context via a pointer-network layer:
+
+$$\text{Logits}(a_k) = W_{pointer}^T \left( q_{a_k} \oplus \text{Context}_{a_k} \right)$$
+
+Letting $\varphi(a)$ be the index for the terminal node of action $a$, and $\mathcal{C}(a)$ be the children of node $a$, this defines the actor policy as:
+
+$$\pi_{\theta}(a \mid g_t) = \prod_{k=1}^{\varphi(a)} \frac{\exp\left(\text{Logits}(a_k)\right)}{\sum_{\zeta \in \mathcal{C}(a_{k-1})} \exp\left(\text{Logits}(\zeta)\right)}$$
+
+where the root node $a_0$ is fixed and hence ignored in the computation.
+
+### 2.4 Value Estimation & Epistemic Uncertainty (Critic)
+To model the heavy-tailed aleatoric variance of the 2d6 and target-number randomization mechanism in BattleTech, Distributional RL (e.g., Implicit Quantile Networks - IQN) was considered to model the future-return distribution. However, the additional computational cost and complexity in representation means this will be reserved for future extensions. 
+
+Currently, the Value Estimator $V_{\omega}$ evaluates the expected return of the current state. Because $z_{global}$ natively resolves the strategic advantage via the Latent Perceiver queries without requiring an argmax over combinatorial actions, the Critic operates solely on this fixed-size macro vector via a dense multi-layer perceptron:
+
+$$V_{\omega}(g_t) = \text{ValueMLP}(z_{global})$$
+
+Epistemic uncertainty is approached via an ensemble of $E$ independent critic heads $V_{\omega_e}(g_t)$. The balance between exploration and exploitation is naturally driven by the posterior concentration of the ensemble variance:
 
 $$\bar{V}_{\omega}(g_t) = \mathbb{E}_E \left[ V_{\omega_e}(g_t) \right], \quad \sigma_{\omega}^2(g_t) = \mathbb{V}_E \left[ V_{\omega_e}(g_t) \right]$$
 
 where $\omega = \oplus_{e=1}^E \omega_e$, and we use a bit of abuse of notation to represent the ensemble parameters.
+
+### 2.5 Future Exploration: Spatio-Temporal Stacked Graphs
+The current architecture relies strictly on the contemporary spatial graph. Given the density of information encoded via node features and topological edges (e.g., current heat, armour thresholds, relative positioning, and LOS threats), the current embeddings likely form a sufficient statistic to allow for Markovian assumptions to hold. For instance, the distinction between an enemy "fleeing" vs "luring into a flank" can often be inferred implicitly from the holistic arrangement of friendly and enemy units on the current board, not requiring information from previous board-states.
+
+However, if empirical testing reveals that the network struggles to naturally deduce momentum, adversarial tracking, or heat trajectories from a static frame, this framework can be natively extended into a **Spatio-Temporal Graph Neural Network (STGNN)**. Rather than relying on recurrent networks or stacked global summaries, we would preserve the active entity nodes (units and weapons) from the previous $k$ phases ($\mathcal{V}_{E_{t-k:t-1}}$) and introduce Temporal Edges:
+
+$$ \mathcal{E}_{\text{temporal}}: \mathcal{V}_{E_{t-i}} \to \mathcal{V}_{E_t} $$
+
+By linking a historical entity state directly to its representation in the present, the HGT's message-passing layers would natively derive continuous momentum and historical intent directly from localized node histories, preserving the benefits of graph-based computation without significantly inflating the state space.
 
 ---
 
@@ -298,8 +331,9 @@ By relying purely on the Actor's autoregressive Ancestral Sampling, the resultin
 1. **IMPALA \& V-Trace:** Espeholt, L., et al. (2018). *IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures*.
 2. **SBEED (Primal-Dual Optimization):** Dai, B., et al. (2018). *SBEED: Convergent Reinforcement Learning with Nonlinear Function Approximation*. ICML 2018.
 3. **Heterogeneous Graph Transformer:** Hu, Z., et al. (2020). *Heterogeneous Graph Transformer*. WWW 2020.
-4. **Autoregressive Actions in RL:** Vinyals, O., et al. (2019). *Grandmaster level in StarCraft II using multi-agent reinforcement learning*. Nature.
-5. **Epistemic Exploration Ensembles:** Osband, I., et al. (2016). *Deep Exploration via Bootstrapped DQN*. NIPS 2016.
-6. **Implicit Quantile Networks:** Dabney, W., et al. (2018). *Implicit Quantile Networks for Distributional Reinforcement Learning*. ICML 2018.
-7. **MuZero:** Schrittwieser, J., et al. (2020). *Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model*. Nature 2020.
-8. **LeWorldModel:** Maes, L., et al. (2026). *LeWorldModel: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels*. Arxiv Pre-print 2026.
+4. **AlphaStar:** Vinyals, O., et al. (2019). *Grandmaster level in StarCraft II using multi-agent reinforcement learning*. Nature.
+5. **Perceiver IO:** Jaegle, A., et al. (2021). *Perceiver IO: A General Architecture for Structured Inputs & Outputs*. ICLR 2022.
+6. **Epistemic Exploration Ensembles:** Osband, I., et al. (2016). *Deep Exploration via Bootstrapped DQN*. NIPS 2016.
+7. **Implicit Quantile Networks:** Dabney, W., et al. (2018). *Implicit Quantile Networks for Distributional Reinforcement Learning*. ICML 2018.
+8. **MuZero:** Schrittwieser, J., et al. (2020). *Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model*. Nature 2020.
+9. **LeWorldModel:** Maes, L., et al. (2026). *LeWorldModel: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels*. Arxiv Pre-print 2026.
