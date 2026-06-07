@@ -23,7 +23,7 @@ Given the structure above, there are two important bits of data - the current bo
 We define the following sets of nodes:
 
 1. **Entity Nodes ($\mathcal{V}_U$):** are entity nodes, which encode information about units partaking in the game. A set of node covariates are of the form:
-   `unitClass_OneHot`, `unitRole`, `facingVector_SinCos`, `isOmnidirectional`, `cruisingSpeed`, `flankingSpeed`, `jumpDistance`, `GunnerySkill`, `PilotingSkill`, `currentHeat`, `heatCapacity`, `mechHeadInternal`, `mechHeadArmour`, $\dots$, `mechCenterTorsoArmourRear`, `vehicleFrontArmour`, $\dots$
+   `unitClass_OneHot`, `unitRole`, `facingVector_SinCos`, `isOmnidirectional`, `cruisingSpeed`, `flankingSpeed`, `jumpDistance`, `GunnerySkill`, `PilotingSkill`, `currentHeat`, `heatCapacity`, `gyroStatus`, `engineHits`, `actuatorsDestroyed`, `pilotConsciousness`, `mechHeadInternal`, `mechHeadArmour`, $\dots$, `mechCenterTorsoArmourRear`, `vehicleFrontArmour`, $\dots$
 2. **Hex Nodes ($\mathcal{V}_H$):** are hex nodes, which encode information about terrain and battlefield geometry. A set of node covariates are of the form:
    `elevationLevel`, `terrainType_OneHot`, `lightForestFlag`, `heavyForestFlag`, `fire/smokeFlag`, `objectiveVPValue`, `isExtractionZone`, $\dots$
 3. **Weapon Nodes ($\mathcal{V}_W$):** are weapon nodes, which encode information about weapons mounted to mechs, vehicles or wielded by infantry. A set of node covariates are of the form:
@@ -76,7 +76,7 @@ We also define the following sets of edges, which are used to encode game specif
 \mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H
 ```
 
-9. Edges for showing which weapons have targeted which unit to faciliate tracking weapon declarations.
+9. Edges for showing which weapons have targeted which unit to facilitate tracking weapon declarations.
 ```math
 \mathcal{E}_{\text{weaponTarget}}: \mathcal{V}_W \to \mathcal{V}_U
 ```
@@ -99,7 +99,7 @@ Let the space of all valid board-states be $\mathcal{B}$, and let $\mathcal{G} \
 
 $$(p, B) \in \mathcal{G}, \exists (\mathcal{V}, \mathcal{E}) \in \mathcal{B}: B = (\mathcal{V}, \mathcal{E}).$$
 
-This allows us to hence define the major component of our state-space, an encoding of the game.
+This representation allows us to capture the major components of Battletech, and allow for representation of Battletech as a Markov Game.
 
 ### 1.2 Definition of the action-space
 BattleTech is a complicated game to model, as the action space is incredibly sparse, and dependent on the current game-state (e.g. the phase would determine what sorts of actions would be possible, say movement is not allowed during the attack phases, or what combination of weapons and enemy units to attack that the unit selected for firing has in LOS, etc) - and so care is required when attempting to model it. It is not feasible to enumerate every possible action (as this would be an incredibly large number across all legal boards).
@@ -163,16 +163,16 @@ $$\text{Attention}(n_s, \varepsilon_{s,\iota}, n_{\iota}) = \underset{\forall n_
 
 $$h_{n_{\iota}}^{(l)} = \text{GELU} \left( \sum_{n_s \in \mathcal{N}_{b_t}(n_{\iota})} \text{Attention}(n_s, \varepsilon_{s,\iota}, n_{\iota}) \cdot \left(V(n_s) W^{MSG}_{\phi(\varepsilon_{s,\iota})}\right) W_{A\text{-}\tau(n_{\iota})} \right) + h_{n_{\iota}}^{(l-1)}$$
 
-We may take the direct sum of the final output node embeddings to form $H_{b_t} \in \mathbb{R}^{N \times d}$ (where $N = |\mathcal{V}_{b_t}|$). We further denote the subset of embeddings corresponding strictly to active entities (units and weapons) as $H_{\text{entities}_t} \in \mathbb{R}^{N_E \times d}$. These matrices serve as the spatial Key-Value memories for the subsequent Actor and Critic mechanisms.
+We assemble the final output node embeddings to form the matrix $H_{b_t} \in \mathbb{R}^{N \times d}$ (where $N = |\mathcal{V}_{b_t}|$). We further denote the subset of embeddings corresponding strictly to active entities (units and weapons) as $H_{\text{entities}_t} \in \mathbb{R}^{N_E \times d}$. These matrices serve as the spatial Key-Value memories for the subsequent Actor and Critic mechanisms.
 
 ### 2.2 Latent Board Representation (Perceiver Pooling)
-Representing a highly heterogeneous, dynamically sized, board state as a single fixed-dimension vector using traditional methods destroys critical localized extrema (e.g., an exposed enemy torso or a vulnerable objective hex) via feature washout - preventing it from forming an adequate sufficient satistic for the game state and hence downstream inference. 
+Representing a highly heterogeneous, dynamically sized, board state as a single fixed-dimension vector using traditional methods destroys critical localized extrema (e.g., an exposed enemy torso or a vulnerable objective hex) via feature washout - preventing it from forming an adequate sufficient statistic for the game state and hence downstream inference. 
 
 To extract sufficient statistics from the dynamically sized graph without losing multi-modal heterogeneity, we employ a Perceiver-style Latent Query mechanism. We define a fixed set of $K$ learnable latent vectors $L \in \mathbb{R}^{K \times d}$, which act as specialized state-summarization queries. 
 
-Because the preceding HGT layers natively bake terrain properties (cover, elevation, hazards) into the embeddings of the units occupying them via the spatial edges, the Latent Queries do not need to compute attention over empty hexes (analogous to the AlphaStar architecture). Thus, the queries attend strictly to the subset of active entities $H_{entities}$ via Multi-Head Cross-Attention, massively reducing computational overhead:
+Because the preceding HGT layers natively bake terrain properties (cover, elevation, hazards) into the embeddings of the units occupying them via the spatial edges, the Latent Queries do not need to compute attention over empty hexes (analogous to the AlphaStar architecture). Thus, the queries attend strictly to the subset of active entities $H_{\text{entities}_t}$ via Multi-Head Cross-Attention, massively reducing computational overhead:
 
-$$Z_{latent} = \text{MultiHeadAttention}(Q=L, \; K=H_{entities}, \; V=H_{entities}) \quad \in \mathbb{R}^{K \times d}$$
+$$Z_{latent} = \text{MultiHeadAttention}(Q=L, K=H_{\text{entities}_t}, V=H_{\text{entities}_t}) \quad \in \mathbb{R}^{K \times d}$$
 
 Through end-to-end gradient descent, these $K$ queries naturally specialize to extract macro and micro heuristics from the board (e.g., aggregating friendly force projection or isolating critical enemy vulnerabilities). 
 
@@ -195,13 +195,13 @@ For each candidate action $a_k$, we generate a specific Query vector $q_{a_k}$ c
 
 $$q_{a_k} = \text{QueryMLP}(s_k \oplus e_{a_k})$$
 
-To resolve the exact spatial validity of the action, the query attends to the entirety of the un-pooled board graph via Multi-Head Cross-Attention. Unlike the Critic, the Actor must query the full $H_{nodes}$ matrix (including empty hexes) to properly evaluate navigational paths and line-of-sight angles:
+To resolve the exact spatial validity of the action, the query attends to the entirety of the un-pooled board graph via Multi-Head Cross-Attention. Unlike the Critic, the Actor must query the full $H_{b_t}$ matrix (including empty hexes) to properly evaluate navigational paths and line-of-sight angles:
 
-$$\text{Context}_{a_k} = \text{MultiHeadAttention}\left(Q=q_{a_k}, \; K=H_{nodes}, \; V=H_{nodes} \right)$$
+$$\text{Context}_{a_k} = \text{MultiHeadAttention}\left(Q=q_{a_k}, K=H_{b_t}, V=H_{b_t} \right)$$
 
-The final policy logits are evaluated by scoring the query against its retrieved spatial context via a pointer-network layer, where $W_{pointer} \in \mathbb{R}^{d \times d}$ is a learnable matrix, allowing us to define:
+The final policy logits are evaluated by scoring the query against its retrieved spatial context via a pointer-network layer, where $W_{pointer} \in \mathbb{R}^{d \times d}$ is a learnable matrix, allowing us to define the scaled bilinear form:
 
-$$\text{Logits}(a_k) = q_{a_k} W_{pointer} \text{Context}_{a_k}$$
+$$\text{Logits}(a_k) = \frac{1}{\sqrt{d}} q_{a_k}^T W_{pointer} \text{Context}_{a_k}$$
 
 Letting $\varphi(a)$ be the index for the terminal node of action $a$, and $\mathcal{C}(a)$ be the children of node $a$, this defines the actor policy as:
 
@@ -247,16 +247,19 @@ We note that the $\mu_i$ in our case will be the actor network defined above, bu
 #### 3.1.1 The V-Trace Target ($`v_t(\omega)`$)
 Recall the V-trace is defined as
 
-$$v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_k V$$
+$$
+v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_k V
+$$
 
 where
-```math
+
+$$
 \begin{aligned}
 \delta_k V &= \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))\\
 \bar{\rho}_k &= \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)\\
 c_j &= \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)
 \end{aligned}
-```
+$$
 
 and $`\bar{\rho}, \bar{c} \in (0,1)`$ and $`\bar{c} \leq \bar{\rho}`$. In particular we see the following recursive representation
 
