@@ -199,9 +199,9 @@ To resolve the exact spatial validity of the action, the query attends to the en
 
 $$\text{Context}_{a_k} = \text{MultiHeadAttention}\left(Q=q_{a_k}, \; K=H_{nodes}, \; V=H_{nodes} \right)$$
 
-The final policy logits are evaluated by scoring the query against its retrieved spatial context via a pointer-network layer:
+The final policy logits are evaluated by scoring the query against its retrieved spatial context via a pointer-network layer, where $W_{pointer} \in \mathbb{R}^{d \times d}$ is a learnable matrix, allowing us to define:
 
-$$\text{Logits}(a_k) = W_{pointer}^T \left( q_{a_k} \oplus \text{Context}_{a_k} \right)$$
+$$\text{Logits}(a_k) = q_{a_k} W_{pointer} \text{Context}_{a_k}$$
 
 Letting $\varphi(a)$ be the index for the terminal node of action $a$, and $\mathcal{C}(a)$ be the children of node $a$, this defines the actor policy as:
 
