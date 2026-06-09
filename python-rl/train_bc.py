@@ -40,6 +40,8 @@ class BCIterableDataset(IterableDataset):
                     else:
                         data.y_len = torch.tensor([0], dtype=torch.long)
                         
+                    if hasattr(data, 'action_mask'):
+                        delattr(data, 'action_mask')
                     if 'weapon' in data.node_types and hasattr(data['weapon'], 'x') and data['weapon'].x.size(0) > 0:
                         data['weapon'].x[data['weapon'].x < -1000.0] = 0.0
                         
@@ -47,26 +49,34 @@ class BCIterableDataset(IterableDataset):
             except Exception as e:
                 print(f"Error loading {f}: {e}")
 
-def process_batch(agent, batch, device, is_training=False, accumulation_steps=32):
+def process_batch(agent, batch, device, is_training=False, accumulation_steps=32, return_random_baseline=False):
     batch = batch.to(device)
         
-    pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total = agent.evaluate_actions(batch)
-    
+    if return_random_baseline:
+        pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total, random_correct_total = agent.evaluate_actions(batch, return_random_baseline=True)
+    else:
+        pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total = agent.evaluate_actions(batch, return_random_baseline=False)
+        random_correct_total = None
+        
     mask = (steps_total > 0)
     if not mask.any():
-        return 0.0, 0, 0, False
+        if return_random_baseline:
+            return 0.0, 0, 0, 0.0, False
+        else:
+            return 0.0, 0, 0, False
         
     loss = -pi_log_prob_total[mask].mean() / accumulation_steps
     
     if is_training:
         loss.backward()
         
-    return loss.item() * accumulation_steps, int(correct_total.sum().item()), int(steps_total.sum().item()), True
-        
-    return 0.0, 0, 0, False
+    if return_random_baseline:
+        return loss.item() * accumulation_steps, int(correct_total.sum().item()), int(steps_total.sum().item()), float(random_correct_total.sum().item()), True
+    else:
+        return loss.item() * accumulation_steps, int(correct_total.sum().item()), int(steps_total.sum().item()), True
 
 def train():
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using compute device: {device}")
     
     dataset_dir = 'data/bc_trajectories'
@@ -88,15 +98,15 @@ def train():
     train_dataset = BCIterableDataset(train_files, shuffle=True)
     val_dataset = BCIterableDataset(val_files, shuffle=False)
     
-    train_loader = DataLoader(train_dataset, batch_size=32)
-    val_loader = DataLoader(val_dataset, batch_size=32)
+    train_loader = DataLoader(train_dataset, batch_size=16)
+    val_loader = DataLoader(val_dataset, batch_size=16)
     
     writer = SummaryWriter(log_dir='runs/bc_training_logs')
     
     agent = MegaMekAgent(hidden_dim=128).to(device)
     optimizer = Adam(agent.parameters(), lr=3e-4) # Lowered LR
     
-    accumulation_steps = 32
+    accumulation_steps = 64
     
     epochs = 15
     os.makedirs('model_objects', exist_ok=True)
@@ -132,24 +142,27 @@ def train():
         agent.eval()
         total_val_loss = 0.0
         total_val_correct = 0
+        total_val_random_correct = 0.0
         total_val_steps = 0
         valid_val_batches = 0
         with torch.no_grad():
             for batch in val_loader:
-                loss_val, correct, steps, valid = process_batch(agent, batch, device, is_training=False)
+                loss_val, correct, steps, rand_correct, valid = process_batch(agent, batch, device, is_training=False, return_random_baseline=True)
                 if valid:
                     total_val_loss += loss_val
                     total_val_correct += correct
+                    total_val_random_correct += rand_correct
                     total_val_steps += steps
                     valid_val_batches += 1
                     
         avg_val_loss = total_val_loss / valid_val_batches if valid_val_batches > 0 else 0
         val_acc = total_val_correct / total_val_steps if total_val_steps > 0 else 0
+        val_rand_acc = total_val_random_correct / total_val_steps if total_val_steps > 0 else 0
         
-        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {avg_val_loss:.4f} Acc: {val_acc:.4f}")
+        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f} Acc: {train_acc:.4f} | Val Loss: {avg_val_loss:.4f} Acc: {val_acc:.4f} (Random Baseline Acc: {val_rand_acc:.4f})")
         
         writer.add_scalars('Loss', {'Train': avg_train_loss, 'Val': avg_val_loss}, epoch)
-        writer.add_scalars('Accuracy', {'Train': train_acc, 'Val': val_acc}, epoch)
+        writer.add_scalars('Accuracy', {'Train': train_acc, 'Val': val_acc, 'Val_Random': val_rand_acc}, epoch)
         
         torch.save(agent.state_dict(), save_path)
         

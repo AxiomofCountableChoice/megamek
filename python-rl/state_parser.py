@@ -117,9 +117,26 @@ class StateParser:
             phase_type = -1.0
         
         # 1. Global Phase Features
-        phase_str = raw_state.get('phase_main', "UNKNOWN")
-        turn = raw_state.get('turn_number', 0)
-        data.global_context = torch.tensor([[turn, len(phase_str)]], dtype=torch.float32)
+        turn = float(raw_state.get('turn_number', 0))
+        round_num = float(raw_state.get('round_number', 0))
+        current_player_id = float(raw_state.get('current_player_id', 0))
+        my_activations_left = float(raw_state.get('my_activations_left', 0))
+        enemy_activations_left = float(raw_state.get('enemy_activations_left', 0))
+        
+        rewards_dict = payload.get("rewards", {}) if payload else {}
+        bv1 = float(rewards_dict.get("bv1", 0.0))
+        bv2 = float(rewards_dict.get("bv2", 0.0))
+        vp1 = float(rewards_dict.get("vp1", 0.0))
+        vp2 = float(rewards_dict.get("vp2", 0.0))
+        tp1 = float(rewards_dict.get("tp1", 0.0))
+        tp2 = float(rewards_dict.get("tp2", 0.0))
+        
+        data.global_context = torch.tensor(
+            [[turn, round_num, phase_type, current_player_id,
+              my_activations_left, enemy_activations_left,
+              bv1, bv2, vp1, vp2, tp1, tp2]],
+            dtype=torch.float32
+        )
         
         # 2. Dynamic Entity Nodes
         raw_entities = raw_state.get("entities", [])

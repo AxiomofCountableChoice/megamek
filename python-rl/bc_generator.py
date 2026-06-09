@@ -201,6 +201,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=10, help="Number of random matches to generate")
     parser.add_argument("--save-path", type=str, default="bc_dataset_master.pt", help="File to serialize data")
+    parser.add_argument("--workers", type=int, default=4, help="Number of parallel megamek processes")
     args = parser.parse_args()
     
     print("Pre-fetching all valid MTF Mek files...")
@@ -214,7 +215,7 @@ if __name__ == "__main__":
     import concurrent.futures
     
     # Run in parallel using ProcessPoolExecutor
-    max_workers = min(args.episodes, 4) # cap at 4 parallel matches
+    max_workers = min(args.episodes, args.workers)
     base_port = 2346
     
     try:
@@ -227,7 +228,7 @@ if __name__ == "__main__":
             
             # Initial batch
             while len(futures) < max_workers and attempts < max_attempts:
-                futures.add(executor.submit(run_single_episode, attempts, base_port + attempts, all_meks))
+                futures.add(executor.submit(run_single_episode, attempts, base_port + 2 * attempts, all_meks))
                 attempts += 1
                 
             # Process as they complete
@@ -244,7 +245,7 @@ if __name__ == "__main__":
                     
                     # Submit replacement task if needed
                     if successful_ep + len(futures) < args.episodes and attempts < max_attempts:
-                        futures.add(executor.submit(run_single_episode, attempts, base_port + attempts, all_meks))
+                        futures.add(executor.submit(run_single_episode, attempts, base_port + 2 * attempts, all_meks))
                         attempts += 1
 
     except KeyboardInterrupt:

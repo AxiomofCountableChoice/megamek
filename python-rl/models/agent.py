@@ -13,11 +13,12 @@ class MegaMekAgent(nn.Module):
     """
     def __init__(self, hidden_dim=128, ensemble_size=8, action_feature_dim=8):
         super().__init__()
-        self.encoder = MegaMekHGTEncoder(hidden_dim=hidden_dim)
+        num_latent_queries = 32
+        self.encoder = MegaMekHGTEncoder(hidden_dim=hidden_dim, num_latent_queries=num_latent_queries, num_layers=4)
         
         # 1. Epistemic Value Ensemble (Critic)
-        # Branching from z (dim = hidden_dim * 2 since z_graph + z_context)
-        latent_dim = hidden_dim * 2
+        # Branching from z (dim = (num_latent_queries * hidden_dim) + hidden_dim)
+        latent_dim = (num_latent_queries * hidden_dim) + hidden_dim
         
         self.ensembles = nn.ModuleList([
             nn.Sequential(
@@ -28,7 +29,11 @@ class MegaMekAgent(nn.Module):
         ])
         
         # 2. Autoregressive Transformer Decoder (Teacher Forcing & Action Scoring)
-        self.actor_pointer = ActionConditionedPointer(hidden_dim=hidden_dim, action_feature_dim=action_feature_dim)
+        self.actor_pointer = ActionConditionedPointer(
+            hidden_dim=hidden_dim, 
+            action_feature_dim=action_feature_dim,
+            latent_dim=latent_dim
+        )
         
     def compute_values(self, z):
         """
@@ -42,7 +47,7 @@ class MegaMekAgent(nn.Module):
         v_var = v_preds.var(dim=-1, unbiased=False)
         return v_mean, v_var
 
-    def evaluate_actions(self, batch):
+    def evaluate_actions(self, batch, return_random_baseline=False):
         """
         Evaluates an existing HeteroData batch (must contain y_sequence target actions).
         Returns pi_log_prob_total, entropy_total, v_mean, v_variance
@@ -59,6 +64,7 @@ class MegaMekAgent(nn.Module):
         entropy_total = torch.zeros(batch_size, device=z.device)
         correct_total = torch.zeros(batch_size, device=z.device)
         steps_total = torch.zeros(batch_size, device=z.device)
+        random_correct_total = torch.zeros(batch_size, device=z.device)
         
         y_seq_concat = getattr(batch, 'y_sequence', None)
         y_lens = getattr(batch, 'y_len', None)
@@ -118,7 +124,12 @@ class MegaMekAgent(nn.Module):
                 
                 e_tier = e_actions[valid_mask]
                 
-                logits = self.actor_pointer.score_actions(s_k, e_tier, None) # No batch idx needed
+                num_candidates = e_tier.size(0)
+                if num_candidates > 0:
+                    random_correct_total[b] += 1.0 / num_candidates
+                    
+                act_batch_idx_b = torch.full((num_candidates,), b, dtype=torch.long, device=z.device)
+                logits = self.actor_pointer.score_actions(s_k, e_tier, act_batch_idx_b, x_dict, batch)
                 probs = torch.softmax(logits, dim=-1)
                 
                 global_indices = torch.where(valid_mask)[0]
@@ -141,9 +152,12 @@ class MegaMekAgent(nn.Module):
                 
             y_offset += y_len
             
-        return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
+        if return_random_baseline:
+            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total, random_correct_total
+        else:
+            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
 
-    def _decode_and_sample_step(self, z, history_embeddings, e_actions, candidates, batch_idx, deterministic=False):
+    def _decode_and_sample_step(self, z, history_embeddings, e_actions, candidates, batch_idx, hetero_data, x_dict, deterministic=False):
         """
         Decodes the sequence using the history of chosen action embeddings,
         scores candidates (either a boolean mask or a list of option dicts),
@@ -157,46 +171,37 @@ class MegaMekAgent(nn.Module):
             
         s_k = self.actor_pointer.decode_sequence(z, history_tensor)
         
-        # 2. Score candidates
-        if isinstance(candidates, torch.Tensor):
-            # Mask based scoring
+        # 2. Parse candidate indices & check for empty options
+        is_tensor = isinstance(candidates, torch.Tensor)
+        if is_tensor:
             if not candidates.any():
                 return None, 0.0, torch.empty((0,))
-            e_candidates = e_actions[candidates]
-            cand_batch_idx = batch_idx[candidates] if batch_idx is not None else None
-            logits = self.actor_pointer.score_actions(s_k, e_candidates, cand_batch_idx)
-            probs = torch.softmax(logits, dim=-1)
-            
-            if deterministic:
-                rel_idx = torch.argmax(probs).item()
-                log_prob = torch.log(probs[rel_idx] + 1e-8).item()
-            else:
-                dist = torch.distributions.Categorical(probs)
-                rel_idx = dist.sample().item()
-                log_prob = dist.log_prob(torch.tensor(rel_idx, device=probs.device)).item()
-                
-            global_indices = torch.where(candidates)[0]
-            selected_global_idx = global_indices[rel_idx].item()
-            return selected_global_idx, log_prob, probs
+            indices = torch.where(candidates)[0]
         else:
-            # Option list based scoring
             if not candidates:
                 return None, 0.0, torch.empty((0,))
-                
-            indices = [opt.get("node_idx", -1) for opt in candidates]
-            e_candidates = e_actions[indices]
-            cand_batch_idx = batch_idx[indices] if batch_idx is not None else None
-            logits = self.actor_pointer.score_actions(s_k, e_candidates, cand_batch_idx)
-            probs = torch.softmax(logits, dim=-1)
+            indices = torch.tensor([opt.get("node_idx", -1) for opt in candidates], dtype=torch.long, device=z.device)
             
-            if deterministic:
-                idx = torch.argmax(probs).item()
-                log_prob = torch.log(probs[idx] + 1e-8).item()
-            else:
-                dist = torch.distributions.Categorical(probs)
-                idx = dist.sample().item()
-                log_prob = dist.log_prob(torch.tensor(idx, device=probs.device)).item()
-                
+        # 3. Score candidates
+        e_candidates = e_actions[indices]
+        cand_batch_idx = batch_idx[indices] if batch_idx is not None else None
+        logits = self.actor_pointer.score_actions(s_k, e_candidates, cand_batch_idx, x_dict, hetero_data)
+        probs = torch.softmax(logits, dim=-1)
+        
+        # 4. Sample selected index relative to candidate list
+        if deterministic:
+            idx = torch.argmax(probs).item()
+            log_prob = torch.log(probs[idx] + 1e-8).item()
+        else:
+            dist = torch.distributions.Categorical(probs)
+            idx = dist.sample().item()
+            log_prob = dist.log_prob(torch.tensor(idx, device=probs.device)).item()
+            
+        # 5. Return selected target mapped to original candidate format
+        if is_tensor:
+            selected_global_idx = indices[idx].item()
+            return selected_global_idx, log_prob, probs
+        else:
             return candidates[idx], log_prob, probs
 
     def _get_root_choices(self, phase_type, mask_tree, hetero_data):
@@ -397,7 +402,7 @@ class MegaMekAgent(nn.Module):
             
         return []
 
-    def _sample_agnostic_trajectory(self, z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, deterministic=False):
+    def _sample_agnostic_trajectory(self, z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict, deterministic=False):
         """
         Agnostically traverses the decision tree, scores and samples decision nodes,
         and aggregates the selected nodes into a trajectory.
@@ -415,7 +420,7 @@ class MegaMekAgent(nn.Module):
         while current_choices:
             # Score and sample step agnostically
             selected_node, log_prob, _ = self._decode_and_sample_step(
-                z, history_embeddings, e_actions, current_choices, batch_idx, deterministic
+                z, history_embeddings, e_actions, current_choices, batch_idx, hetero_data, x_dict, deterministic
             )
             if not selected_node:
                 break
@@ -442,7 +447,7 @@ class MegaMekAgent(nn.Module):
         mask_tree.pop("_active_twist_data", None)
         return trajectory, total_log_prob
 
-    def _beam_search_agnostic(self, z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, beam_width=3):
+    def _beam_search_agnostic(self, z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict, beam_width=3):
         """
         Agnostic step-by-step beam search tree search over the generic DecisionNode tree.
         """
@@ -454,7 +459,7 @@ class MegaMekAgent(nn.Module):
         root_indices = [c["node_idx"] for c in root_choices]
         e_cands = e_actions[root_indices]
         cand_batch_idx = batch_idx[root_indices] if batch_idx is not None else None
-        logits_0 = self.actor_pointer.score_actions(s_0, e_cands, cand_batch_idx)
+        logits_0 = self.actor_pointer.score_actions(s_0, e_cands, cand_batch_idx, x_dict, hetero_data)
         log_probs_0 = torch.log_softmax(logits_0, dim=-1)
         
         beams = []
@@ -505,7 +510,7 @@ class MegaMekAgent(nn.Module):
                 child_indices = [c["node_idx"] for c in children]
                 e_cands = e_actions[child_indices]
                 cand_batch_idx = batch_idx[child_indices] if batch_idx is not None else None
-                logits_k = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx)
+                logits_k = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx, x_dict, hetero_data)
                 log_probs_k = torch.log_softmax(logits_k, dim=-1)
                 
                 for i, child in enumerate(children):
@@ -613,7 +618,7 @@ class MegaMekAgent(nn.Module):
             if "twist" not in partial_action or partial_action["twist"] is None:
                 s_0 = self.actor_pointer.decode_sequence(z, None)
                 e_cands = e_actions[[c["node_idx"] for c in current_choices]]
-                logits = self.actor_pointer.score_actions(s_0, e_cands, None)
+                logits = self.actor_pointer.score_actions(s_0, e_cands, None, x_dict, hetero_data)
                 probs = torch.softmax(logits, dim=-1)
                 return {c["node_idx"]: p.item() for c, p in zip(current_choices, probs)}
                 
@@ -664,7 +669,7 @@ class MegaMekAgent(nn.Module):
             child_indices = [c["node_idx"] for c in current_choices]
             e_cands = e_actions[child_indices]
             
-            logits = self.actor_pointer.score_actions(s_next, e_cands, None)
+            logits = self.actor_pointer.score_actions(s_next, e_cands, None, x_dict, hetero_data)
             probs = torch.softmax(logits, dim=-1)
             
             res = {}
@@ -674,7 +679,7 @@ class MegaMekAgent(nn.Module):
                 
             return res
 
-    def _populate_tree_probabilities(self, z, e_actions, batch_idx, choices, history_embeddings_list, current_prob=1.0, parent_data=None):
+    def _populate_tree_probabilities(self, z, e_actions, batch_idx, choices, history_embeddings_list, x_dict, hetero_data, current_prob=1.0, parent_data=None):
         if not choices:
             return
             
@@ -688,7 +693,7 @@ class MegaMekAgent(nn.Module):
         e_cands = e_actions[choice_indices]
         cand_batch_idx = batch_idx[choice_indices] if batch_idx is not None else None
         
-        logits = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx)
+        logits = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx, x_dict, hetero_data)
         probs = torch.softmax(logits, dim=-1)
         
         for i, choice in enumerate(choices):
@@ -705,7 +710,7 @@ class MegaMekAgent(nn.Module):
             children = choice.get("children", [])
             if children:
                 next_history = history_embeddings_list + [e_actions[choice["node_idx"]]]
-                self._populate_tree_probabilities(z, e_actions, batch_idx, children, next_history, cumulative_p, node_data)
+                self._populate_tree_probabilities(z, e_actions, batch_idx, children, next_history, x_dict, hetero_data, cumulative_p, node_data)
 
 
     def get_action(self, hetero_data, mask_tree, deterministic=False):
@@ -733,11 +738,11 @@ class MegaMekAgent(nn.Module):
         # 4. Agnostically sample the trajectory (stochastically or via beam search)
         if deterministic:
             trajectory, mu_log_prob = self._beam_search_agnostic(
-                z, e_actions, batch_idx, phase_type, mask_tree, hetero_data
+                z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict
             )
         else:
             trajectory, mu_log_prob = self._sample_agnostic_trajectory(
-                z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, deterministic=False
+                z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict, deterministic=False
             )
             
         # 5. Decode trajectory back to megamek format using opinionated decoders
@@ -748,7 +753,7 @@ class MegaMekAgent(nn.Module):
             probs_list = []
             if mask_tree and "valid_paths" in mask_tree and len(mask_tree["valid_paths"]) > 0:
                 root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
-                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [])
+                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [], x_dict, hetero_data)
                 
                 for path in mask_tree["valid_paths"]:
                     probs_list.append(path.get("cumulative_prob", 0.0))
@@ -761,7 +766,7 @@ class MegaMekAgent(nn.Module):
             # Compute probabilities for UI weapon tree
             if mask_tree and "valid_twists" in mask_tree:
                 root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
-                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [])
+                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [], x_dict, hetero_data)
 
         elif phase_type == 2:
             response_dict = self._decode_physical_action(trajectory)

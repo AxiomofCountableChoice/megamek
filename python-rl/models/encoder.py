@@ -35,10 +35,12 @@ class MegaMekHGTEncoder(nn.Module):
     Heterogeneous Graph Transformer (HGT) Encoder defined in ARCHITECTURE.md (Section 3a & 3b).
     Takes a PyG HeteroData object (topology + deltas) and yields a global latent state z.
     """
-    def __init__(self, hidden_dim=128, metadata=DEFAULT_METADATA, feature_dims=None):
+    def __init__(self, hidden_dim=128, metadata=DEFAULT_METADATA, feature_dims=None, num_latent_queries=32, num_layers=3):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.metadata = metadata
+        self.num_latent_queries = num_latent_queries
+        self.num_layers = num_layers
         
         if feature_dims is None:
             feature_dims = {'hex': 14, 'unit': 45, 'weapon': 10}
@@ -56,26 +58,23 @@ class MegaMekHGTEncoder(nn.Module):
         
         # 2. HGT Layers (Edge-Type Specific Message Formulation)
         in_channels_dict = {node: hidden_dim for node in metadata[0]}
-        self.hgt1 = HGTConv(in_channels=in_channels_dict, out_channels=hidden_dim, 
-                            metadata=metadata, heads=4)
-        self.hgt2 = HGTConv(in_channels=in_channels_dict, out_channels=hidden_dim, 
-                            metadata=metadata, heads=4)
-        self.hgt3 = HGTConv(in_channels=in_channels_dict, out_channels=hidden_dim, 
-                            metadata=metadata, heads=4)
+        self.hgt_layers = nn.ModuleList([
+            HGTConv(in_channels=in_channels_dict, out_channels=hidden_dim, 
+                    metadata=metadata, heads=4)
+            for _ in range(num_layers)
+        ])
                             
-        # 3. Global Attention Pooling (Graph Readout)
-        self.gate_nn = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.LayerNorm(hidden_dim // 2),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(hidden_dim // 2, 1)
-        )
-        self.global_pool = AttentionalAggregation(gate_nn=self.gate_nn)
+        # 3. Perceiver-style Latent Query Pooling
+        # K learnable latent queries of size hidden_dim
+        self.latent_queries = nn.Parameter(torch.empty(self.num_latent_queries, hidden_dim))
+        nn.init.normal_(self.latent_queries, std=0.02)
+        
+        # Standard MultiheadAttention for Perceiver Cross-Attention
+        self.perceiver_attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4, batch_first=True)
         
         # 4. Context MLP (Phase Metadata -> z_context)
         self.context_mlp = nn.Sequential(
-            nn.Linear(2, 64), # phase length & turn num
+            nn.Linear(12, 64), # 12 global/metadata features
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(64, hidden_dim)
@@ -89,7 +88,7 @@ class MegaMekHGTEncoder(nn.Module):
             x_dict: The per-node updated embeddings (useful for Autoregressive pointer selection)
         """
             
-        # 1. Linear Node Embeddings
+        # 1. Node Projections
         x_dict = {}
         for node_type in self.metadata[0]:
             if node_type in hetero_data.node_types and hetero_data[node_type].x is not None and hetero_data[node_type].x.size(0) > 0:
@@ -105,41 +104,69 @@ class MegaMekHGTEncoder(nn.Module):
         }
         
         # 2. HGT Spatial Pass
-        # Layer 1
-        x_dict_out = self.hgt1(x_dict, edge_index_dict)
-        # If HGTConv drops isolated nodes from its output dict, fallback to previous layer tensor to preserve graph shape
-        x_dict = {k: F.gelu(x_dict_out.get(k, x_dict[k])) for k in self.metadata[0]}
+        for conv in self.hgt_layers:
+            x_dict_out = conv(x_dict, edge_index_dict)
+            # If HGTConv drops isolated nodes from its output dict, fallback to previous layer tensor to preserve graph shape
+            x_dict = {k: F.gelu(x_dict_out.get(k, x_dict[k])) for k in self.metadata[0]}
         
-        # Layer 2
-        x_dict_out = self.hgt2(x_dict, edge_index_dict)
-        x_dict = {k: F.gelu(x_dict_out.get(k, x_dict[k])) for k in self.metadata[0]}
-
-        # Layer 3
-        x_dict_out = self.hgt3(x_dict, edge_index_dict)
-        x_dict = {k: F.gelu(x_dict_out.get(k, x_dict[k])) for k in self.metadata[0]}
+        # 3. Perceiver-style Latent Query Pooling
+        # Group units and weapons per batch item.
+        ctx = hetero_data.global_context
+        if ctx.dim() == 1:
+            ctx = ctx.view(-1, 12)
+        batch_size = ctx.size(0)
+        z_context = self.context_mlp(ctx)
+        device = hetero_data['hex'].x.device
         
-        # 3. Graph Readout (Global Attention Pooling)
-        # We need to construct a single batched node matrix for pooling.
-        # Here we concat across core object components (hexes, units, weapons) to form the environment state
-        flat_nodes = torch.cat([x_dict['hex'], x_dict['unit'], x_dict['weapon']], dim=0)
-        
-        # batch tensor handles disconnected subgraphs in PyG, defaulting to 0 for a single graph
-        if flat_nodes.size(0) > 0:
-            if hasattr(hetero_data['hex'], 'batch'):
-                batch_hex = hetero_data['hex'].batch
-                batch_unit = hetero_data['unit'].batch if hasattr(hetero_data['unit'], 'batch') else torch.zeros(x_dict['unit'].size(0), dtype=torch.long, device=flat_nodes.device)
-                batch_weapon = hetero_data['weapon'].batch if hasattr(hetero_data['weapon'], 'batch') else torch.zeros(x_dict['weapon'].size(0), dtype=torch.long, device=flat_nodes.device)
-                batch = torch.cat([batch_hex, batch_unit, batch_weapon], dim=0)
+        batch_entities_list = []
+        for b in range(batch_size):
+            # Gather units for batch b
+            if hasattr(hetero_data['unit'], 'batch') and hetero_data['unit'].batch is not None:
+                unit_mask = (hetero_data['unit'].batch == b)
             else:
-                batch = torch.zeros(flat_nodes.size(0), dtype=torch.long, device=flat_nodes.device)
-                
-            z_graph = self.global_pool(flat_nodes, batch)
-        else:
-            batch_size = hetero_data.global_context.size(0) if hetero_data.global_context.dim() > 1 else 1
-            z_graph = torch.zeros((batch_size, self.hidden_dim), device=flat_nodes.device)
+                unit_mask = torch.ones(x_dict['unit'].size(0), dtype=torch.bool, device=device)
+            units_b = x_dict['unit'][unit_mask]
+            
+            # Gather weapons for batch b
+            if hasattr(hetero_data['weapon'], 'batch') and hetero_data['weapon'].batch is not None:
+                weapon_mask = (hetero_data['weapon'].batch == b)
+            else:
+                weapon_mask = torch.ones(x_dict['weapon'].size(0), dtype=torch.bool, device=device)
+            weapons_b = x_dict['weapon'][weapon_mask]
+            
+            entities_b = torch.cat([units_b, weapons_b], dim=0)
+            batch_entities_list.append(entities_b)
+            
+        max_NE = max(entities.size(0) for entities in batch_entities_list)
+        if max_NE == 0:
+            max_NE = 1
+            
+        H_entities_padded = torch.zeros((batch_size, max_NE, self.hidden_dim), device=device)
+        key_padding_mask = torch.ones((batch_size, max_NE), dtype=torch.bool, device=device)
         
-        # 4. Context processing
-        z_context = self.context_mlp(hetero_data.global_context)
+        for b in range(batch_size):
+            entities_b = batch_entities_list[b]
+            NE = entities_b.size(0)
+            if NE > 0:
+                H_entities_padded[b, :NE] = entities_b
+                key_padding_mask[b, :NE] = False
+            else:
+                key_padding_mask[b, 0] = False  # Avoid completely empty mask warning/error
+                
+        # Z_latent = MultiHeadAttention(Q=L, K=H_entities, V=H_entities)
+        # Expand latent queries for the batch
+        Q_latent = self.latent_queries.unsqueeze(0).expand(batch_size, -1, -1)  # (batch_size, K, d)
+        
+        # Cross attention
+        z_latent, _ = self.perceiver_attn(
+            query=Q_latent,
+            key=H_entities_padded,
+            value=H_entities_padded,
+            key_padding_mask=key_padding_mask
+        )  # (batch_size, K, d)
+        
+        # Flatten
+        z_graph = z_latent.reshape(batch_size, -1)  # (batch_size, K * d)
         
         # 5. Latent Fusion
         z = torch.cat([z_graph, z_context], dim=-1)

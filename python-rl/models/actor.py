@@ -17,19 +17,15 @@ class PositionalEncoding(nn.Module):
         return x
 
 class ActionConditionedPointer(nn.Module):
-    def __init__(self, hidden_dim=128, action_feature_dim=8):
+    def __init__(self, hidden_dim=128, action_feature_dim=8, latent_dim=None):
         super().__init__()
+        self.hidden_dim = hidden_dim
         
         # e_action = ActionMLP( H_unit (+) H_target_node (+) X_action_node )
         # H_unit is hidden_dim
         # H_target_node is hidden_dim
         # X_action_node is action_feature_dim
         # Total input is hidden_dim*2 + action_feature_dim
-        
-        # We also pass z? The Architecture says `s_k` (the internal decoder cell) is initialized with `z`.
-        # For our single-step Movement action pass, we can just fuse `z` as well.
-        # Actually in ARCH.md: "Logits_j = s_k^T * e_action_j".
-        # Let's project e_action_j to hidden_dim, and s_k is hidden_dim.
         
         input_dim = hidden_dim * 2 + action_feature_dim
         
@@ -40,7 +36,9 @@ class ActionConditionedPointer(nn.Module):
         )
         
         # Initializing the starting decoder state s_0 from global z
-        self.s_0_proj = nn.Linear(hidden_dim * 2, hidden_dim)
+        if latent_dim is None:
+            latent_dim = hidden_dim * 2
+        self.s_0_proj = nn.Linear(latent_dim, hidden_dim)
         
         # Autoregressive Decoder (Transformer / Decoder-Only Style)
         # Using TransformerEncoder with causal masking to emulate GPT-style autoregressive step tracking.
@@ -53,10 +51,20 @@ class ActionConditionedPointer(nn.Module):
         self.pos_encoder = PositionalEncoding(hidden_dim)
         self.transformer_decoder = nn.TransformerEncoder(decoder_layer, num_layers=2)
 
+        # Spatial Cross-Attention over un-pooled graph nodes
+        self.query_mlp = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
+        self.cross_attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=4, batch_first=True)
+        self.W_pointer = nn.Parameter(torch.Tensor(hidden_dim, hidden_dim))
+        nn.init.xavier_uniform_(self.W_pointer)
+
     def decode_sequence(self, z, chosen_action_embeddings_seq):
         """
         Processes a sequence of chosen actions up to step `k` and evaluates the hidden contextual state `s_{k}`.
-        `z`: Global context tensor (B, hidden_dim*2)
+        `z`: Global context tensor (B, latent_dim)
         `chosen_action_embeddings_seq`: Sequence of past action embeddings (B, seq_len, hidden_dim).
                                         Pass None or an empty sequence for step 0.
         Returns:
@@ -161,10 +169,10 @@ class ActionConditionedPointer(nn.Module):
         
         return e_action
 
-    def score_actions(self, s_k, e_action, action_batch_idx=None):
+    def score_actions(self, s_k, e_action, action_batch_idx, x_dict, hetero_data):
         """
-        Computes dot-product logits for the current state s_k against action embeddings.
-        Returns unnormalized logits (num_actions,).
+        Computes attention-based logits for the current state s_k against action embeddings.
+        Utilizes a Perceiver/pointer cross-attention mechanism over the un-pooled graph nodes.
         """
         num_actions = e_action.size(0)
         if num_actions == 0:
@@ -172,14 +180,96 @@ class ActionConditionedPointer(nn.Module):
             
         device = s_k.device
         
+        # 1. Determine batch index for each action
         if action_batch_idx is not None:
-            batch_idx = action_batch_idx
-        else: # Single graph
-            batch_idx = torch.zeros(num_actions, dtype=torch.long, device=device)
+            act_batch_idx = action_batch_idx
+        else:
+            act_batch_idx = torch.zeros(num_actions, dtype=torch.long, device=device)
             
-        s_k_expanded = s_k[batch_idx] # (num_actions, hidden_dim)
+        if s_k.size(0) == 1:
+            s_k_expanded = s_k.expand(num_actions, -1)
+        else:
+            s_k_expanded = s_k[act_batch_idx]
+            
+        # 2. Compute candidate action query q_{a_k} = QueryMLP(s_k \oplus e_{a_k})
+        fused_q = torch.cat([s_k_expanded, e_action], dim=-1)
+        q_action = self.query_mlp(fused_q)  # (num_actions, hidden_dim)
         
-        # Dot product scoring: s_k^T * e_action
-        logits = (s_k_expanded * e_action).sum(dim=-1)
+        # 3. Gather and pad the un-pooled graph nodes for each action
+        if hasattr(hetero_data['hex'], 'batch') and hetero_data['hex'].batch is not None:
+            batch_size = int(hetero_data['hex'].batch.max().item() + 1)
+        else:
+            batch_size = 1
+            
+        batch_nodes_list = []
+        for b in range(batch_size):
+            if hasattr(hetero_data['hex'], 'batch') and hetero_data['hex'].batch is not None:
+                hex_mask = (hetero_data['hex'].batch == b)
+            else:
+                hex_mask = torch.ones(x_dict['hex'].size(0), dtype=torch.bool, device=device)
+            hex_nodes = x_dict['hex'][hex_mask]
+            
+            if hasattr(hetero_data['unit'], 'batch') and hetero_data['unit'].batch is not None:
+                unit_mask = (hetero_data['unit'].batch == b)
+            else:
+                unit_mask = torch.ones(x_dict['unit'].size(0), dtype=torch.bool, device=device)
+            unit_nodes = x_dict['unit'][unit_mask]
+            
+            if hasattr(hetero_data['weapon'], 'batch') and hetero_data['weapon'].batch is not None:
+                weapon_mask = (hetero_data['weapon'].batch == b)
+            else:
+                weapon_mask = torch.ones(x_dict['weapon'].size(0), dtype=torch.bool, device=device)
+            weapon_nodes = x_dict['weapon'][weapon_mask]
+            
+            nodes_b = torch.cat([hex_nodes, unit_nodes, weapon_nodes], dim=0)
+            batch_nodes_list.append(nodes_b)
+            
+        referenced_batches = act_batch_idx.unique().tolist()
+        max_nodes = max(batch_nodes_list[b].size(0) for b in referenced_batches)
+        if max_nodes == 0:
+            max_nodes = 1
+            
+        K_padded = torch.zeros((num_actions, max_nodes, self.hidden_dim), device=device)
+        key_padding_mask = torch.ones((num_actions, max_nodes), dtype=torch.bool, device=device)
+        
+        if num_actions > 0:
+            first_b = int(act_batch_idx[0].item())
+            if (act_batch_idx == first_b).all():
+                # Fast vectorized path when all actions share the same batch item
+                nodes_b = batch_nodes_list[first_b]
+                num_nodes = nodes_b.size(0)
+                if num_nodes > 0:
+                    K_padded[:, :num_nodes, :] = nodes_b.unsqueeze(0)
+                    key_padding_mask[:, :num_nodes] = False
+                else:
+                    key_padding_mask[:, 0] = False
+            else:
+                # Fallback to loop if action batch indices are heterogeneous
+                for j in range(num_actions):
+                    b = int(act_batch_idx[j].item())
+                    if b >= len(batch_nodes_list):
+                        b = 0
+                    nodes_b = batch_nodes_list[b]
+                    num_nodes = nodes_b.size(0)
+                    if num_nodes > 0:
+                        K_padded[j, :num_nodes] = nodes_b
+                        key_padding_mask[j, :num_nodes] = False
+                    else:
+                        key_padding_mask[j, 0] = False
+                
+        # 4. Multi-Head Cross-Attention
+        Q = q_action.unsqueeze(1)
+        
+        context, _ = self.cross_attention(
+            query=Q,
+            key=K_padded,
+            value=K_padded,
+            key_padding_mask=key_padding_mask
+        )  # (num_actions, 1, hidden_dim)
+        context = context.squeeze(1)  # (num_actions, hidden_dim)
+        
+        # 5. Logits(a_k) = (1/sqrt(d)) * q_{a_k}^T * W_pointer * Context_{a_k}
+        q_W = torch.matmul(q_action, self.W_pointer)
+        logits = torch.sum(q_W * context, dim=-1) / math.sqrt(self.hidden_dim)
         
         return logits
