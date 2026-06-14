@@ -1,6 +1,10 @@
+import os
 import pandas as pd
 
-df = pd.read_csv('/home/stuart_hatzioannou/repos/megamek/python-rl/data/rl_princess_trajectories/metrics_log.csv', names=['timestamp', 'hash', 'win', 'reward'])
+script_dir = os.path.dirname(os.path.abspath(__file__))
+metrics_file = os.path.abspath(os.path.join(script_dir, "..", "data", "rl_princess_trajectories", "metrics_log.csv"))
+
+df = pd.read_csv(metrics_file, names=['timestamp', 'hash', 'win', 'reward'])
 if len(df) > 0:
     # Print average reward for blocks of 500 matches
     chunk_size = 500

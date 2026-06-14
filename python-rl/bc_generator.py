@@ -36,7 +36,7 @@ def run_megamek_episode(all_meks, server_port):
     env = os.environ.copy()
     
     # Force Java 21 to prevent UnsupportedClassVersionError (Java 65.0)
-    java_home = os.environ.get("JAVA_HOME", "/home/stuart_hatzioannou/jdk-21.0.2")
+    java_home = os.environ.get("JAVA_HOME", os.path.expanduser("~/jdk-21.0.2"))
     env["JAVA_HOME"] = java_home
     env["PATH"] = f"{os.path.join(java_home, 'bin')}:{env.get('PATH', '')}"
     

@@ -2,7 +2,8 @@ import time
 import os
 import pandas as pd
 
-metrics_file = "/home/stuart_hatzioannou/repos/megamek/python-rl/data/rl_princess_trajectories/metrics_log.csv"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+metrics_file = os.path.abspath(os.path.join(script_dir, "..", "data", "rl_princess_trajectories", "metrics_log.csv"))
 
 def get_win_rate():
     if not os.path.exists(metrics_file):

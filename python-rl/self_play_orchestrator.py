@@ -16,7 +16,7 @@ logger = setup_logger("Orchestrator")
 
 # Set up relative bounds for meks
 MEKFILES_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "mm-data", "data", "mekfiles", "meks"))
-java_home = os.environ.get("JAVA_HOME", "/home/stuart_hatzioannou/jdk-21.0.2")
+java_home = os.environ.get("JAVA_HOME", os.path.expanduser("~/jdk-21.0.2"))
 
 def is_process_alive(pid):
     try:
