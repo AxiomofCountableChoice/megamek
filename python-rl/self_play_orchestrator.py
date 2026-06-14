@@ -18,6 +18,13 @@ logger = setup_logger("Orchestrator")
 MEKFILES_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "mm-data", "data", "mekfiles", "meks"))
 java_home = os.environ.get("JAVA_HOME", "/home/stuart_hatzioannou/jdk-21.0.2")
 
+def is_process_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
 def get_random_meks(all_meks, num=1):
     if not all_meks:
         return ""
@@ -110,7 +117,7 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
             t_reader.start()
             
             # Wait for the process to finish or shutdown to be requested
-            while proc.poll() is None:
+            while proc.poll() is None and is_process_alive(proc.pid):
                 if shutdown_event.is_set():
                     proc.terminate()
                     proc.wait()
@@ -148,7 +155,7 @@ def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu", worker
             t_reader = threading.Thread(target=stream_reader, args=(proc.stdout, worker_logger, worker_log_file), daemon=True)
             t_reader.start()
             
-            while proc.poll() is None:
+            while proc.poll() is None and is_process_alive(proc.pid):
                 if shutdown_event.is_set():
                     proc.terminate()
                     proc.wait()
@@ -173,7 +180,7 @@ def master_runner(dataset_dir, device, force_bootstrap, shutdown_event):
         try:
             logger.info("Starting Impala Master...")
             proc = subprocess.Popen(cmd, cwd=cwd)
-            while proc.poll() is None:
+            while proc.poll() is None and is_process_alive(proc.pid):
                 if shutdown_event.is_set():
                     proc.send_signal(signal.SIGINT) # Graceful shutdown
                     proc.wait()
