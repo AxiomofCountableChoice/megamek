@@ -123,7 +123,7 @@ def megamek_runner(port, mode, all_meks, shutdown_event, scenario=None, scenario
 def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu", worker_id="default_worker"):
     """Continuously runs the ImpalaWorker process."""
     cmd = [
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python")), 
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "venv", "bin", "python")), 
         "impala_worker.py", 
         "--port", str(port), 
         "--dataset_dir", dataset_dir,
@@ -158,14 +158,15 @@ def python_worker_runner(port, dataset_dir, shutdown_event, device="cpu", worker
             logger.error(f"Failed to start Python worker on port {port}: {e}")
             time.sleep(5)
 
-def master_runner(dataset_dir, device, shutdown_event):
+def master_runner(dataset_dir, device, force_bootstrap, shutdown_event):
     """Runs the Impala Master trainer."""
     cmd = [
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python")), 
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "venv", "bin", "python")), 
         "impala_master.py",
-        "--device", device,
-        "--force-bootstrap"
+        "--device", device
     ]
+    if force_bootstrap:
+        cmd.append("--force-bootstrap")
     cwd = os.path.dirname(__file__)
     
     while not shutdown_event.is_set():
@@ -241,6 +242,8 @@ def main():
     parser.add_argument("--max-bv", type=int, default=8000, help="Maximum BV target for random forces")
     parser.add_argument("--options", type=str, nargs="*", default=[], help="List of game options like -VICTORY_USE_KILL_COUNT=true")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run workers on (cpu, cuda:0, etc)")
+    parser.add_argument("--master-device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device to run master learner on (cpu, cuda, etc)")
+    parser.add_argument("--force-bootstrap", action="store_true", help="Force bootstrap the master from BC weights, overwriting latest RL weights")
     args = parser.parse_args()
     
     dataset_dir = "data/rl_selfplay_trajectories" if args.mode == "selfplay" else "data/rl_princess_trajectories"
@@ -260,7 +263,7 @@ def main():
     threads.append(t_monitor)
     
     if args.run_master:
-        t_master = threading.Thread(target=master_runner, args=(dataset_dir, args.device, shutdown_event), daemon=True)
+        t_master = threading.Thread(target=master_runner, args=(dataset_dir, args.master_device, args.force_bootstrap, shutdown_event), daemon=True)
         t_master.start()
         threads.append(t_master)
         time.sleep(2) # Give master a moment to initialize
