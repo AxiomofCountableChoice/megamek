@@ -340,42 +340,188 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
             let phaseInfo = stepData.state_info ? `${{stepData.state_info.phase}} (Round ${{stepData.state_info.round}}, Turn ${{stepData.state_info.turn}})` : "UNKNOWN";
             document.getElementById("meta-context").innerText = `${{stepData.context}} | Phase: ${{phaseInfo}}`;
             
-            let actionStr = JSON.stringify(stepData.action || {{}});
-            if (stepData.context === "MOVEMENT_INFERENCE" && stepData.action && stepData.action.selected_path_index !== undefined && stepData.mask && stepData.mask.valid_paths) {{
-                let p = stepData.mask.valid_paths[stepData.action.selected_path_index];
-                if (p && p.source_entity_index !== undefined) {{
-                    actionStr = actionStr.slice(0, -1) + `, "unit_moved": ${{p.source_entity_index}}}}`;
-                }}
-            }}
-            let actionHtml = `<div style="word-wrap: break-word;">${{actionStr}}</div>`;
+            let actionHtml = '';
             
-            if (stepData.action && stepData.action.attacks && stepData.action.attacks.length > 0) {{
-                actionHtml += `<div style="color: #ffaa88; margin-top: 5px; font-size: 0.9em;"><strong>Declared Attacks:</strong><ul style="margin:2px 0; padding-left:20px;">`;
-                let getWeaponName = (tgtId, wpnId) => {{
-                    if (stepData.mask && stepData.mask.valid_targets) {{
+            // Helper function to resolve entity names from ID or index
+            let getEntityName = (idOrIdx) => {{
+                if (stepData.entities_meta) {{
+                    // 1. Try treating it as an index
+                    if (idOrIdx >= 0 && idOrIdx < stepData.entities_meta.length) {{
+                        if (stepData.entities_meta[idOrIdx]) {{
+                            return stepData.entities_meta[idOrIdx].name;
+                        }}
+                    }}
+                    // 2. Try treating it as a megamek entity ID
+                    let meta = stepData.entities_meta.find(m => m && m.id === idOrIdx);
+                    if (meta) {{
+                        return meta.name;
+                    }}
+                }}
+                return `Unit ${{idOrIdx}}`;
+            }};
+            
+            // Helper function to get weapon name (fixed to search in valid_twists too)
+            let getWeaponName = (tgtId, wpnId) => {{
+                if (stepData.mask) {{
+                    if (stepData.mask.valid_targets) {{
                         for (let t of stepData.mask.valid_targets) {{
-                            if (t.target_entity_index === tgtId || t.target_id === tgtId) {{
+                            if (t.target_entity_index === tgtId || t.target_entity_id === tgtId || t.target_id === tgtId) {{
                                 for (let w of t.valid_weapons) {{
                                     if (w.weapon_id === wpnId) return w.weapon_name;
                                 }}
                             }}
                         }}
                     }}
-                    return `Weapon ${{wpnId}}`;
-                }};
-                stepData.action.attacks.forEach(att => {{
-                    let tgtName = `Target ${{att.target_id}}`;
-                    if (stepData.entities_meta && stepData.entities_meta[att.target_id]) {{
-                        tgtName = stepData.entities_meta[att.target_id].name;
+                    if (stepData.mask.valid_twists) {{
+                        for (let twist of stepData.mask.valid_twists) {{
+                            if (twist.valid_targets) {{
+                                for (let t of twist.valid_targets) {{
+                                    if (t.target_entity_index === tgtId || t.target_entity_id === tgtId || t.target_id === tgtId) {{
+                                        for (let w of t.valid_weapons) {{
+                                            if (w.weapon_id === wpnId) return w.weapon_name;
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
                     }}
-                    let wpnName = getWeaponName(att.target_id, att.weapon_id);
-                    actionHtml += `<li>${{wpnName}} &rarr; ${{tgtName}}</li>`;
-                }});
-                actionHtml += `</ul></div>`;
-            }}
-            if (stepData.action && stepData.action.twist !== undefined && stepData.action.twist !== 0) {{
-                 let twistDir = stepData.action.twist > 0 ? "Right" : "Left";
-                 actionHtml += `<div style="color: #ffff88; margin-top: 2px; font-size: 0.9em;"><strong>Torso Twist:</strong> ${{twistDir}}</div>`;
+                }}
+                return `Weapon ${{wpnId}}`;
+            }};
+
+            // Helper to get physical action name
+            let getPhysicalActionName = (tgtId, actionType) => {{
+                if (stepData.mask && stepData.mask.valid_targets) {{
+                    for (let t of stepData.mask.valid_targets) {{
+                        if (t.target_entity_index === tgtId || t.target_entity_id === tgtId || t.target_id === tgtId) {{
+                            if (t.valid_attacks) {{
+                                for (let a of t.valid_attacks) {{
+                                    if (a.action_type === actionType) return a.name;
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+                if (actionType === 0) return "Punch (Left)";
+                if (actionType === 1) return "Punch (Right)";
+                if (actionType === 2) return "Kick";
+                if (actionType === 3) return "Weapon Club";
+                return `Physical Action ${{actionType}}`;
+            }};
+
+            // Determine if there is any action declared
+            let actionData = stepData.action || {{}};
+            let isActionEmpty = Object.keys(actionData).length === 0 || 
+                (actionData.selected_path_index === undefined && 
+                 actionData.attacks === undefined && 
+                 actionData.twist === undefined && 
+                 actionData.attack === undefined);
+            
+            if (isActionEmpty) {{
+                actionHtml = `<div style="color: #888; font-style: italic;">No action declared (or skipped)</div>`;
+            }} else {{
+                let actionParts = [];
+                
+                // 1. MOVEMENT ACTION
+                if (actionData.selected_path_index !== undefined && stepData.mask && stepData.mask.valid_paths) {{
+                    let p = stepData.mask.valid_paths[actionData.selected_path_index];
+                    if (p) {{
+                        let unitName = getEntityName(p.source_entity_index);
+                        let hx = p.dest_index % width;
+                        let hy = Math.floor(p.dest_index / width);
+                        let moveType = "moved";
+                        let badgeColor = "#555";
+                        if (p.is_jump) {{ moveType = "jumped"; badgeColor = "#a04fff"; }}
+                        else if (p.is_run) {{ moveType = "ran"; badgeColor = "#c9522b"; }}
+                        else if (p.is_walk) {{ moveType = "walked"; badgeColor = "#2b70c9"; }}
+                        
+                        let optStr = "";
+                        if (p.has_masc) optStr += " +MASC";
+                        if (p.has_supercharger) optStr += " +Supercharger";
+                        
+                        actionParts.push(`
+                            <div style="margin-bottom: 5px;">
+                                <strong>${{unitName}}</strong> <span style="background: ${{badgeColor}}; padding: 1px 5px; border-radius: 3px; font-size: 0.8em; color: #fff; font-weight: bold;">${{moveType.toUpperCase()}}</span>
+                                to Hex <strong>(${{hx}}, ${{hy}})</strong> using <strong>${{p.mp_used}} MP</strong> (Facing: ${{p.dest_facing}}${{optStr}})
+                            </div>
+                        `);
+                    }} else {{
+                        actionParts.push(`<div style="margin-bottom: 5px;">Movement Path Index: ${{actionData.selected_path_index}}</div>`);
+                    }}
+                }}
+                
+                // 2. WEAPON ATTACKS / TWISTS
+                if (stepData.context && stepData.context.startsWith("WEAPON")) {{
+                    let activeId = actionData.selected_entity_id;
+                    if (activeId === undefined && stepData.mask) activeId = stepData.mask.active_entity;
+                    let activeName = activeId !== undefined ? getEntityName(activeId) : "Active Unit";
+                    
+                    // Twist
+                    if (actionData.twist !== undefined && actionData.twist !== 0) {{
+                        let twistDir = actionData.twist > 0 ? "Right" : "Left";
+                        actionParts.push(`
+                            <div style="color: #ffff88; margin-bottom: 5px;">
+                                <strong>${{activeName}}</strong> torso-twisted <strong>${{twistDir}}</strong>
+                            </div>
+                        `);
+                    }}
+                    
+                    // Attacks
+                    if (actionData.attacks && actionData.attacks.length > 0) {{
+                        let attackList = [];
+                        actionData.attacks.forEach(att => {{
+                            let tgtName = getEntityName(att.target_id);
+                            let wpnName = getWeaponName(att.target_id, att.weapon_id);
+                            attackList.push(`<li><strong>${{wpnName}}</strong> &rarr; <span style="color: #ffaa88;">${{tgtName}}</span></li>`);
+                        }});
+                        actionParts.push(`
+                            <div style="margin-top: 5px;">
+                                <strong>${{activeName}}</strong> declared attacks:
+                                <ul style="margin: 2px 0; padding-left: 20px; color: #ffccbb;">
+                                    ${{attackList.join('')}}
+                                </ul>
+                            </div>
+                        `);
+                    }} else if (actionData.attacks !== undefined) {{
+                        actionParts.push(`
+                            <div style="color: #aaa; margin-top: 2px;">
+                                <strong>${{activeName}}</strong> declared no weapon attacks.
+                            </div>
+                        `);
+                    }}
+                }}
+                
+                // 3. PHYSICAL ATTACKS
+                if (stepData.context && stepData.context.startsWith("PHYSICAL")) {{
+                    let activeId = actionData.selected_entity_id;
+                    if (activeId === undefined && stepData.mask) activeId = stepData.mask.active_entity;
+                    let activeName = activeId !== undefined ? getEntityName(activeId) : "Active Unit";
+                    
+                    if (actionData.attack && actionData.attack.target_id !== undefined && actionData.attack.target_id !== -1) {{
+                        let att = actionData.attack;
+                        let tgtName = getEntityName(att.target_id);
+                        let physName = getPhysicalActionName(att.target_id, att.action_type);
+                        
+                        actionParts.push(`
+                            <div style="margin-top: 5px;">
+                                <strong>${{activeName}}</strong> executed <span style="color: #ffaa88; font-weight: bold;">${{physName}}</span> &rarr; <strong>${{tgtName}}</strong>
+                            </div>
+                        `);
+                    }} else if (actionData.attack !== undefined) {{
+                        actionParts.push(`
+                            <div style="color: #aaa; margin-top: 2px;">
+                                <strong>${{activeName}}</strong> declared no physical attacks.
+                            </div>
+                        `);
+                    }}
+                }}
+                
+                // Fallback / debug JSON if nothing rendered
+                if (actionParts.length === 0) {{
+                    actionParts.push(`<div style="word-wrap: break-word; font-family: monospace; font-size: 0.85em;">${{JSON.stringify(actionData)}}</div>`);
+                }}
+                
+                actionHtml = actionParts.join('');
             }}
             
             document.getElementById("meta-action").innerHTML = actionHtml;
