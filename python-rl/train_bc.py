@@ -66,7 +66,8 @@ class BCIterableDataset(IterableDataset):
                     delta_bv2 = bv2 - prev_bv2
                     delta_vp1 = vp1 - prev_vp1
                     
-                    r = beta_bv * (delta_bv1 / initial_bv1 - delta_bv2 / initial_bv2) + beta_vp * delta_vp1 + beta_tp * (tp1 - tp2)
+                    total_initial_bv = initial_bv1 + initial_bv2
+                    r = beta_bv * 2.0 * (delta_bv1 - delta_bv2) / total_initial_bv + beta_vp * delta_vp1 + beta_tp * (tp1 - tp2)
                     step_rewards.append(r)
                     step_players.append(player_id)
                     

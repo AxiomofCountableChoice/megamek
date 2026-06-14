@@ -45,8 +45,9 @@ class RewardCalculator:
             delta_bv2 = bv2 - self.prev_bv2
             delta_vp1 = vp1 - self.prev_vp1
             
-            # Dynamically normalized BV difference and TP/Heat
-            reward_bv = self.beta_bv * (delta_bv1 / self.initial_bv1 - delta_bv2 / self.initial_bv2)
+            # Dynamically normalized BV difference using sum-based normalization
+            total_initial_bv = self.initial_bv1 + self.initial_bv2
+            reward_bv = self.beta_bv * 2.0 * (delta_bv1 - delta_bv2) / total_initial_bv
             reward_vp = self.beta_vp * delta_vp1
             reward_tp = self.beta_tp * (tp1 - tp2)
             

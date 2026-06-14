@@ -237,7 +237,7 @@ def main():
     parser.add_argument("--scenario", type=str, default="", help="Path to a single .mms scenario file")
     parser.add_argument("--scenario-dir", type=str, default="", help="Directory containing .mms scenarios to randomly sample from")
     parser.add_argument("--max-meks", type=int, default=12, help="Maximum number of meks per side for random matches")
-    parser.add_argument("--use-bv-balancer", action="store_true", help="Use MegaMek's force builder to create BV-balanced random forces")
+    parser.add_argument("--no-bv-balancer", action="store_true", help="Disable MegaMek's force builder to create BV-balanced random forces")
     parser.add_argument("--min-bv", type=int, default=3000, help="Minimum BV target for random forces")
     parser.add_argument("--max-bv", type=int, default=8000, help="Maximum BV target for random forces")
     parser.add_argument("--options", type=str, nargs="*", default=[], help="List of game options like -VICTORY_USE_KILL_COUNT=true")
@@ -245,6 +245,7 @@ def main():
     parser.add_argument("--master-device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device to run master learner on (cpu, cuda, etc)")
     parser.add_argument("--force-bootstrap", action="store_true", help="Force bootstrap the master from BC weights, overwriting latest RL weights")
     args = parser.parse_args()
+    use_bv_balancer = not args.no_bv_balancer
     
     dataset_dir = "data/rl_selfplay_trajectories" if args.mode == "selfplay" else "data/rl_princess_trajectories"
     os.makedirs(dataset_dir, exist_ok=True)
@@ -283,7 +284,7 @@ def main():
         worker_id = f"worker_{server_port}"
         
         # Start Server Thread
-        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.scenario_dir, args.options, args.max_meks, args.use_bv_balancer, args.min_bv, args.max_bv, worker_id, dataset_dir))
+        t_server = threading.Thread(target=megamek_runner, args=(server_port, args.mode, all_meks, shutdown_event, args.scenario, args.scenario_dir, args.options, args.max_meks, use_bv_balancer, args.min_bv, args.max_bv, worker_id, dataset_dir))
         t_server.start()
         threads.append(t_server)
         
