@@ -109,75 +109,30 @@ class ActionConditionedPointer(nn.Module):
         num_actions = action_features.size(0)
         act_batch = hetero_data['action'].batch if (hasattr(hetero_data['action'], 'batch') and hetero_data['action'].batch is not None) else None
         
-        # We need to gather the embeddings of the corresponding source units and target nodes for each action.
+        # Gather embeddings of the corresponding source units and target nodes (Hexes, Units, Weapons)
         H_targets = torch.zeros((num_actions, node_embeddings_dict['hex'].size(-1)), device=device)
-        
-        # Check all valid spatial targets for actions (Hexes, Units, Weapons)
-        if hasattr(hetero_data['action'], 'target_hex_idx'):
-            tgt_idx = hetero_data['action'].target_hex_idx
-            valid_mask = tgt_idx >= 0
-            if valid_mask.any():
-                max_hex = node_embeddings_dict['hex'].size(0) - 1
-                if max_hex >= 0:
-                    hex_offset = (
-                        hetero_data['hex'].ptr[act_batch[valid_mask]]
-                        if (act_batch is not None and hasattr(hetero_data['hex'], 'ptr') and hetero_data['hex'].ptr is not None)
-                        else 0
-                    )
-                    valid_tgt_idx = tgt_idx[valid_mask] + hex_offset
-                    if (valid_tgt_idx > max_hex).any() or (valid_tgt_idx < 0).any():
-                        valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_hex)
-                    H_targets[valid_mask] = node_embeddings_dict['hex'][valid_tgt_idx]
-                
-        if hasattr(hetero_data['action'], 'target_unit_idx'):
-            tgt_idx = hetero_data['action'].target_unit_idx
-            valid_mask = tgt_idx >= 0
-            if valid_mask.any():
-                max_unit = node_embeddings_dict['unit'].size(0) - 1
-                if max_unit < 0:
-                    H_targets[valid_mask] = 0.0 # No units available
-                else:
-                    unit_offset = (
-                        hetero_data['unit'].ptr[act_batch[valid_mask]]
-                        if (act_batch is not None and hasattr(hetero_data['unit'], 'ptr') and hetero_data['unit'].ptr is not None)
-                        else 0
-                    )
-                    valid_tgt_idx = torch.clamp(tgt_idx[valid_mask] + unit_offset, 0, max_unit)
-                    H_targets[valid_mask] = node_embeddings_dict['unit'][valid_tgt_idx]
-                
-        if hasattr(hetero_data['action'], 'target_weapon_idx'):
-            tgt_idx = hetero_data['action'].target_weapon_idx
-            valid_mask = tgt_idx >= 0
-            if valid_mask.any():
-                max_weapon = node_embeddings_dict['weapon'].size(0) - 1
-                if max_weapon < 0:
-                    H_targets[valid_mask] = 0.0 # No weapons available
-                else:
-                    weapon_offset = (
-                        hetero_data['weapon'].ptr[act_batch[valid_mask]]
-                        if (act_batch is not None and hasattr(hetero_data['weapon'], 'ptr') and hetero_data['weapon'].ptr is not None)
-                        else 0
-                    )
-                    valid_tgt_idx = torch.clamp(tgt_idx[valid_mask] + weapon_offset, 0, max_weapon)
-                    H_targets[valid_mask] = node_embeddings_dict['weapon'][valid_tgt_idx]
-        
-        # Source Units
         H_units = torch.zeros((num_actions, node_embeddings_dict['unit'].size(-1)), device=device)
-        if hasattr(hetero_data['action'], 'source_unit_idx'):
-            src_idx = hetero_data['action'].source_unit_idx
-            valid_mask = src_idx >= 0
-            if valid_mask.any():
-                max_unit = node_embeddings_dict['unit'].size(0) - 1
-                if max_unit < 0:
-                    H_units[valid_mask] = 0.0
-                else:
-                    unit_offset = (
-                        hetero_data['unit'].ptr[act_batch[valid_mask]]
-                        if (act_batch is not None and hasattr(hetero_data['unit'], 'ptr') and hetero_data['unit'].ptr is not None)
+
+        gather_specs = [
+            ('hex', 'target_hex_idx', H_targets),
+            ('unit', 'target_unit_idx', H_targets),
+            ('weapon', 'target_weapon_idx', H_targets),
+            ('unit', 'source_unit_idx', H_units),
+        ]
+        for node_type, attr_name, dest_tensor in gather_specs:
+            if hasattr(hetero_data['action'], attr_name):
+                idx = getattr(hetero_data['action'], attr_name)
+                valid_mask = idx >= 0
+                max_idx = node_embeddings_dict[node_type].size(0) - 1
+                if valid_mask.any() and max_idx >= 0:
+                    node_store = hetero_data[node_type]
+                    batch_offset = (
+                        node_store.ptr[act_batch[valid_mask]]
+                        if (act_batch is not None and hasattr(node_store, 'ptr') and node_store.ptr is not None)
                         else 0
                     )
-                    valid_src_idx = torch.clamp(src_idx[valid_mask] + unit_offset, 0, max_unit)
-                    H_units[valid_mask] = node_embeddings_dict['unit'][valid_src_idx]
+                    valid_idx = torch.clamp(idx[valid_mask] + batch_offset, 0, max_idx)
+                    dest_tensor[valid_mask] = node_embeddings_dict[node_type][valid_idx]
         
         # Concat: H_unit (+) H_target_node (+) X_action_node
         fused_inputs = torch.cat([H_units, H_targets, action_features], dim=-1)
