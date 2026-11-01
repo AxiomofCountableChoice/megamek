@@ -80,7 +80,12 @@
                 <div class="panel-title">Data Inspector</div>
                 <button onclick="document.getElementById('mask-modal').style.display='block'" style="width: 100%; padding: 5px; background: #333; color: white; border: 1px solid #555; cursor: pointer;">View Action Mask</button>
             </div>
-            <div class="panel-title" style="padding: 10px 10px 0 10px; border: none;">Game Reports</div>
+            <div class="panel-title" style="padding: 10px 10px 0 10px; border: none; display: flex; justify-content: space-between; align-items: center;">
+                <span>Game Reports</span>
+                <label style="font-size: 0.75em; font-weight: normal; color: #aaa; cursor: pointer;">
+                    <input type="checkbox" id="toggle-full-reports" onchange="renderReportsPanel()"> Full Match Log
+                </label>
+            </div>
             <div id="reports-panel"></div>
         </div>
     </div>
@@ -101,6 +106,7 @@
         
         const SVG_PAD = 50;
         const HEX_SIZE = 30;
+        const hexRadius = HEX_SIZE;
         const HEX_WIDTH = HEX_SIZE * 2;
         const HEX_HEIGHT = HEX_SIZE * 1.732;
         
@@ -218,8 +224,9 @@
                     btn.style.fontSize = "0.85em";
                     btn.style.background = "#2a4b6c";
                     btn.style.border = "1px solid #5a7b9c";
-                    let srcIdxStr = path.source_entity_index !== undefined ? `Source ${path.source_entity_index}` : `Source N/A`;
-                    btn.innerText = `[Prob: ${probStr}] ${srcIdxStr} -> Dest Node ${dest} (${mpInfo})`;
+                    let srcIdxStr = path.source_entity_index !== undefined ? `Unit ${path.source_entity_index}` : `Unit N/A`;
+                    let hierStr = path.unit_prob !== undefined ? ` (U:${path.unit_prob.toFixed(2)} H:${path.hex_prob.toFixed(2)} F:${path.facing_prob.toFixed(2)})` : "";
+                    btn.innerText = `[Prob: ${probStr}${hierStr}] ${srcIdxStr} -> Dest Hex ${dest} (${mpInfo})`;
                     
                     // Highlight logic
                     const highlightPath = () => {
@@ -307,7 +314,7 @@
                     
                     btn.onclick = () => {
                         highlightPath();
-                        let action = { selected_path_index: idx };
+                        let action = { selected_entity_id: path.source_entity_index, selected_path_index: idx };
                         document.getElementById("action-input").value = JSON.stringify(action, null, 2);
                     };
                     optionsDiv.appendChild(btn);
@@ -493,14 +500,32 @@
                     });
                     optionsDiv.appendChild(treeDiv);
                 }
+            } else if (stepData.context === "PHYSICAL_INFERENCE" && stepData.mask && stepData.mask.valid_targets) {
+                stepData.mask.valid_targets.forEach(tgt => {
+                    (tgt.valid_attacks || []).forEach(att => {
+                        let btn = document.createElement("button");
+                        btn.style.width = "100%";
+                        btn.style.marginBottom = "4px";
+                        btn.style.textAlign = "left";
+                        btn.style.fontSize = "0.85em";
+                        btn.style.background = "#5c2a2a";
+                        btn.style.border = "1px solid #9c5a5a";
+                        let pStr = att.prob !== undefined ? att.prob.toFixed(3) : "N/A";
+                        btn.innerText = `[Prob: ${pStr}] Unit ${tgt.source_entity_index} -> Target ${tgt.target_entity_index}: ${att.name} (To-Hit: ${att.to_hit})`;
+                        btn.onclick = () => {
+                            let action = {
+                                selected_entity_id: tgt.source_entity_index,
+                                attack: { target_id: tgt.target_entity_index, action_type: att.action_type }
+                            };
+                            document.getElementById("action-input").value = JSON.stringify(action, null, 2);
+                        };
+                        optionsDiv.appendChild(btn);
+                    });
+                });
             }
             
             // Reports
-            const repPanel = document.getElementById("reports-panel");
-            repPanel.innerHTML = (stepData.reports && stepData.reports.length > 0) ? 
-                stepData.reports.map(r => `<div class="report-line">${r}</div>`).join('') :
-                '<div style="color: #666; font-style: italic;">No reports</div>';
-            repPanel.scrollTop = repPanel.scrollHeight;
+            renderReportsPanel();
             
             drawHexGrid();
             
@@ -565,8 +590,12 @@
                     let meta = stepData.entities_meta ? stepData.entities_meta[i] : null;
                     label.textContent = meta ? `${i} [${meta.name || 'Unknown'}]` : `${i}`;
                     
-                    // Facing line
-                    let facingRad = (u[3] * 60 - 90) * Math.PI / 180;
+                    // Facing line (u[3] = sin(facing), u[4] = cos(facing))
+                    let sinF = u[3];
+                    let cosF = u[4];
+                    let facingAngleDeg = Math.atan2(sinF, cosF) * 180 / Math.PI;
+                    if (facingAngleDeg < 0) facingAngleDeg += 360;
+                    let facingRad = (facingAngleDeg - 90) * Math.PI / 180;
                     let fx = pos[0] + 14 * Math.cos(facingRad);
                     let fy = pos[1] + 14 * Math.sin(facingRad);
                     let fline = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -590,6 +619,17 @@
             }
         }
         
+        function renderReportsPanel() {
+            const repPanel = document.getElementById("reports-panel");
+            if (!repPanel || !stepData) return;
+            const showFull = document.getElementById("toggle-full-reports") && document.getElementById("toggle-full-reports").checked;
+            const reportsList = showFull ? (stepData.all_reports || stepData.reports || []) : (stepData.reports || []);
+            repPanel.innerHTML = (reportsList.length > 0) ?
+                reportsList.map(r => `<div class="report-line">${r}</div>`).join('') :
+                '<div style="color: #666; font-style: italic;">No reports on this step (toggle Full Match Log to view history)</div>';
+            repPanel.scrollTop = repPanel.scrollHeight;
+        }
+
         async function submitAction() {
             if (!isWaitingForUser) return;
             const actionJson = document.getElementById("action-input").value;

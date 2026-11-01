@@ -51,6 +51,15 @@ public class PrincessOfflineTrainer {
         String p1Meks = "";
         String p2Meks = "";
         int randomBVTarget = 0;
+        int maxMeks = 4;
+        boolean autoSaveMidGame = false;
+        String midGameSaveDir = "data/midgame_saves";
+        if (System.getenv("AUTOSAVE_MIDGAME") != null && System.getenv("AUTOSAVE_MIDGAME").equalsIgnoreCase("true")) {
+            autoSaveMidGame = true;
+        }
+        if (System.getenv("AUTOSAVE_MIDGAME_DIR") != null) {
+            midGameSaveDir = System.getenv("AUTOSAVE_MIDGAME_DIR");
+        }
         
         java.util.List<String> cleanArgs = new java.util.ArrayList<>();
         System.out.println("Args passed to PrincessOfflineTrainer:");
@@ -72,6 +81,16 @@ public class PrincessOfflineTrainer {
                 p2Meks = args[++i];
             } else if (args[i].equalsIgnoreCase("-randomBV")) {
                 randomBVTarget = Integer.parseInt(args[++i]);
+            } else if (args[i].equalsIgnoreCase("-maxMeks")) {
+                maxMeks = Integer.parseInt(args[++i]);
+            } else if (args[i].equalsIgnoreCase("-autoSaveMidGame")) {
+                autoSaveMidGame = true;
+                if (i + 1 < args.length && !args[i + 1].startsWith("-")) {
+                    midGameSaveDir = args[++i];
+                }
+            } else if (args[i].equalsIgnoreCase("-load") || args[i].equalsIgnoreCase("-savegame")) {
+                cleanArgs.add("-savegame");
+                cleanArgs.add(args[++i]);
             } else {
                 cleanArgs.add(args[i]);
             }
@@ -101,13 +120,48 @@ public class PrincessOfflineTrainer {
         // kick off a RNG check
         megamek.common.compute.Compute.d6();
 
+        File gameFile = resolver.getSaveGameFile();
         Server server;
 
         try {
+            final boolean doSaveMidGame = autoSaveMidGame && (gameFile == null);
+            final int targetSaveRound = doSaveMidGame ? (4 + megamek.common.compute.Compute.randomInt(9)) : -1;
+            final java.util.concurrent.atomic.AtomicBoolean saved = new java.util.concurrent.atomic.AtomicBoolean(false);
+            final String finalSaveDir = midGameSaveDir;
+            final int serverPort = port;
+
             server = new Server(resolver.password, resolver.port, new megamek.server.totalWarfare.TWGameManager() {
                 @Override
                 public void autoSave() {
-                    // Disable autosave to avoid disk IO bottlenecks and server deadlocks during RL matches
+                    if (doSaveMidGame && !saved.get() && getGame() != null && getGame().getCurrentRound() >= targetSaveRound) {
+                        saved.set(true);
+                        try {
+                            File dir = new File(finalSaveDir);
+                            if (!dir.exists()) {
+                                dir.mkdirs();
+                            }
+                            File[] existing = dir.listFiles((d, name) -> name.endsWith(".sav") || name.endsWith(".sav.gz"));
+                            if (existing != null && existing.length >= 500) {
+                                java.util.Arrays.sort(existing, java.util.Comparator.comparingLong(File::lastModified));
+                                int toDelete = existing.length - 499;
+                                for (int k = 0; k < toDelete; k++) {
+                                    existing[k].delete();
+                                }
+                            }
+                            String filename = String.format("snapshot_r%d_%d_%d.sav.gz", getGame().getCurrentRound(), System.currentTimeMillis(), serverPort);
+                            File targetFile = new File(dir, filename);
+                            try (java.io.OutputStream os = new java.io.FileOutputStream(targetFile);
+                                 java.io.OutputStream gzo = new java.util.zip.GZIPOutputStream(os);
+                                 java.io.Writer writer = new java.io.OutputStreamWriter(gzo, java.nio.charset.StandardCharsets.UTF_8)) {
+                                megamek.common.util.SerializationHelper.getSaveGameXStream().toXML(getGame(), writer);
+                            }
+                            System.out.println("PSI: Saved mid-game snapshot at round " + getGame().getCurrentRound() + " to " + targetFile.getAbsolutePath());
+                            logger.info("PSI: Saved mid-game snapshot at round " + getGame().getCurrentRound() + " to " + targetFile.getAbsolutePath());
+                        } catch (Exception e) {
+                            System.err.println("PSI: Failed to save mid-game snapshot: " + e.getMessage());
+                            logger.error("PSI: Failed to save mid-game snapshot", e);
+                        }
+                    }
                 }
             }, resolver.registerServer, resolver.announceUrl, null, true);
         } catch (Throwable ex) {
@@ -117,9 +171,44 @@ public class PrincessOfflineTrainer {
             return;
         }
 
-        File gameFile = resolver.getSaveGameFile();
+        String targetP1Name;
+        String targetP2Name;
+        if (selfPlay) {
+            targetP1Name = "RL_Agent_Alpha";
+            targetP2Name = "RL_Agent_Beta";
+        } else if (autoGen && !bcDataGen) {
+            targetP1Name = "RL_Agent";
+            targetP2Name = "Princess_Beta";
+        } else {
+            targetP1Name = "Princess_Alpha";
+            targetP2Name = "Princess_Beta";
+        }
+
         if (null != gameFile) {
-            server.loadGame(gameFile);
+            boolean loaded = server.loadGame(gameFile);
+            if (!loaded) {
+                System.err.println("FATAL: Failed to load savegame: " + gameFile.getAbsolutePath());
+                logger.error("FATAL: Failed to load savegame: " + gameFile.getAbsolutePath());
+                System.exit(1);
+            }
+            // Remap saved ghost player names to match the connecting bot names for PSI restoration
+            java.util.List<megamek.common.Player> combatantGhosts = new java.util.ArrayList<>();
+            for (megamek.common.Player p : server.getGame().getPlayersList()) {
+                if (p != null && !"RL_Host".equals(p.getName()) && !p.isObserver()) {
+                    combatantGhosts.add(p);
+                }
+            }
+            combatantGhosts.sort(java.util.Comparator.comparingInt(megamek.common.Player::getId));
+            if (combatantGhosts.size() >= 1) {
+                System.out.println("PSI: Remapping saved Player 1 '" + combatantGhosts.get(0).getName() + "' -> '" + targetP1Name + "'");
+                combatantGhosts.get(0).setName(targetP1Name);
+                combatantGhosts.get(0).setGhost(true);
+            }
+            if (combatantGhosts.size() >= 2) {
+                System.out.println("PSI: Remapping saved Player 2 '" + combatantGhosts.get(1).getName() + "' -> '" + targetP2Name + "'");
+                combatantGhosts.get(1).setName(targetP2Name);
+                combatantGhosts.get(1).setGhost(true);
+            }
         }
 
         logger.info("MegaMek Offline Princess Trainer started on port " + resolver.port);
@@ -134,11 +223,11 @@ public class PrincessOfflineTrainer {
         BotClient p2 = null;
         try {
             if (selfPlay) {
-                p1 = new RLBotClient("RL_Agent_Alpha", "localhost", resolver.port, resolver.port + 1000);
-                p2 = new RLBotClient("RL_Agent_Beta", "localhost", resolver.port, resolver.port + 1001);
+                p1 = new RLBotClient(targetP1Name, "localhost", resolver.port, resolver.port + 1000);
+                p2 = new RLBotClient(targetP2Name, "localhost", resolver.port, resolver.port + 1001);
             } else if (autoGen && !bcDataGen) {
-                p1 = new RLBotClient("RL_Agent", "localhost", resolver.port, resolver.port + 1000);
-                RLDataCollectionPrincess p2Bot = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
+                p1 = new RLBotClient(targetP1Name, "localhost", resolver.port, resolver.port + 1000);
+                RLDataCollectionPrincess p2Bot = new RLDataCollectionPrincess(targetP2Name, "localhost", resolver.port, resolver.port + 1001);
                 megamek.client.bot.princess.BehaviorSettings bs = p2Bot.getBehaviorSettings().getCopy();
                 bs.setAutoFlee(false);
                 bs.setForcedWithdrawal(false);
@@ -146,8 +235,8 @@ public class PrincessOfflineTrainer {
                 p2 = p2Bot;
             } else {
                 // Used for bcDataGen or default manual operation
-                p1 = new RLDataCollectionPrincess("Princess_Alpha", "localhost", resolver.port, resolver.port + 1000);
-                p2 = new RLDataCollectionPrincess("Princess_Beta", "localhost", resolver.port, resolver.port + 1001);
+                p1 = new RLDataCollectionPrincess(targetP1Name, "localhost", resolver.port, resolver.port + 1000);
+                p2 = new RLDataCollectionPrincess(targetP2Name, "localhost", resolver.port, resolver.port + 1001);
             }
             
             p1.connect();
@@ -169,7 +258,7 @@ public class PrincessOfflineTrainer {
                 megamek.common.game.Game game = (megamek.common.game.Game) server.getGame();
                 
                 // Map setup
-                if (randomMap) {
+                if (gameFile == null && randomMap) {
                     System.out.println("Generating random map...");
                     logger.info("Generating random map...");
                     megamek.common.loaders.MapSettings ms = megamek.common.loaders.MapSettings.getInstance();
@@ -208,19 +297,20 @@ public class PrincessOfflineTrainer {
                 System.out.println("Attempt loop finished.");
                 
                 if (player1 != null && player2 != null) {
-                    System.out.println("Found both Princess players in Lobby, assigning Entities...");
-                    logger.info("Found both Princess players in Lobby, assigning Entities...");
-                    
-                    // Generate forces so that the players have entities recognised by the Turn Generator
-                    megamek.common.force.Force f1 = megamek.common.force.Force.createToplevelForce("Force Alpha", player1);
-                    megamek.common.force.Force f2 = megamek.common.force.Force.createToplevelForce("Force Beta", player2);
-                    int f1Id = game.getForces().addTopLevelForce(f1, player1);
-                    int f2Id = game.getForces().addTopLevelForce(f2, player2);
-                    
-                    player1.setTeam(1);
-                    player2.setTeam(2);
+                    if (gameFile == null) {
+                        System.out.println("Found both Princess players in Lobby, assigning Entities...");
+                        logger.info("Found both Princess players in Lobby, assigning Entities...");
+                        
+                        // Generate forces so that the players have entities recognised by the Turn Generator
+                        megamek.common.force.Force f1 = megamek.common.force.Force.createToplevelForce("Force Alpha", player1);
+                        megamek.common.force.Force f2 = megamek.common.force.Force.createToplevelForce("Force Beta", player2);
+                        int f1Id = game.getForces().addTopLevelForce(f1, player1);
+                        int f2Id = game.getForces().addTopLevelForce(f2, player2);
+                        
+                        player1.setTeam(1);
+                        player2.setTeam(2);
 
-                    System.out.println("Forces created.");
+                        System.out.println("Forces created.");
 
                     // Assign Forces
                     if (!p1Meks.isEmpty()) {
@@ -287,7 +377,7 @@ public class PrincessOfflineTrainer {
                         
                         if (!validMeks.isEmpty()) {
                             // Generate force 1
-                            java.util.List<megamek.common.units.Entity> force1 = generateForceByBV(randomBVTarget, validMeks);
+                            java.util.List<megamek.common.units.Entity> force1 = generateForceByBV(randomBVTarget, validMeks, maxMeks);
                             for (megamek.common.units.Entity ent : force1) {
                                 ent.setOwner(player1);
                                 ent.setDeployed(true);
@@ -300,7 +390,7 @@ public class PrincessOfflineTrainer {
                             }
                             
                             // Generate force 2
-                            java.util.List<megamek.common.units.Entity> force2 = generateForceByBV(randomBVTarget, validMeks);
+                            java.util.List<megamek.common.units.Entity> force2 = generateForceByBV(randomBVTarget, validMeks, maxMeks);
                             for (megamek.common.units.Entity ent : force2) {
                                 ent.setOwner(player2);
                                 ent.setDeployed(true);
@@ -313,8 +403,12 @@ public class PrincessOfflineTrainer {
                             }
                         }
                     }
-                    
-                    System.out.println("Broadcasting entities...");
+                } else {
+                    System.out.println("PSI: Resuming match from loaded save game: " + gameFile.getAbsolutePath());
+                    logger.info("PSI: Resuming match from loaded save game: " + gameFile.getAbsolutePath());
+                }
+            
+            System.out.println("Broadcasting entities...");
                     // Broadcast the newly added entities to the clients.
                     try {
                         megamek.server.totalWarfare.TWGameManager twm = (megamek.server.totalWarfare.TWGameManager) server.getGameManager();
@@ -326,6 +420,7 @@ public class PrincessOfflineTrainer {
                     
                     System.out.println("Sending done packets to push through phases...");
                     
+                    int lobbyWaitSeconds = 0;
                     while (!server.getGame().getPhase().isInitiative() && !server.getGame().getPhase().isMovement()) {
                         System.out.println("CURRENT PHASE: " + server.getGame().getPhase().name());
                         System.out.println("isEmptyLobby? (Phase isLounge: " + server.getGame().getPhase().isLounge() + ", Objects: " + server.getGame().getInGameObjects().size() + ")");
@@ -338,10 +433,18 @@ public class PrincessOfflineTrainer {
                         watcher.sendDone(true);
                         
                         Thread.sleep(1000);
+                        lobbyWaitSeconds++;
+                        if (lobbyWaitSeconds >= 60) {
+                            System.err.println("FATAL: Lobby phase transition timed out after 60s without reaching INITIATIVE/MOVEMENT. Exiting.");
+                            logger.error("Lobby phase transition timed out after 60s. Exiting.");
+                            System.exit(1);
+                        }
                     }
                     
                     System.out.println("Sent host and bot Done packets. Reached INITIATIVE phase!");
                     
+                    long lastPhaseChangeTime = System.currentTimeMillis();
+                    megamek.common.enums.GamePhase lastObservedPhase = null;
                     while (true) {
                         try {
                             megamek.common.game.IGame g = server.getGame();
@@ -356,6 +459,14 @@ public class PrincessOfflineTrainer {
                                 }
                                 System.out.println("- watcher.isConnected(): " + watcher.isConnected());
                                 break;
+                            }
+                            if (phase != lastObservedPhase) {
+                                lastObservedPhase = phase;
+                                lastPhaseChangeTime = System.currentTimeMillis();
+                            } else if (System.currentTimeMillis() - lastPhaseChangeTime > 300000) {
+                                System.err.println("FATAL: Game loop stalled in phase " + phase + " for >300s. Exiting.");
+                                logger.error("Game loop stalled in phase " + phase + " for >300s. Exiting.");
+                                System.exit(1);
                             }
                         } catch (Exception ex) {
                             System.out.println("Loop exception: " + ex.getMessage());
@@ -383,6 +494,21 @@ public class PrincessOfflineTrainer {
                                 ((RLBotClient)p1).sendGameOver(false);
                             }
                         }
+                        if (g != null && p2 instanceof RLBotClient) {
+                            if (player2 != null) {
+                                boolean p2Won = false;
+                                if (player2.getTeam() == megamek.common.Player.TEAM_NONE) {
+                                    p2Won = player2.getId() == ((megamek.common.game.Game)g).getVictoryPlayerId();
+                                } else {
+                                    p2Won = player2.getTeam() == ((megamek.common.game.Game)g).getVictoryTeam();
+                                }
+                                System.out.println("P2 (RLBotClient) inferred won? " + p2Won);
+                                ((RLBotClient)p2).sendGameOver(p2Won);
+                            } else {
+                                System.out.println("WARNING: player2 was null. Defaulting to false.");
+                                ((RLBotClient)p2).sendGameOver(false);
+                            }
+                        }
                     } catch (Exception e) {
                         System.err.println("Error sending final game state: " + e.getMessage());
                     }
@@ -405,28 +531,80 @@ public class PrincessOfflineTrainer {
         }
     }
 
-    private static java.util.List<megamek.common.units.Entity> generateForceByBV(int targetBV, java.util.List<megamek.common.loaders.MekSummary> validMeks) {
+    private static java.util.List<megamek.common.units.Entity> generateForceByBV(int targetBV, java.util.List<megamek.common.loaders.MekSummary> validMeks, int maxMeksPerSide) {
         java.util.List<megamek.common.units.Entity> force = new java.util.ArrayList<>();
-        int currentBV = 0;
-        int maxAttempts = 200;
+        int maxMeks = maxMeksPerSide > 0 ? maxMeksPerSide : 4;
         
-        while (currentBV < targetBV && maxAttempts > 0) {
+        // Choose number of units randomly between maxMeks/2 and maxMeks to ensure we can reach targetBV
+        int minUnits = Math.max(1, maxMeks / 2);
+        int numUnits = minUnits;
+        if (maxMeks > minUnits) {
+            if (maxMeks == 2) {
+                // Bias towards 1v1 (70% chance for 1, 30% chance for 2)
+                numUnits = (new java.util.Random().nextDouble() < 0.7) ? 1 : 2;
+            } else {
+                numUnits = minUnits + megamek.common.compute.Compute.randomInt(maxMeks - minUnits + 1);
+            }
+        }
+        
+        int currentBV = 0;
+        int attempts = 0;
+        int maxAttempts = 500;
+        
+        while (force.size() < numUnits && currentBV < targetBV && attempts < maxAttempts) {
+            attempts++;
+            int remainingUnits = numUnits - force.size();
+            int remainingBV = targetBV - currentBV;
+            
+            int unitTargetBV;
+            if (remainingUnits == 1) {
+                unitTargetBV = remainingBV;
+            } else {
+                double factor = 0.7 + new java.util.Random().nextDouble() * 0.6; // 0.7 to 1.3
+                unitTargetBV = (int)((remainingBV / (double)remainingUnits) * factor);
+            }
+            
             megamek.common.loaders.MekSummary candidate = validMeks.get(megamek.common.compute.Compute.randomInt(validMeks.size()));
-            if (candidate.getBV() > 0 && currentBV + candidate.getBV() <= targetBV + (targetBV * 0.15)) {
+            int candidateBV = candidate.getBV();
+            if (candidateBV <= 0) {
+                continue;
+            }
+            
+            boolean acceptable;
+            if (remainingUnits == 1) {
+                acceptable = Math.abs(candidateBV - remainingBV) <= (targetBV * 0.15) || (candidateBV <= remainingBV + (targetBV * 0.15));
+            } else {
+                acceptable = candidateBV >= (unitTargetBV * 0.5) && candidateBV <= (unitTargetBV * 1.5);
+            }
+            
+            if (acceptable && (currentBV + candidateBV <= targetBV + (targetBV * 0.15))) {
                 try {
                     megamek.common.units.Entity ent = new megamek.common.loaders.MekFileParser(candidate.getSourceFile(), candidate.getEntryName()).getEntity();
                     if (ent != null) {
                         force.add(ent);
-                        currentBV += candidate.getBV();
-                        if (currentBV >= targetBV - (targetBV * 0.15)) {
-                            break;
-                        }
+                        currentBV += candidateBV;
                     }
                 } catch (Exception e) {
-                    System.out.println("Exception parsing Mek: " + e.getMessage());
+                    // Ignore parsing issues
                 }
             }
-            maxAttempts--;
+            
+            // Fallback if we make too many attempts and fail to match the criteria
+            if (attempts > 300) {
+                if (candidateBV > 0 && currentBV + candidateBV <= targetBV + (targetBV * 0.15)) {
+                    try {
+                        megamek.common.units.Entity ent = new megamek.common.loaders.MekFileParser(candidate.getSourceFile(), candidate.getEntryName()).getEntity();
+                        if (ent != null) {
+                            force.add(ent);
+                            currentBV += candidateBV;
+                            if (currentBV >= targetBV - (targetBV * 0.15)) {
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                    }
+                }
+            }
         }
         
         return force;

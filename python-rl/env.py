@@ -9,10 +9,10 @@ class MegaMekEnvironment:
     It synchronously maintains a connection and parses MessagePack state payloads
     into PyTorch Geometric HeteroData objects.
     """
-    def __init__(self, host='localhost', port=12346, device=None, connect_on_init=True, logger=None):
+    def __init__(self, host='localhost', port=12346, device=None, connect_on_init=True, logger=None, beta_bv=1.0, beta_tp=0.0, beta_vp=1.0):
         self.device = device
         self.network = MegaMekNetwork(host=host, port=port, logger=logger)
-        self.reward_calculator = RewardCalculator()
+        self.reward_calculator = RewardCalculator(beta_bv=beta_bv, beta_tp=beta_tp, beta_vp=beta_vp)
         self.state_parser = StateParser()
         self.done = False
         
@@ -118,6 +118,8 @@ class MegaMekEnvironment:
             
         if payload.get("game_over"):
             self.done = True
+            reward = self.reward_calculator.compute_reward(payload)
+            payload["reward"] = reward
             return None, None, True, payload
             
         state, mask = self.state_parser.parse_to_heterodata(payload)

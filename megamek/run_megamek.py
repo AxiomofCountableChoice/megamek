@@ -2,7 +2,7 @@ import subprocess
 import os
 import argparse
 
-cwd = "/home/stuart_hatzioannou/repos/megamek/megamek"
+cwd = os.path.dirname(os.path.abspath(__file__))
 cmd = [
     "build/install/MegaMek/bin/megamek",
     "-rlexport",

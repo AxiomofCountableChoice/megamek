@@ -57,7 +57,11 @@ public class RLBotClient extends BotClient {
 
     @Override
     public String receiveReport(List<Report> reports) {
-        return "";
+        String formatted = super.receiveReport(reports);
+        if (dataPipeline != null) {
+            dataPipeline.appendReports(formatted);
+        }
+        return formatted;
     }
 
     @Override
@@ -99,6 +103,7 @@ public class RLBotClient extends BotClient {
         
         try {
             RLActionMask maskData = new RLActionMask();
+            maskData.selectable_entities = dataPipeline.extractSelectableIndices(selectable);
             List<RLActionMask.RLPathMask> serializedMask = new java.util.ArrayList<>();
             List<MovePath> calculatedPaths = dataPipeline.buildMovementMask(selectable, serializedMask);
             maskData.valid_paths = serializedMask;
@@ -117,6 +122,16 @@ public class RLBotClient extends BotClient {
                             if (hex == null) {
                                 return new MovePath(game, chosenPath.getEntity());
                             }
+                        }
+                        if (dataPipeline != null && chosenPath.getEntity() != null) {
+                            megamek.common.board.Coords dest = chosenPath.getFinalCoords();
+                            dataPipeline.appendReportLine(String.format("[Move] %s (ID %d) -> (%d, %d) Facing %d [%s]",
+                                    chosenPath.getEntity().getShortName(),
+                                    chosenPath.getEntity().getId(),
+                                    dest != null ? dest.getX() : -1,
+                                    dest != null ? dest.getY() : -1,
+                                    chosenPath.getFinalFacing(),
+                                    chosenPath.isJumping() ? "JUMP" : "GROUND"));
                         }
                     }
                     return chosenPath;
@@ -137,6 +152,7 @@ public class RLBotClient extends BotClient {
             List<RLActionMask.RLPathMask> serializedMask = new java.util.ArrayList<>();
             List<Entity> singleList = new java.util.ArrayList<>();
             singleList.add(entity);
+            maskData.selectable_entities = dataPipeline.extractSelectableIndices(singleList);
             List<MovePath> calculatedPaths = dataPipeline.buildMovementMask(singleList, serializedMask);
             maskData.valid_paths = serializedMask;
 
@@ -216,6 +232,7 @@ public class RLBotClient extends BotClient {
             }
 
             RLActionMask maskData = new RLActionMask();
+            maskData.selectable_entities = dataPipeline.extractSelectableIndices(shooters);
             maskData.valid_twists = dataPipeline.buildFiringMask(shooters);
 
             RLActionResponse response = dataPipeline.queryPython("WEAPON_INFERENCE", maskData, RLActionResponse.class, declaredAttacksTracker);
@@ -290,8 +307,18 @@ public class RLBotClient extends BotClient {
             }
             
             if (shooter != null && (!actions.isEmpty() || (response != null && response.twist != null))) {
+                if (dataPipeline != null) {
+                    dataPipeline.appendReportLine(String.format("[Weapon Decl] %s (ID %d) Twist %d | %d weapon action(s)",
+                            shooter.getShortName(), shooter.getId(),
+                            response != null && response.twist != null ? response.twist : 0,
+                            actions.size()));
+                }
                 sendAttackData(shooter.getId(), actions);
             } else if (shooter != null) {
+                if (dataPipeline != null) {
+                    dataPipeline.appendReportLine(String.format("[Weapon Decl] %s (ID %d) Hold Fire",
+                            shooter.getShortName(), shooter.getId()));
+                }
                 sendAttackData(shooter.getId(), new Vector<>(0));
             } else {
                 int fallbackId = game.getFirstEntityNum(getMyTurn());
@@ -328,36 +355,43 @@ public class RLBotClient extends BotClient {
             }
 
             RLActionMask maskData = new RLActionMask();
+            maskData.selectable_entities = dataPipeline.extractSelectableIndices(shooters);
             maskData.valid_targets = dataPipeline.buildPhysicalMask(shooters);
 
             RLActionResponse response = dataPipeline.queryPython("PHYSICAL_INFERENCE", maskData, RLActionResponse.class);
             
-            if (response != null && response.attack != null) {
-                Object attObj = response.attack;
-                RLActionResponse.RLPhysicalAttack att = null;
-                if (attObj instanceof RLActionResponse.RLPhysicalAttack) {
-                    att = (RLActionResponse.RLPhysicalAttack) attObj;
-                } else if (attObj instanceof java.util.Map) {
-                    java.util.Map<?, ?> map = (java.util.Map<?, ?>) attObj;
-                    att = new RLActionResponse.RLPhysicalAttack();
-                    if (map.containsKey("target_id") && map.get("target_id") != null) {
-                        att.target_id = ((Number) map.get("target_id")).intValue();
-                    }
-                    if (map.containsKey("action_type") && map.get("action_type") != null) {
-                        att.action_type = ((Number) map.get("action_type")).intValue();
-                    }
+            if (response != null) {
+                Entity shooter = null;
+                if (response.selected_entity_id != null && response.selected_entity_id >= 0 && response.selected_entity_id < game.getEntitiesVector().size()) {
+                    shooter = game.getEntitiesVector().get(response.selected_entity_id);
                 }
-                
-                if (att != null && att.target_id != null && att.action_type != null && response.selected_entity_id != null) {
-                    if (response.selected_entity_id >= 0 && response.selected_entity_id < game.getEntitiesVector().size()) {
-                        Entity shooter = game.getEntitiesVector().get(response.selected_entity_id);
-                        if (shooter != null && att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
+                if (response.attack != null) {
+                    Object attObj = response.attack;
+                    RLActionResponse.RLPhysicalAttack att = null;
+                    if (attObj instanceof RLActionResponse.RLPhysicalAttack) {
+                        att = (RLActionResponse.RLPhysicalAttack) attObj;
+                    } else if (attObj instanceof java.util.Map) {
+                        java.util.Map<?, ?> map = (java.util.Map<?, ?>) attObj;
+                        att = new RLActionResponse.RLPhysicalAttack();
+                        if (map.containsKey("target_id") && map.get("target_id") != null) {
+                            att.target_id = ((Number) map.get("target_id")).intValue();
+                        }
+                        if (map.containsKey("action_type") && map.get("action_type") != null) {
+                            att.action_type = ((Number) map.get("action_type")).intValue();
+                        }
+                    }
+                    
+                    if (att != null && att.target_id != null && att.action_type != null && shooter != null) {
+                        if (att.target_id >= 0 && att.target_id < game.getEntitiesVector().size()) {
                             megamek.common.units.Targetable target = game.getEntitiesVector().get(att.target_id);
                             if (target != null) {
                                 return new PhysicalOption(shooter, target, 0.0, att.action_type, null);
                             }
                         }
                     }
+                }
+                if (shooter != null) {
+                    return new PhysicalOption(shooter);
                 }
             }
         } catch (Throwable t) {
@@ -382,6 +416,9 @@ public class RLBotClient extends BotClient {
     public void changePhase(megamek.common.enums.GamePhase phase) {
         super.changePhase(phase);
         declaredAttacksTracker.clear(); // Reset tracker on phase change
+        if (dataPipeline != null && game != null) {
+            dataPipeline.appendReportLine("=== Round " + game.getCurrentRound() + " | Phase: " + phase.name() + " ===");
+        }
         
         if (!hasStartedGame && !phase.isLounge()) {
             dataPipeline.broadcastStartGame();

@@ -16,17 +16,27 @@ DEFAULT_METADATA = (
         ('hex', 'hexAdj_4', 'hex'),
         ('hex', 'hexAdj_5', 'hex'),
         ('unit', 'occupies', 'hex'),
+        ('hex', 'occupied_by', 'unit'),
         ('weapon', 'equips', 'unit'),
+        ('unit', 'equipped_with', 'weapon'),
         ('weapon', 'targeted', 'unit'),
         ('unit', 'moveTypeTMM_0', 'hex'),
         ('unit', 'moveTypeTMM_1', 'hex'),
         ('unit', 'moveTypeTMM_2', 'hex'),
         ('unit', 'moveTypeTMM_3', 'hex'),
         ('unit', 'moveTypeTMM_4', 'hex'),
+        ('hex', 'reachableTMM_0', 'unit'),
+        ('hex', 'reachableTMM_1', 'unit'),
+        ('hex', 'reachableTMM_2', 'unit'),
+        ('hex', 'reachableTMM_3', 'unit'),
+        ('hex', 'reachableTMM_4', 'unit'),
         ('unit', 'movementThreat', 'hex'),
+        ('hex', 'threatenedByMove', 'unit'),
         ('unit', 'LOSThreat', 'hex'),
+        ('hex', 'threatenedByLOS', 'unit'),
         ('unit', 'LOSTarget', 'unit'),
         ('unit', 'partialCover', 'hex'),
+        ('hex', 'providesCoverAgainst', 'unit'),
     ]
 )
 
@@ -74,6 +84,7 @@ class MegaMekHGTEncoder(nn.Module):
         
         # 4. Context MLP (Phase Metadata -> z_context)
         self.context_mlp = nn.Sequential(
+            nn.LayerNorm(12),
             nn.Linear(12, 64), # 12 global/metadata features
             nn.ReLU(),
             nn.Dropout(0.1),
@@ -107,7 +118,10 @@ class MegaMekHGTEncoder(nn.Module):
         for conv in self.hgt_layers:
             x_dict_out = conv(x_dict, edge_index_dict)
             # If HGTConv drops isolated nodes from its output dict, fallback to previous layer tensor to preserve graph shape
-            x_dict = {k: F.gelu(x_dict_out.get(k, x_dict[k])) for k in self.metadata[0]}
+            x_dict = {
+                k: F.gelu(x_dict_out[k]) if (k in x_dict_out and x_dict_out[k] is not None) else x_dict[k]
+                for k in self.metadata[0]
+            }
         
         # 3. Perceiver-style Latent Query Pooling
         # Group units and weapons per batch item.

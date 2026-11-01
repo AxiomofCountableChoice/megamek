@@ -17,7 +17,7 @@ class PositionalEncoding(nn.Module):
         return x
 
 class ActionConditionedPointer(nn.Module):
-    def __init__(self, hidden_dim=128, action_feature_dim=8, latent_dim=None):
+    def __init__(self, hidden_dim=128, action_feature_dim=12, latent_dim=None):
         super().__init__()
         self.hidden_dim = hidden_dim
         
@@ -107,6 +107,7 @@ class ActionConditionedPointer(nn.Module):
             
         action_features = hetero_data['action'].x  # (num_actions, action_feature_dim)
         num_actions = action_features.size(0)
+        act_batch = hetero_data['action'].batch if (hasattr(hetero_data['action'], 'batch') and hetero_data['action'].batch is not None) else None
         
         # We need to gather the embeddings of the corresponding source units and target nodes for each action.
         H_targets = torch.zeros((num_actions, node_embeddings_dict['hex'].size(-1)), device=device)
@@ -117,22 +118,31 @@ class ActionConditionedPointer(nn.Module):
             valid_mask = tgt_idx >= 0
             if valid_mask.any():
                 max_hex = node_embeddings_dict['hex'].size(0) - 1
-                valid_tgt_idx = tgt_idx[valid_mask]
-                if (valid_tgt_idx > max_hex).any() or (valid_tgt_idx < 0).any():
-                    print(f"WARNING: Out of bounds hex index! Max allowed: {max_hex}. Got min: {valid_tgt_idx.min()}, max: {valid_tgt_idx.max()}")
-                    valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_hex)
-                H_targets[valid_mask] = node_embeddings_dict['hex'][valid_tgt_idx]
+                if max_hex >= 0:
+                    hex_offset = (
+                        hetero_data['hex'].ptr[act_batch[valid_mask]]
+                        if (act_batch is not None and hasattr(hetero_data['hex'], 'ptr') and hetero_data['hex'].ptr is not None)
+                        else 0
+                    )
+                    valid_tgt_idx = tgt_idx[valid_mask] + hex_offset
+                    if (valid_tgt_idx > max_hex).any() or (valid_tgt_idx < 0).any():
+                        valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_hex)
+                    H_targets[valid_mask] = node_embeddings_dict['hex'][valid_tgt_idx]
                 
         if hasattr(hetero_data['action'], 'target_unit_idx'):
             tgt_idx = hetero_data['action'].target_unit_idx
             valid_mask = tgt_idx >= 0
             if valid_mask.any():
                 max_unit = node_embeddings_dict['unit'].size(0) - 1
-                valid_tgt_idx = tgt_idx[valid_mask]
                 if max_unit < 0:
                     H_targets[valid_mask] = 0.0 # No units available
                 else:
-                    valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_unit)
+                    unit_offset = (
+                        hetero_data['unit'].ptr[act_batch[valid_mask]]
+                        if (act_batch is not None and hasattr(hetero_data['unit'], 'ptr') and hetero_data['unit'].ptr is not None)
+                        else 0
+                    )
+                    valid_tgt_idx = torch.clamp(tgt_idx[valid_mask] + unit_offset, 0, max_unit)
                     H_targets[valid_mask] = node_embeddings_dict['unit'][valid_tgt_idx]
                 
         if hasattr(hetero_data['action'], 'target_weapon_idx'):
@@ -140,11 +150,15 @@ class ActionConditionedPointer(nn.Module):
             valid_mask = tgt_idx >= 0
             if valid_mask.any():
                 max_weapon = node_embeddings_dict['weapon'].size(0) - 1
-                valid_tgt_idx = tgt_idx[valid_mask]
                 if max_weapon < 0:
                     H_targets[valid_mask] = 0.0 # No weapons available
                 else:
-                    valid_tgt_idx = torch.clamp(valid_tgt_idx, 0, max_weapon)
+                    weapon_offset = (
+                        hetero_data['weapon'].ptr[act_batch[valid_mask]]
+                        if (act_batch is not None and hasattr(hetero_data['weapon'], 'ptr') and hetero_data['weapon'].ptr is not None)
+                        else 0
+                    )
+                    valid_tgt_idx = torch.clamp(tgt_idx[valid_mask] + weapon_offset, 0, max_weapon)
                     H_targets[valid_mask] = node_embeddings_dict['weapon'][valid_tgt_idx]
         
         # Source Units
@@ -154,11 +168,15 @@ class ActionConditionedPointer(nn.Module):
             valid_mask = src_idx >= 0
             if valid_mask.any():
                 max_unit = node_embeddings_dict['unit'].size(0) - 1
-                valid_src_idx = src_idx[valid_mask]
                 if max_unit < 0:
                     H_units[valid_mask] = 0.0
                 else:
-                    valid_src_idx = torch.clamp(valid_src_idx, 0, max_unit)
+                    unit_offset = (
+                        hetero_data['unit'].ptr[act_batch[valid_mask]]
+                        if (act_batch is not None and hasattr(hetero_data['unit'], 'ptr') and hetero_data['unit'].ptr is not None)
+                        else 0
+                    )
+                    valid_src_idx = torch.clamp(src_idx[valid_mask] + unit_offset, 0, max_unit)
                     H_units[valid_mask] = node_embeddings_dict['unit'][valid_src_idx]
         
         # Concat: H_unit (+) H_target_node (+) X_action_node
@@ -169,14 +187,18 @@ class ActionConditionedPointer(nn.Module):
         
         return e_action
 
-    def score_actions(self, s_k, e_action, action_batch_idx, x_dict, hetero_data):
+    def score_actions(self, s_k, e_action, action_batch_idx, x_dict, hetero_data, return_context=False):
         """
         Computes attention-based logits for the current state s_k against action embeddings.
         Utilizes a Perceiver/pointer cross-attention mechanism over the un-pooled graph nodes.
+        If return_context is True, returns (logits, context) where context is (num_actions, hidden_dim).
         """
         num_actions = e_action.size(0)
         if num_actions == 0:
-            return torch.empty((0,), device=s_k.device)
+            empty_logits = torch.empty((0,), device=s_k.device)
+            if return_context:
+                return empty_logits, torch.empty((0, self.hidden_dim), device=s_k.device)
+            return empty_logits
             
         device = s_k.device
         
@@ -272,4 +294,6 @@ class ActionConditionedPointer(nn.Module):
         q_W = torch.matmul(q_action, self.W_pointer)
         logits = torch.sum(q_W * context, dim=-1) / math.sqrt(self.hidden_dim)
         
+        if return_context:
+            return logits, context
         return logits

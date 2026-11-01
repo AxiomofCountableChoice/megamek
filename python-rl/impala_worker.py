@@ -26,13 +26,17 @@ class ImpalaWorker:
         os.makedirs(self.traj_dir, exist_ok=True)
         self.latest_model_path = os.path.join("model_objects", "impala_agent_latest.pt")
         self.run_id = int(time.time())
+        self.stop_requested = False
         
     def sync_weights(self):
         """Loads the latest policy weights from disk if available."""
         if os.path.exists(self.latest_model_path):
             try:
-                state_dict = torch.load(self.latest_model_path, map_location=self.device)
-                self.agent.load_state_dict(state_dict)
+                checkpoint = torch.load(self.latest_model_path, map_location=self.device)
+                if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                    self.agent.load_state_dict(checkpoint["model_state_dict"], strict=False)
+                else:
+                    self.agent.load_state_dict(checkpoint, strict=False)
                 self.logger.debug(f"Synced latest weights from {self.latest_model_path}")
             except Exception as e:
                 self.logger.error(f"Failed to load weights: {e}")
@@ -49,7 +53,9 @@ class ImpalaWorker:
         
         chunk_id = int(time.time() * 1000)
         traj_file = os.path.join(self.traj_dir, f"traj_{self.run_id}_{ep}_{chunk_id}.pt")
-        torch.save(traj_data, traj_file)
+        tmp_file = traj_file + ".tmp"
+        torch.save(traj_data, tmp_file)
+        os.replace(tmp_file, traj_file)
         self.logger.info(f"Saved trajectory chunk of length {len(trajectory)} to {traj_file} with win={win_status}")
         return traj_file
 
@@ -59,13 +65,17 @@ class ImpalaWorker:
         state_graph, mask, current_payload = None, None, None
         
         for ep in range(max_episodes):
+            if self.stop_requested:
+                break
             self.sync_weights()
             self.agent.eval()
             
             if getattr(self.env, "done", True) or state_graph is None:
                 try:
                     state_graph, mask, current_payload = self.env.reset()
-                except ConnectionError:
+                except Exception:
+                    if self.stop_requested:
+                        break
                     self.logger.warning("Connection to MegaMek lost. Waiting for server restart...")
                     time.sleep(5)
                     self.env = MegaMekEnvironment(port=self.env.port, device=self.device, logger=self.logger)
@@ -80,16 +90,16 @@ class ImpalaWorker:
             step_idx = 0
             episode_reward = 0.0
             try:
-                while not getattr(self.env, "done", False) and step_idx < max_steps_per_episode:
+                while not getattr(self.env, "done", False) and not self.stop_requested and step_idx < max_steps_per_episode:
                     # Fallback action if no valid actions
                     if (state_graph is None) or ('action' not in state_graph.node_types) or (state_graph['action'].x is None) or (state_graph['action'].x.size(0) == 0):
                         action_dict = {"selected_path_index": -1}
 
                     with torch.no_grad():
-                        # Forward pass (Training mode: deterministic=False)
-                        action_dict, v_mean, probs, mu_log_prob = self.agent.get_action(state_graph, mask, deterministic=False)
+                        action_dict, v_mean, probs, mu_log_prob = self.agent.get_action(
+                            state_graph, mask, deterministic=False
+                        )
 
-                        
                     # Check if it was a valid action by looking at whether options were available
                     is_valid = True
                     if (state_graph is None) or ('action' not in state_graph.node_types) or (state_graph['action'].x is None) or (state_graph['action'].x.size(0) == 0):
@@ -97,7 +107,13 @@ class ImpalaWorker:
                         
                     if is_valid:
                         next_state, next_mask, done, next_payload = self.env.step(action_dict)
-                        reward = next_payload.get("reward", 0.0) if next_payload else 0.0
+                        env_reward = next_payload.get("reward", 0.0) if next_payload else 0.0
+                        rew_comps = next_payload.get("reward_components", {}) if next_payload else {}
+                        reward_bv = rew_comps.get("bv", 0.0)
+                        reward_vp = rew_comps.get("vp", 0.0)
+                        reward_tp = rew_comps.get("tp", 0.0)
+
+                        reward = env_reward
                         episode_reward += reward
 
                         trajectory.append({
@@ -105,7 +121,11 @@ class ImpalaWorker:
                             "action_mask": mask,
                             "action_dict": action_dict,
                             "mu_log_prob": mu_log_prob,
-                            "reward": reward
+                            "reward": reward,
+                            "env_reward": env_reward,
+                            "reward_bv": reward_bv,
+                            "reward_vp": reward_vp,
+                            "reward_tp": reward_tp,
                         })
 
                         state_graph = next_state
@@ -123,6 +143,19 @@ class ImpalaWorker:
                         if current_payload and current_payload.get("game_over"):
                             win_status = current_payload.get("win", False)
                             self.logger.info(f"Game finished properly. Win: {win_status}")
+                            # Append terminal bootstrap state so transitions = steps[:-1] retains the final action
+                            trajectory.append({
+                                "raw_payload": current_payload,
+                                "action_mask": None,
+                                "action_dict": {},
+                                "mu_log_prob": 0.0,
+                                "reward": 0.0,
+                                "env_reward": 0.0,
+                                "reward_bv": 0.0,
+                                "reward_vp": 0.0,
+                                "reward_tp": 0.0,
+                                "is_terminal": True
+                            })
                         break
                     
                     if max_turns > 0 and current_payload and current_payload.get("turn_number", 0) >= max_turns:
@@ -181,16 +214,18 @@ if __name__ == "__main__":
     worker = None
     
     def signal_handler(sig, frame):
-        if worker is not None and hasattr(worker, 'logger'):
-            worker.logger.info(f"Worker received signal {sig}, shutting down gracefully...")
+        if worker is not None:
+            worker.stop_requested = True
+            if hasattr(worker, 'logger'):
+                worker.logger.info(f"Worker received signal {sig}, flushing in-flight trajectory and shutting down...")
+            if getattr(worker.env, 'sock', None) is not None:
+                try:
+                    worker.env.sock.close()
+                except Exception:
+                    pass
         else:
-            print(f"\nWorker received signal {sig}, shutting down gracefully...")
-        if worker is not None and getattr(worker.env, 'sock', None) is not None:
-            try:
-                worker.env.sock.close()
-            except Exception:
-                pass
-        sys.exit(0)
+            print(f"\nWorker received signal {sig}, shutting down...")
+            sys.exit(0)
         
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -205,7 +240,7 @@ if __name__ == "__main__":
     bc_model_path = os.path.join("model_objects", "bc_agent.pt")
     if not os.path.exists(os.path.join("model_objects", "impala_agent_latest.pt")) and os.path.exists(bc_model_path):
         temp_logger.info(f"Bootstrapping worker from BC weights: {bc_model_path}")
-        agent.load_state_dict(torch.load(bc_model_path, map_location=device))
+        agent.load_state_dict(torch.load(bc_model_path, map_location=device), strict=False)
         
     worker = ImpalaWorker(agent, worker_id=args.worker_id, port=args.port, device=device, dataset_dir=args.dataset_dir)
     if args.test:

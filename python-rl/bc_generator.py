@@ -1,5 +1,6 @@
 import os
 import time
+import signal
 import argparse
 import subprocess
 import threading
@@ -18,18 +19,41 @@ def get_random_meks(all_meks, num=1):
         return ""
     return ",".join(random.choices(all_meks, k=num))
 
-def run_megamek_episode(all_meks, server_port):
-    p1_meks = get_random_meks(all_meks, num=4)
-    p2_meks = get_random_meks(all_meks, num=4)
-    
-    print(f"[bc_generator] Starting Episode on Port {server_port} | Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
+def run_megamek_episode(all_meks, server_port, max_meks=4, use_bv_balancer=True, min_bv=3000, max_bv=8000):
+    p1_meks = ""
+    p2_meks = ""
     
     cmd = [
         "build/install/MegaMek/bin/megamek", 
-        "-rlexport", "-bcdatagen", "-randomMap", 
-        "-p1meks", p1_meks, 
-        "-p2meks", p2_meks
+        "-rlexport", "-bcdatagen"
     ]
+    
+    if use_bv_balancer:
+        target_bv = random.randint(min_bv, max_bv)
+        print(f"[bc_generator] Starting Episode on Port {server_port} | Map=[Randomized] BV=[{target_bv}] MaxMeks=[{max_meks}]")
+        cmd.extend([
+            "-randomMap",
+            "-randomBV", str(target_bv),
+            "-maxMeks", str(max_meks)
+        ])
+        p1_meks = "procedural_bv_balanced"
+        p2_meks = "procedural_bv_balanced"
+    else:
+        p1_num = random.randint(1, max_meks)
+        p2_num = random.randint(1, max_meks)
+        p1_meks = get_random_meks(all_meks, num=p1_num)
+        p2_meks = get_random_meks(all_meks, num=p2_num)
+        print(f"[bc_generator] Starting Episode on Port {server_port} | Map=[Randomized] P1=[{p1_meks}] | P2=[{p2_meks}]")
+        cmd.extend([
+            "-randomMap", 
+            "-p1meks", p1_meks, 
+            "-p2meks", p2_meks
+        ])
+        
+    abs_midgame_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "data", "midgame_saves"))
+    os.makedirs(abs_midgame_dir, exist_ok=True)
+    cmd.extend(["-autoSaveMidGame", abs_midgame_dir])
+    
     cwd = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "megamek"))
     
     # Isolate log4j files so multiple parallel instances don't throw NoSuchFileException
@@ -43,8 +67,16 @@ def run_megamek_episode(all_meks, server_port):
     env["MEGAMEK_OPTS"] = f"-DlogPath=logs/server_{server_port}"
     env["RL_SERVER_PORT"] = str(server_port)
     
-    # Launch subprocess. Wait for it to boot.
-    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # Launch subprocess in its own POSIX process group so JVM children can be terminated cleanly
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
     
     # Start a thread to stream server output to python stdout
     import threading
@@ -87,16 +119,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset, dataset_l
                 continue
                 
             if payload.get("context") == "TOPOLOGY":
-                nodes = payload.get("hex_nodes", [])
-                edges = payload.get("hex_edges", [])
-                if nodes:
-                    env.static_hex_features = torch.tensor(nodes, dtype=torch.float32)
-                else:
-                    env.static_hex_features = torch.empty((0, 5), dtype=torch.float32)
-                if edges:
-                    env.static_hex_adjacency_edges = torch.tensor(edges, dtype=torch.long)
-                else:
-                    env.static_hex_adjacency_edges = torch.empty((2, 0), dtype=torch.long)
+                env.state_parser.handle_topology(payload)
                 continue
                 
             if payload.get("context") in ["MOVEMENT_BC", "WEAPON_BC", "PHYSICAL_BC"]:
@@ -126,7 +149,7 @@ def collect_trajectories(port, target_trajectories, collected_dataset, dataset_l
             
     return collected_this_episode
 
-def run_single_episode(ep_idx, server_port, all_meks):
+def run_single_episode(ep_idx, server_port, all_meks, max_meks=4, use_bv_balancer=True, min_bv=3000, max_bv=8000):
     import datetime
     import os
     import threading
@@ -135,7 +158,7 @@ def run_single_episode(ep_idx, server_port, all_meks):
     print(f"\n=======================")
     print(f"Initiating Episode {ep_idx+1} on port {server_port}")
     
-    proc, p1_meks, p2_meks = run_megamek_episode(all_meks, server_port)
+    proc, p1_meks, p2_meks = run_megamek_episode(all_meks, server_port, max_meks, use_bv_balancer, min_bv, max_bv)
     
     dataset_lock = threading.Lock()
     local_dataset = []
@@ -155,11 +178,19 @@ def run_single_episode(ep_idx, server_port, all_meks):
                 break
             time.sleep(1)
     finally:
-        print(f"[bc_generator] Terminating Headless Server on port {server_port}...")
-        proc.terminate()
-        proc.wait(timeout=5)
+        print(f"[bc_generator] Terminating Headless Server process group on port {server_port}...")
         if proc.poll() is None:
-            proc.kill()
+            try:
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGTERM)
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except OSError:
+                    proc.kill()
+            except OSError:
+                proc.terminate()
             
     if crashed:
         return False
@@ -189,7 +220,9 @@ def run_single_episode(ep_idx, server_port, all_meks):
             },
             "trajectories": local_dataset
         }
-        torch.save(payload, filename)
+        tmp_filename = filename + ".tmp"
+        torch.save(payload, tmp_filename)
+        os.replace(tmp_filename, filename)
         print(f"Episode {ep_idx+1} complete. Saved {len(local_dataset)} Trajectories to {filename}")
         return True
     else:
@@ -202,7 +235,18 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=10, help="Number of random matches to generate")
     parser.add_argument("--save-path", type=str, default="bc_dataset_master.pt", help="File to serialize data")
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel megamek processes")
+    parser.add_argument("--max-meks", type=int, default=4, help="Maximum number of meks per side")
+    parser.add_argument("--no-bv-balancer", action="store_true", help="Disable BV balancer (default: enabled)")
+    parser.add_argument("--min-bv", type=int, default=None, help="Minimum BV for forces")
+    parser.add_argument("--max-bv", type=int, default=None, help="Maximum BV for forces")
     args = parser.parse_args()
+    
+    if args.min_bv is None:
+        args.min_bv = 1500 if args.max_meks <= 2 else 3000
+    if args.max_bv is None:
+        args.max_bv = 4500 if args.max_meks <= 2 else 8000
+    
+    use_bv_balancer = not args.no_bv_balancer
     
     print("Pre-fetching all valid MTF Mek files...")
     all_mtf_files = glob.glob(os.path.join(MEKFILES_ROOT, "**", "*.mtf"), recursive=True)
@@ -228,7 +272,7 @@ if __name__ == "__main__":
             
             # Initial batch
             while len(futures) < max_workers and attempts < max_attempts:
-                futures.add(executor.submit(run_single_episode, attempts, base_port + 2 * attempts, all_meks))
+                futures.add(executor.submit(run_single_episode, attempts, base_port + 2 * attempts, all_meks, args.max_meks, use_bv_balancer, args.min_bv, args.max_bv))
                 attempts += 1
                 
             # Process as they complete
@@ -245,7 +289,7 @@ if __name__ == "__main__":
                     
                     # Submit replacement task if needed
                     if successful_ep + len(futures) < args.episodes and attempts < max_attempts:
-                        futures.add(executor.submit(run_single_episode, attempts, base_port + 2 * attempts, all_meks))
+                        futures.add(executor.submit(run_single_episode, attempts, base_port + 2 * attempts, all_meks, args.max_meks, use_bv_balancer, args.min_bv, args.max_bv))
                         attempts += 1
 
     except KeyboardInterrupt:

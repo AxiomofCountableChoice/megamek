@@ -36,49 +36,49 @@ We also define the following sets of edges, which are used to encode game specif
 \mathcal{E}_{\text{hexAdj}_i}: \mathcal{V}_H \to \mathcal{V}_H
 ```
 
-2. Edges for showing what hex a unit occupies.
+2. Bidirectional edges for showing what hex a unit occupies (and which unit occupies a hex, enabling terrain covariates to flow into unit embeddings during HGT message passing).
 
 ```math
-\mathcal{E}_{\text{occupies}}: \mathcal{V}_U \to \mathcal{V}_H
+\mathcal{E}_{\text{occupies}}: \mathcal{V}_U \to \mathcal{V}_H, \quad \mathcal{E}_{\text{occupied\_by}}: \mathcal{V}_H \to \mathcal{V}_U
 ```
 
-3. Edges for showing what unit a weapon is equipped to.
+3. Bidirectional edges for showing what unit a weapon is equipped to (and which weapons a unit mounts).
 
 ```math
-\mathcal{E}_{\text{equips}}: \mathcal{V}_W \to \mathcal{V}_U
+\mathcal{E}_{\text{equips}}: \mathcal{V}_W \to \mathcal{V}_U, \quad \mathcal{E}_{\text{equipped\_with}}: \mathcal{V}_U \to \mathcal{V}_W
 ```
 
-4. Edges for showing what hexes a unit can move to.
+4. Bidirectional edges for showing what hexes a unit can move to across TMM brackets ($i \in \{0,\dots,4\}$), allowing reachable terrain features to aggregate back into the unit's embedding.
 
 ```math
-\mathcal{E}_{\text{moveTypeTMM}_{\text{bracket}_i}}: \mathcal{V}_U \to \mathcal{V}_H
+\mathcal{E}_{\text{moveTypeTMM}_i}: \mathcal{V}_U \to \mathcal{V}_H, \quad \mathcal{E}_{\text{reachableTMM}_i}: \mathcal{V}_H \to \mathcal{V}_U
 ```
 
-5. Edges for showing which hexes an inactivated enemy can move to, which are in movement range of a unit to be activated.
+5. Bidirectional edges for showing which hexes an unactivated enemy can move to (`movementThreat` and its reverse `threatenedByMove`).
 
 ```math
-\mathcal{E}_{\text{movementThreat}}: \mathcal{V}_U \to \mathcal{V}_H
+\mathcal{E}_{\text{movementThreat}}: \mathcal{V}_U \to \mathcal{V}_H, \quad \mathcal{E}_{\text{threatenedByMove}}: \mathcal{V}_H \to \mathcal{V}_U
 ```
 
-6. Edges for showing which hexes are in LOS of enemy units, which are in movement range of a unit to be activated. A consideration required is if it's possible to compute as a function of the unit to be activated, as their height will impact LOS calculations.
+6. Bidirectional edges for showing which hexes are in LOS of enemy units (`LOSThreat` and its reverse `threatenedByLOS`).
 
 ```math
-\mathcal{E}_{\text{LOSThreat}}: \mathcal{V}_U \to \mathcal{V}_H
+\mathcal{E}_{\text{LOSThreat}}: \mathcal{V}_U \to \mathcal{V}_H, \quad \mathcal{E}_{\text{threatenedByLOS}}: \mathcal{V}_H \to \mathcal{V}_U
 ```
 
-7. Edges for showing which enemies are in LOS of a unit to be activated.
+7. Directed edges for showing which enemies are in LOS of a unit.
 ```math
 \mathcal{E}_{\text{LOSTarget}}: \mathcal{V}_U \to \mathcal{V}_U
 ```
 
-8. Edges for showing which hexes a unit to be activated have partial cover from already activated enemy units.
+8. Bidirectional edges for showing which hexes provide partial cover against enemy units (`partialCover` and its reverse `providesCoverAgainst`).
 ```math
-\mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H
+\mathcal{E}_{\text{partialCover}}: \mathcal{V}_U \to \mathcal{V}_H, \quad \mathcal{E}_{\text{providesCoverAgainst}}: \mathcal{V}_H \to \mathcal{V}_U
 ```
 
-9. Edges for showing which weapons have targeted which unit to facilitate tracking weapon declarations.
+9. Directed edges for showing which weapons have declared an attack against which target unit during the firing phase.
 ```math
-\mathcal{E}_{\text{weaponTarget}}: \mathcal{V}_W \to \mathcal{V}_U
+\mathcal{E}_{\text{targeted}}: \mathcal{V}_W \to \mathcal{V}_U
 ```
 
 Defining the sets:
@@ -106,18 +106,29 @@ BattleTech is a complicated game to model, as the action space is incredibly spa
 
 However, in BattleTech any action is formed by a set of smaller atomic decisions before the "game state progresses" (i.e. there is a step in the games dynamics under the next-state transition kernel), after a declaration is formally made. For this reason, instead we seek to define a hierarchical structure mapping between the set of legal actions, and a set of features which can be utilised to estimate the best action to take, essentially a form of 'action embedding' in order to allow for dealing with arbitrarily large sets of actions.
 
-We define $\mathcal{A}$ as the space of all actions, and $\mathcal{A}_g$ as the set of legal actions for the given game-state $g \in \mathcal{G}$. This legal action set $\mathcal{A}_g$ has a structure that is a union of disjoint trees, with the root nodes being the unit to activate in the phase, and the nodes being the 'atomic sub-actions', with edges showing the steps between them, and leaf nodes being the `declarationComplete` terminal state. By introducing an arbitrary `declarationState` node, we can create a single tree, with each of the child nodes being a yet-to-be-activated unit. We seek to enumerate the 'sub-actions' per phase now:
+We define $\mathcal{A}$ as the space of all actions, and $\mathcal{A}_g$ as the set of legal actions for the given game-state $g \in \mathcal{G}$. This legal action set $\mathcal{A}_g$ is encoded directly into `HeteroData['action']` as a **Unified Phase-Agnostic Action Tree** whose Step-0 root candidates (`parent_idx = -1`) are always the selectable units (`SELECT_UNIT`). Every node in the tree belongs to one of 8 atomic sub-action types (represented as an 8-dim one-hot vector concatenated with 4 normalized continuous covariates in $[-1, 1]$, yielding a 12-dim feature vector $x_{a_k} \in \mathbb{R}^{12}$):
+
+| Type ID | Sub-Action Name | Parent Node Type | Next Active Parent (`next_parent_idx`) | Continuous Covariates $[f_0, f_1, f_2, f_3]$ |
+| :--- | :--- | :--- | :--- | :--- |
+| `0` | `SELECT_UNIT` | Root (`-1`) | Self (`node_idx`) | $[\text{phase}/2, 0, 0, 0]$ |
+| `1` | `MOVE_HEX` | `SELECT_UNIT` | Self (`node_idx`) | $[\text{phase}/2, 0, 0, 0]$ |
+| `2` | `MOVE_PATH` | `MOVE_HEX` | Terminal (`-2`) | $[\text{mp}/20, \sin(\text{facing}), \cos(\text{facing}), \text{mode}]$ |
+| `3` | `TORSO_TWIST` | `SELECT_UNIT` | Self (`node_idx`) | $[\text{twist}/3, 0, 0, 0]$ |
+| `4` | `SELECT_TARGET` | `TORSO_TWIST` or `SELECT_UNIT` | Self (`node_idx`) | $[\text{phase}/2, 0, 0, 0]$ |
+| `5` | `FIRE_WEAPON` | `SELECT_TARGET` | Active `TORSO_TWIST` | $[P(\text{2d6} \ge \text{toHit}), P(\text{2d6} \ge \text{secToHit}), 0, 0]$ |
+| `6` | `PHYSICAL_ATTACK` | `SELECT_TARGET` | Terminal (`-2`) | $[P(\text{2d6} \ge \text{toHit}), \text{attackType}/13, 0, 0]$ |
+| `7` | `END_DECLARATION` | `TORSO_TWIST` or `SELECT_UNIT` | Terminal (`-2`) | $[\text{phase}/2, 0, 0, 0]$ |
+
+Each phase's valid trajectories are paths from a root `SELECT_UNIT` node to a terminal leaf (`next_parent_idx = -2`):
 
 1. **Movement Phase**:
-   `declarationStart`, `selectActiveUnit`, `selectMovementType`, `destinationHex`, `facing`, `declarationComplete`
+   `SELECT_UNIT` $\to$ `MOVE_HEX` $\to$ `MOVE_PATH` (terminal)
 2. **Weapon Attack Phase**:
-   `declarationStart`, `selectActiveUnit`, `torsoTwist`, `selectTargetUnit_i`, `selectWeapon_j`, `declarationComplete`
-   where $i$ and $j$ range over the legal targets and legal-to-fire mounted weapons for the selected unit to activate. 
+   `SELECT_UNIT` $\to$ `TORSO_TWIST` $\to$ (`SELECT_TARGET` $\to$ `FIRE_WEAPON`)* $\to$ `END_DECLARATION` (terminal), where each `FIRE_WEAPON` node carries `exclusivity_group = weapon_id` so each mounted weapon can be fired at most once per turn, and any `SELECT_TARGET` node whose child weapons have all been fired is automatically masked out.
 3. **Physical Attack Phase**:
-   `declarationStart`, `selectActiveUnit`, `selectTargetUnit`, `selectAttackType`, `declarationComplete`
-   for simplicity, we have ignored both of the physical attacks that require declaration during the movement phase, charging and death-from-above attacks.
+   `SELECT_UNIT` $\to$ `SELECT_TARGET` $\to$ `PHYSICAL_ATTACK` (terminal), or `SELECT_UNIT` $\to$ `END_DECLARATION` (terminal) when passing.
 
-Additionally, we allow for deterministic mechanisms to resolve all other declarations. Technically turning on / off heat-sinks and dumping ammo as part of the other heat and end-phases will be ignored for now.
+Because the tree topology and exclusivity constraints are encoded directly as tensors (`parent_idx`, `next_parent_idx`, `exclusivity_group`) on `HeteroData['action']`, the Actor's mask-generation function `_get_valid_step_mask` is 100% phase-agnostic and identical between rollout inference (`get_action`) and batch training (`evaluate_actions`).
 
 As a final point, we recognise that the action space is actually defined as the Cartesian product of the two players action spaces, specifically we define $\mathcal{A} = \mathcal{A}^1 \times \mathcal{A}^2$, where the non-active players valid action space is simply $\emptyset$.
 
@@ -244,48 +255,47 @@ generated under some behaviour policy $\mu_i$, for $i \in 1, \dots, N$, and $\ha
 
 We note that the $\mu_i$ in our case will be the actor network defined above, but instantiated with an older iteration of the model parameters, call then $\tilde{\theta}$, that is $\mu_i = \pi_{\tilde{\theta}}$, similarly the value functions used in the V-trace, they utilise prior iteration parameters $\tilde{\omega}$. For simplicity in the following, we drop the explicit references to each trajectory sample $i$.
 
-#### 3.1.1 The V-Trace Target ($`v_t(\omega)`$)
-Recall the V-trace is defined as
+#### 3.1.1 The Per-Head V-Trace Target ($`v_{t,e}(\tilde{\omega}_e)`$)
+To preserve epistemic diversity across the $E=8$ Critic ensemble heads, each head $e \in \{1, \dots, E\}$ computes its own V-Trace target $v_{t,e}(\tilde{\omega}_e)$ from its own value predictions $V_{\tilde{\omega}_e}$ (strictly excluding the epistemic bonus from the V-Trace recursion so the Critic remains an unbiased estimator of extrinsic return):
 
 $$
-v_t(\omega) = \bar{V}_\omega(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_k V
+v_{t,e}(\tilde{\omega}_e) = V_{\tilde{\omega}_e}(g_t) + \sum_{k=t}^{T_i \wedge (t+n-1)} \gamma^{k-t} \left( \prod_{j=t}^{k-1} c_j \right) \delta_{k,e} V
 $$
 
 where
 
 $$
 \begin{aligned}
-\delta_k V &= \bar{\rho}_k (r_k + \gamma \bar{V}_\omega(g_{k+1}) - \bar{V}_\omega(g_k))\\
+\delta_{k,e} V &= \bar{\rho}_k \left(r_k + \gamma V_{\tilde{\omega}_e}(g_{k+1}) - V_{\tilde{\omega}_e}(g_k)\right)\\
 \bar{\rho}_k &= \min\left(\bar{\rho}, \frac{\pi_{\theta}(a_k \mid g_k)}{\mu(a_k \mid g_k)}\right)\\
 c_j &= \min\left(\bar{c}, \frac{\pi_{\theta}(a_j \mid g_j)}{\mu(a_j \mid g_j)}\right)
 \end{aligned}
 $$
 
-and $`\bar{\rho}, \bar{c} \in (0,1)`$ and $`\bar{c} \leq \bar{\rho}`$. In particular we see the following recursive representation
+with recursive representation:
 
-$$v_t(\omega) = \bar{V}_{\omega}(g_t) + \delta_t V + \gamma \cdot c_t \left( v_{t+1}(\omega) - \bar{V}_{\omega}(g_{t+1}) \right).$$
+$$v_{t,e}(\tilde{\omega}_e) = V_{\tilde{\omega}_e}(g_t) + \delta_{t,e} V + \gamma \cdot c_t \left( v_{t+1,e}(\tilde{\omega}_e) - V_{\tilde{\omega}_e}(g_{t+1}) \right), \quad \bar{v}_t(\tilde{\omega}) = \frac{1}{E}\sum_{e=1}^E v_{t,e}(\tilde{\omega}_e).$$
 
-#### 3.1.2 Actor Gradient (Policy Gradient with V-Trace)
-To incorporate our epistemic exploration bonus, we bake into the advantage function utilised for the actor loss a posterior-variance term determined by the ensemble as a form of bonus toward unexplored state, action pairs. We express the gradient of the actor as
+#### 3.1.2 Actor Gradient (Policy Gradient with Annealed Epistemic Bonus)
+To incorporate our epistemic exploration bonus without biasing the Critic's V-Trace targets, we inject the annealed posterior standard deviation $\lambda_{\text{epistemic}}(t) \sqrt{\sigma_{\tilde{\omega}}^2(g_{t+1}) + \epsilon}$ strictly into the Actor's 1-step advantage:
 
-$$\nabla_{\theta} \hat{L}_{actor}(\theta) = -\hat{\mathbb{E}} \left[ \rho_t \nabla_{\theta} \left[ \log \pi_\theta(a_t \mid g_t) \right] \left( r_t + \gamma \left\lbrace v_{t+1}(\omega) + \lambda \sqrt{\sigma_{\omega}^2(g_{t+1})} \right\rbrace - \bar{V}_\omega(g_t) \right) \right].$$
+$$\nabla_{\theta} \hat{L}_{actor}(\theta) = -\hat{\mathbb{E}} \left[ \bar{\rho}_t \nabla_{\theta} \left[ \log \pi_\theta(a_t \mid g_t) \right] \left( r_t + \gamma \left\lbrace \bar{v}_{t+1}(\tilde{\omega}) + \lambda_{\text{epistemic}}(t) \sqrt{\sigma_{\tilde{\omega}}^2(g_{t+1}) + \epsilon} \right\rbrace - \bar{V}_{\tilde{\omega}}(g_t) \right) \right].$$
 
-We see that for larger ensemble variance we have a larger gradient for the actor, and hence the gradient nudges actor parameters towards values that maximise the expected returns, and so which place more mass on state, action pairs that have higher return as estimated by the V-trace or epistemic variance. Furthermore, to encourage that we do not have vanishing mass on actions for our actor policy, we employ the aforementioned entropy regularisation term
+Here $\lambda_{\text{epistemic}}(t)$ decays linearly from $\lambda_{\text{epistemic, init}}$ to $\lambda_{\text{epistemic, final}}$ over $T_{\text{epistemic}}$ learner steps. Furthermore, to prevent premature policy collapse, we include an entropy regularisation term:
 
 $$\nabla_{\theta} \hat{L}_{entropy}(\theta) = \hat{\mathbb{E}} \left[ \sum_{a \in \mathcal{A}_{valid}} \nabla_{\theta} \left[ \pi_\theta(a \mid g_t) \log \pi_\theta(a \mid g_t) \right] \right].$$
 
-which is the negative gradient of the entropy of $\pi_{\theta}$, which seeks to maximise its entropy, encouraging the model to not place all its mass onto a single action.
+#### 3.1.3 Critic Gradient (Bootstrapped Ensemble Mean Squared Error)
+Following Bootstrapped DQN (Osband et al., 2016), each Critic head $e \in \{1,\dots,E\}$ is initialized with independent random parameters and trained with an independent Bernoulli bootstrap mask $m_e \sim \text{Bernoulli}(p_{\text{boot}})$ (with $p_{\text{boot}} = 0.63 \approx 1 - e^{-1}$) sampled per trajectory against its own V-Trace target $v_{t,e}(\tilde{\omega}_e)$:
 
-#### 3.1.3 Critic Gradient (Ensemble Mean Squared Error)
-For the critic, we apply the usual $L^2$ loss, and may explore instead formulating as an IQN objective in future:
+$$\nabla_{\omega_e}\hat{L}_{critic}(\omega_e) = \hat{\mathbb{E}} \left[ m_e \cdot 2 \cdot \left( V_{\omega_e}(g_t) - v_{t,e}(\tilde{\omega}_e) \right) \cdot \nabla_{\omega_e} \left[ V_{\omega_e}(g_t) \right] \right].$$
 
-$$\nabla_{\omega_i}\hat{L}_{critic}(\omega_i) = \hat{\mathbb{E}} \left[ 2 \cdot \left( V_{\omega_i}(g_t) - v_t(\tilde{\omega}) \right) \cdot \nabla_{\omega_i} \left[ V_{\omega_i}(g_t) \right] \right]$$
+#### 3.1.4 Unified Co-Training Objective with Annealed Supervised BC
+During early IMPALA training, the RL loss is co-trained alongside an annealed supervised Behavioral Cloning loss $\mathcal{L}_{BC}$ sampled from an expert replay buffer $\mathcal{B}_{\text{expert}}$:
 
-where $i = 1, \dots, E$ for each critic head in the ensemble. Note that the V-trace $v_t(\tilde{\omega})$ is not computed under the parameters $\omega_i$, which the gradient is taken with respect to. Instead they are with respect to the parameters used by the behaviour policy, or the current parameters prior to the update, the $\tilde{\omega}$ defined earlier.
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{RL} + \lambda_{\text{BC}}(t) \mathcal{L}_{BC}$$
 
-In the case of instability, an exponential-moving-average of historical and updated critic weights could be computed to update the v-trace targets, akin to the approach of DQN to allow for convergence under a two time-scale induced stochastic-approximation system, e.g. as
-
-$$\tilde{\omega}_i = (1 - \eta_{\text{m}}) \cdot \tilde{\omega}_i + \eta_{\text{m}} \cdot \omega_i.$$
+where $\lambda_{\text{BC}}(t)$ follows a configurable warmup-and-decay schedule (`cosine`, `linear`, or `exponential`) to $0$. Once $\lambda_{\text{BC}}(t) \le 10^{-5}$, the learner skips the $\mathcal{B}_{\text{expert}}$ forward pass completely, dedicating 100% of GPU compute to off-policy V-Trace updates.
 
 ---
 

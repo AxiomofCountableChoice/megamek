@@ -44,6 +44,8 @@ import megamek.common.board.Board;
 import megamek.common.board.BoardLocation;
 import megamek.common.board.Coords;
 import megamek.common.board.CubeCoords;
+import megamek.common.Inferno;
+import megamek.common.equipment.INarcPod;
 import megamek.common.equipment.Mounted;
 import megamek.common.equipment.NarcPod;
 import megamek.common.equipment.Sensor;
@@ -172,6 +174,70 @@ public class SerializationHelper {
                     }
                 }
                 return ((team > -1) && (location > -1)) ? new NarcPod(team, location) : null;
+            }
+
+            @Override
+            public void marshal(Object object, HierarchicalStreamWriter writer, MarshallingContext context) {
+                // Unused here
+            }
+        });
+
+        xStream.registerConverter(new Converter() {
+            @Override
+            public boolean canConvert(Class cls) {
+                return (cls == INarcPod.class);
+            }
+
+            @Override
+            public Object unmarshal(HierarchicalStreamReader reader, UnmarshallingContext context) {
+                int team = -1;
+                int type = -1;
+                int location = -1;
+                while (reader.hasMoreChildren()) {
+                    reader.moveDown();
+                    try {
+                        switch (reader.getNodeName()) {
+                            case "team" -> team = Integer.parseInt(reader.getValue());
+                            case "type" -> type = Integer.parseInt(reader.getValue());
+                            case "location" -> location = Integer.parseInt(reader.getValue());
+                        }
+                        reader.moveUp();
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                }
+                return ((team > -1) && (type > -1) && (location > -1)) ? new INarcPod(team, type, location) : null;
+            }
+
+            @Override
+            public void marshal(Object object, HierarchicalStreamWriter writer, MarshallingContext context) {
+                // Unused here
+            }
+        });
+
+        xStream.registerConverter(new Converter() {
+            @Override
+            public boolean canConvert(Class cls) {
+                return (cls == Inferno.class);
+            }
+
+            @Override
+            public Object unmarshal(HierarchicalStreamReader reader, UnmarshallingContext context) {
+                int heatPerRound = 6;
+                int burnRoundsPerHit = 3;
+                while (reader.hasMoreChildren()) {
+                    reader.moveDown();
+                    try {
+                        switch (reader.getNodeName()) {
+                            case "heatPerRound" -> heatPerRound = Integer.parseInt(reader.getValue());
+                            case "burnRoundsPerHit" -> burnRoundsPerHit = Integer.parseInt(reader.getValue());
+                        }
+                        reader.moveUp();
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                }
+                return new Inferno(heatPerRound, burnRoundsPerHit);
             }
 
             @Override

@@ -48,6 +48,23 @@ public class RLDataCollectionPrincess extends Princess {
         }
         super.die();
     }
+
+    @Override
+    public String receiveReport(java.util.List<megamek.common.Report> reports) {
+        String formatted = super.receiveReport(reports);
+        if (dataPipeline != null) {
+            dataPipeline.appendReports(formatted);
+        }
+        return formatted;
+    }
+
+    @Override
+    public void changePhase(megamek.common.enums.GamePhase phase) {
+        super.changePhase(phase);
+        if (dataPipeline != null && getGame() != null) {
+            dataPipeline.appendReportLine("=== Round " + getGame().getCurrentRound() + " | Phase: " + phase.name() + " ===");
+        }
+    }
     
     @Override
     protected MovePath continueMovementFor(final Entity entity) {

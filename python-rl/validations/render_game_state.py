@@ -24,9 +24,9 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
         traj_data = torch.load(tp, map_location='cpu', weights_only=False)
         
         if not topology:
-            topology = traj_data.get("topology_payload", {})
+            topology = traj_data.get("topology_payload") or traj_data.get("topology") or {}
             
-        steps.extend(traj_data.get("steps", []))
+        steps.extend(traj_data.get("steps") or traj_data.get("trajectory") or [])
     
     if not steps:
         print("No steps found in any trajectory chunk.")
@@ -43,15 +43,37 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
     all_reports = []
     total_reward = 0.0
     for s in steps:
-        raw = s.get("raw_payload", {})
+        if isinstance(s, dict) and "raw_payload" in s:
+            raw = s.get("raw_payload", {})
+            reward = float(s.get("reward", 0.0))
+            action_dict = s.get("action_dict", {})
+        else:
+            raw = s if isinstance(s, dict) else {}
+            rew_field = raw.get("rewards", 0.0)
+            reward = float(sum(rew_field.values())) if isinstance(rew_field, dict) else float(raw.get("reward", 0.0))
+            action_dict = raw.get("target_action") or raw.get("mask", {}).get("target_action") or {}
+            if "selected_entity_index" in action_dict and "selected_entity_id" not in action_dict:
+                action_dict = dict(action_dict)
+                action_dict["selected_entity_id"] = action_dict["selected_entity_index"]
+            if "torso_twist" in action_dict and "twist" not in action_dict:
+                action_dict = dict(action_dict)
+                action_dict["twist"] = action_dict["torso_twist"]
+            if isinstance(action_dict.get("attacks"), list):
+                norm_attacks = []
+                for att in action_dict["attacks"]:
+                    if isinstance(att, dict):
+                        att_copy = dict(att)
+                        if "target_entity_index" in att_copy and "target_id" not in att_copy:
+                            att_copy["target_id"] = att_copy["target_entity_index"]
+                        norm_attacks.append(att_copy)
+                action_dict = dict(action_dict)
+                action_dict["attacks"] = norm_attacks
+
         state = raw.get("state", {})
-        reward = s.get("reward", 0.0)
         total_reward += reward
         
         reports = raw.get("reports", [])
         all_reports.extend(reports)
-        
-        action_dict = s.get("action_dict", {})
         clean_action = {}
         for k, v in action_dict.items():
             if torch.is_tensor(v):
@@ -208,7 +230,12 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
                     <span style="display:inline-block; width:12px; height:12px; background:#111; margin-right:5px;"></span> Impassable
                 </div>
             </div>
-            <div class="panel-title" style="padding: 10px 10px 0 10px; border: none;">Game Reports</div>
+            <div class="panel-title" style="padding: 10px 10px 0 10px; border: none; display: flex; justify-content: space-between; align-items: center;">
+                <span>Game Reports</span>
+                <label style="font-size: 0.75em; font-weight: normal; color: #aaa; cursor: pointer;">
+                    <input type="checkbox" id="toggle-full-reports" onchange="renderReportsPanel()"> Full Match Log
+                </label>
+            </div>
             <div id="reports-panel"></div>
         </div>
     </div>
@@ -233,10 +260,16 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
         const steps = traj.steps || [];
         
         const repPanel = document.getElementById("reports-panel");
-        repPanel.innerHTML = (traj.all_reports && traj.all_reports.length > 0) ? 
-            traj.all_reports.map(r => `<div class="report-line">${{r}}</div>`).join('') :
-            '<div style="color: #666; font-style: italic;">No reports</div>';
-        repPanel.scrollTop = repPanel.scrollHeight;
+        function renderReportsPanel() {{
+            if (!repPanel) return;
+            const showFull = document.getElementById("toggle-full-reports") && document.getElementById("toggle-full-reports").checked;
+            const stepData = steps[currentStep] || {{}};
+            const list = showFull ? (traj.all_reports || []) : (stepData.reports || []);
+            repPanel.innerHTML = (list && list.length > 0) ?
+                list.map(r => `<div class="report-line">${{r}}</div>`).join('') :
+                '<div style="color: #666; font-style: italic;">No reports on this step (check Full Match Log to view all)</div>';
+            repPanel.scrollTop = repPanel.scrollHeight;
+        }}
         
         const HEX_SIZE = 30;
         const HEX_WIDTH = HEX_SIZE * 2;
@@ -528,11 +561,11 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
             document.getElementById("meta-reward").innerText = stepData.reward.toFixed(4);
             document.getElementById("meta-total-reward").innerText = stepData.total_reward.toFixed(4);
             
-            // Reports are now statically populated in the panel globally.
+            renderReportsPanel();
             
             drawHexGrid();
             
-            if (stepData.context === "MOVEMENT_INFERENCE") {{
+            if (stepData.context && stepData.context.startsWith("MOVEMENT")) {{
                 const drawEdgeToHex = (edges, className) => {{
                     if (!edgeVisibility[className]) return;
                     if (!edges) return;
@@ -629,7 +662,9 @@ def generate_interactive_html(traj_paths, output_path="render.html"):
                 if (activeId === undefined && stepData.mask) activeId = stepData.mask.active_entity;
                 
                 let activeIdx = -1;
-                if (stepData.entities_meta && activeId !== undefined) {{
+                if (activeId !== undefined && activeId >= 0 && stepData.entities && activeId < stepData.entities.length) {{
+                    activeIdx = activeId;
+                }} else if (stepData.entities_meta && activeId !== undefined) {{
                     stepData.entities_meta.forEach((meta, idx) => {{
                         if (meta && meta.id === activeId) activeIdx = idx;
                     }});

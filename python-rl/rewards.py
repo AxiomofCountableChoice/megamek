@@ -3,7 +3,7 @@ class RewardCalculator:
     Computes dense rewards based on Battle Value (BV), Target Priority (TP), 
     and Victory Points (VP) deltas.
     """
-    def __init__(self, beta_bv=0.1, beta_tp=0.0, beta_vp=1.0):
+    def __init__(self, beta_bv=1.0, beta_tp=0.0, beta_vp=1.0):
         self.beta_bv = beta_bv
         self.beta_tp = beta_tp
         self.beta_vp = beta_vp
@@ -27,6 +27,10 @@ class RewardCalculator:
 
     def compute_reward(self, payload):
         reward = 0.0
+        reward_bv = 0.0
+        reward_vp = 0.0
+        reward_tp = 0.0
+
         if payload and "rewards" in payload:
             rew_dict = payload["rewards"]
             bv1 = rew_dict.get("bv1", 0)
@@ -38,8 +42,10 @@ class RewardCalculator:
             if self.prev_bv1 is None:
                 self.prev_bv1, self.prev_bv2 = bv1, bv2
                 self.prev_vp1 = vp1
-                self.initial_bv1 = bv1 if bv1 > 0 else 5000.0
-                self.initial_bv2 = bv2 if bv2 > 0 else 5000.0
+                init1 = rew_dict.get("initial_bv1", 0)
+                init2 = rew_dict.get("initial_bv2", 0)
+                self.initial_bv1 = float(init1) if init1 and init1 > 0 else (float(bv1) if bv1 > 0 else 5000.0)
+                self.initial_bv2 = float(init2) if init2 and init2 > 0 else (float(bv2) if bv2 > 0 else 5000.0)
                 
             delta_bv1 = bv1 - self.prev_bv1
             delta_bv2 = bv2 - self.prev_bv2
@@ -51,10 +57,28 @@ class RewardCalculator:
             reward_vp = self.beta_vp * delta_vp1
             reward_tp = self.beta_tp * (tp1 - tp2)
             
+            # Fallback if game_over payload has win flag but delta_vp1 was 0
+            if payload.get("game_over") and delta_vp1 == 0.0 and "win" in payload:
+                win = payload.get("win", False)
+                delta_vp1 = 2.0 if win else -2.0
+                reward_vp = self.beta_vp * delta_vp1
+
             reward = reward_bv + reward_vp + reward_tp
             
             self.prev_bv1, self.prev_bv2 = bv1, bv2
             self.prev_tp1, self.prev_tp2 = tp1, tp2
             self.prev_vp1 = vp1
+        elif payload and payload.get("game_over") and "win" in payload:
+            win = payload.get("win", False)
+            delta_vp1 = 2.0 if win else -2.0
+            reward_vp = self.beta_vp * delta_vp1
+            reward = reward_vp
+
+        if payload is not None:
+            payload["reward_components"] = {
+                "bv": reward_bv,
+                "vp": reward_vp,
+                "tp": reward_tp
+            }
             
         return reward

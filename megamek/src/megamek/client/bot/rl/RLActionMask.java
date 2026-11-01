@@ -21,6 +21,7 @@ package megamek.client.bot.rl;
 import java.util.List;
 public class RLActionMask {
     public Integer active_entity; // We can keep active_entity if needed, but remove active_entity_index
+    public List<Integer> selectable_entities;
     public List<RLPathMask> valid_paths;
     public List<RLTargetMask> valid_targets; // Restored for Physical Phase
     public List<RLTwistMask> valid_twists; // Added for Weapon Phase Option C

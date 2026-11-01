@@ -2,480 +2,349 @@ import torch
 import torch.nn as nn
 from models.encoder import MegaMekHGTEncoder
 from models.actor import ActionConditionedPointer
+from state_parser import StateParser
+
 
 class MegaMekAgent(nn.Module):
     """
     Main IMPALA Actor-Critic Module defined in ARCHITECTURE.md (Sections 3c & 3d).
     Contains:
-      - The frozen cache HGT Encoder.
+      - The HGT + Perceiver Spatial Encoder.
       - The Value Ensemble (E=8 by default for Epistemic Exploration).
-      - The Autoregressive Pointer Decoder (Action head).
+      - The Autoregressive Pointer Decoder (Action head) operating over the
+        Unified Hierarchical Action Tree on HeteroData['action'].
     """
-    def __init__(self, hidden_dim=128, ensemble_size=8, action_feature_dim=8):
+
+    def __init__(self, hidden_dim=128, ensemble_size=8, action_feature_dim=12):
         super().__init__()
         num_latent_queries = 32
-        self.encoder = MegaMekHGTEncoder(hidden_dim=hidden_dim, num_latent_queries=num_latent_queries, num_layers=4)
-        
+        self.encoder = MegaMekHGTEncoder(
+            hidden_dim=hidden_dim, num_latent_queries=num_latent_queries, num_layers=4
+        )
+
         # 1. Epistemic Value Ensemble (Critic)
         # Branching from z (dim = (num_latent_queries * hidden_dim) + hidden_dim)
         latent_dim = (num_latent_queries * hidden_dim) + hidden_dim
-        
+
         self.ensembles = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(latent_dim, hidden_dim),
                 nn.ReLU(),
-                nn.Linear(hidden_dim, 1)
-            ) for _ in range(ensemble_size)
+                nn.Linear(hidden_dim, 1),
+            )
+            for _ in range(ensemble_size)
         ])
-        
+
         # 2. Autoregressive Transformer Decoder (Teacher Forcing & Action Scoring)
         self.actor_pointer = ActionConditionedPointer(
-            hidden_dim=hidden_dim, 
+            hidden_dim=hidden_dim,
             action_feature_dim=action_feature_dim,
-            latent_dim=latent_dim
+            latent_dim=latent_dim,
         )
-        
-    def compute_values(self, z):
+
+    def compute_values(self, z, return_all=False):
         """
-        Computes the V-Trace Value Ensembles for Epistemic Bonus Target (Section 2c)
+        Computes the V-Trace Value Ensembles (Section 2c).
         """
-        # Forward pass all critics independently
         v_preds = torch.stack([critic(z) for critic in self.ensembles], dim=-1)
         # v_preds shape: [batch, 1, E]
-        
         v_mean = v_preds.mean(dim=-1)
         v_var = v_preds.var(dim=-1, unbiased=False)
+        if return_all:
+            return v_mean, v_var, v_preds.squeeze(1)
         return v_mean, v_var
+
+    @staticmethod
+    def _get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, chosen_seq_indices):
+        """
+        Phase-agnostic topological mask computation over the Unified Hierarchical Action Tree.
+        Returns a boolean tensor of shape (num_actions,) indicating which action nodes are
+        valid candidates at step k = len(chosen_seq_indices).
+        """
+        num_actions = parent_idx.size(0)
+        device = parent_idx.device
+        if num_actions == 0:
+            return torch.zeros(0, dtype=torch.bool, device=device)
+
+        if not chosen_seq_indices:
+            return parent_idx == -1
+
+        last_idx = int(chosen_seq_indices[-1])
+        if last_idx < 0 or last_idx >= num_actions:
+            return torch.zeros(num_actions, dtype=torch.bool, device=device)
+
+        active_parent = int(next_parent_idx[last_idx].item())
+        if active_parent == -2:
+            # Terminal leaf reached
+            return torch.zeros(num_actions, dtype=torch.bool, device=device)
+
+        valid_mask = (parent_idx == active_parent).clone()
+        if not valid_mask.any():
+            return valid_mask
+
+        used_groups = set()
+        for idx in chosen_seq_indices:
+            eg = int(exclusivity_group[int(idx)].item())
+            if eg >= 0:
+                used_groups.add(eg)
+
+        if used_groups:
+            candidate_indices = torch.where(valid_mask)[0].tolist()
+            for c in candidate_indices:
+                eg_c = int(exclusivity_group[c].item())
+                if eg_c >= 0 and eg_c in used_groups:
+                    valid_mask[c] = False
+                elif int(next_parent_idx[c].item()) == c:
+                    # Internal branch node (e.g. SELECT_TARGET): prune if all children are exhausted
+                    child_mask = parent_idx == c
+                    if child_mask.any():
+                        child_egs = exclusivity_group[child_mask].tolist()
+                        if all(eg >= 0 and eg in used_groups for eg in child_egs):
+                            valid_mask[c] = False
+
+        return valid_mask
 
     def evaluate_actions(self, batch, return_random_baseline=False):
         """
-        Evaluates an existing HeteroData batch (must contain y_sequence target actions).
-        Returns pi_log_prob_total, entropy_total, v_mean, v_variance
+        Evaluates a HeteroData batch containing teacher-forcing y_sequence target actions.
+        Uses the exact same _get_valid_step_mask tree traversal as get_action().
+        Returns:
+            pi_log_prob_total: [batch_size]
+            entropy_total: [batch_size]
+            v_mean: [batch_size]
+            v_variance: [batch_size]
+            v_preds: [batch_size, E]
+            correct_total: [batch_size]
+            steps_total: [batch_size]
+            [random_correct_total]: [batch_size] (if return_random_baseline=True)
         """
         z, x_dict = self.encoder(batch)
-        
-        # Critic values
-        v_preds = torch.stack([critic(z) for critic in self.ensembles], dim=-1) # [batch_size, 1, E]
-        v_mean = v_preds.mean(dim=-1).squeeze(1) # [batch_size]
-        v_variance = v_preds.var(dim=-1, unbiased=False).squeeze(1) # [batch_size]
-        
+
+        # Critic ensemble values
+        v_preds_raw = torch.stack([critic(z) for critic in self.ensembles], dim=-1)  # [B, 1, E]
+        v_preds = v_preds_raw.squeeze(1)  # [B, E]
+        v_mean = v_preds.mean(dim=-1)  # [B]
+        v_variance = v_preds.var(dim=-1, unbiased=False)  # [B]
+
         batch_size = z.size(0)
         pi_log_prob_total = torch.zeros(batch_size, device=z.device)
         entropy_total = torch.zeros(batch_size, device=z.device)
         correct_total = torch.zeros(batch_size, device=z.device)
         steps_total = torch.zeros(batch_size, device=z.device)
         random_correct_total = torch.zeros(batch_size, device=z.device)
-        
-        y_seq_concat = getattr(batch, 'y_sequence', None)
-        y_lens = getattr(batch, 'y_len', None)
-        contexts = getattr(batch, 'context', [""] * batch_size)
-        
+
+        y_seq_concat = getattr(batch, "y_sequence", None)
+        y_lens = getattr(batch, "y_len", None)
+
         if y_seq_concat is None or y_seq_concat.size(0) == 0:
-            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
-            
+            ret = [pi_log_prob_total, entropy_total, v_mean, v_variance, v_preds, correct_total, steps_total]
+            if return_random_baseline:
+                ret.append(random_correct_total)
+            return tuple(ret)
+
         e_actions_batched = self.actor_pointer.compute_action_embeddings(x_dict, batch)
         if e_actions_batched.size(0) == 0:
-            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
-            
-        action_batch_idx = batch['action'].batch if hasattr(batch['action'], 'batch') else torch.zeros(e_actions_batched.size(0), dtype=torch.long, device=z.device)
-        step_indices_concat = batch['action'].step_idx
-        action_x_concat = batch['action'].x
-        
+            ret = [pi_log_prob_total, entropy_total, v_mean, v_variance, v_preds, correct_total, steps_total]
+            if return_random_baseline:
+                ret.append(random_correct_total)
+            return tuple(ret)
+
+        action_batch_idx = (
+            batch["action"].batch
+            if hasattr(batch["action"], "batch") and batch["action"].batch is not None
+            else torch.zeros(e_actions_batched.size(0), dtype=torch.long, device=z.device)
+        )
+        parent_idx_concat = batch["action"].parent_idx
+        next_parent_idx_concat = batch["action"].next_parent_idx
+        exclusivity_group_concat = batch["action"].exclusivity_group
+
         y_offset = 0
         for b in range(batch_size):
-            y_len = y_lens[b].item() if y_lens is not None else (y_seq_concat.size(0) if y_seq_concat.dim() > 0 else 0)
+            y_len = (
+                int(y_lens[b].item())
+                if y_lens is not None
+                else (y_seq_concat.size(0) if y_seq_concat.dim() > 0 else 0)
+            )
             if y_len == 0:
                 continue
-                
+
             y_seq = y_seq_concat[y_offset : y_offset + y_len]
-            
-            mask_b = (action_batch_idx == b)
+            y_offset += y_len
+
+            mask_b = action_batch_idx == b
             e_actions = e_actions_batched[mask_b]
-            step_indices = step_indices_concat[mask_b]
-            action_x = action_x_concat[mask_b]
-            context = contexts[b] if isinstance(contexts, list) else contexts
-            
+            parent_idx = parent_idx_concat[mask_b]
+            next_parent_idx = next_parent_idx_concat[mask_b]
+            exclusivity_group = exclusivity_group_concat[mask_b]
+
+            chosen_seq_indices = []
             chosen_embeddings = []
-            
+
             for k in range(y_len):
-                target_idx = y_seq[k].item()
-                
-                if context == "MOVEMENT_BC":
-                    valid_mask = (step_indices == k)
-                else:
-                    target_type = action_x[target_idx, 6].item()
-                    if context == "WEAPON_INFERENCE" and (target_type == 1 or target_type == 3):
-                        valid_mask = (action_x[:, 6] == 1) | (action_x[:, 6] == 3)
-                    else:
-                        valid_mask = (action_x[:, 6] == target_type)
-                    
-                if not valid_mask.any():
+                target_idx = int(y_seq[k].item())
+                valid_mask = self._get_valid_step_mask(
+                    parent_idx, next_parent_idx, exclusivity_group, chosen_seq_indices
+                )
+
+                if not valid_mask.any() or target_idx < 0 or target_idx >= valid_mask.size(0):
                     break
-                    
                 if not valid_mask[target_idx]:
                     break
-                    
-                if len(chosen_embeddings) == 0:
-                    history_tensor = None
-                else:
-                    history_tensor = torch.stack(chosen_embeddings).unsqueeze(0)
-                    
-                s_k = self.actor_pointer.decode_sequence(z[b:b+1], history_tensor)
-                
+
+                history_tensor = (
+                    None
+                    if len(chosen_embeddings) == 0
+                    else torch.stack(chosen_embeddings).unsqueeze(0)
+                )
+                s_k = self.actor_pointer.decode_sequence(z[b : b + 1], history_tensor)
+
                 e_tier = e_actions[valid_mask]
-                
                 num_candidates = e_tier.size(0)
                 if num_candidates > 0:
                     random_correct_total[b] += 1.0 / num_candidates
-                    
+
                 act_batch_idx_b = torch.full((num_candidates,), b, dtype=torch.long, device=z.device)
                 logits = self.actor_pointer.score_actions(s_k, e_tier, act_batch_idx_b, x_dict, batch)
+                log_probs = torch.log_softmax(logits, dim=-1)
                 probs = torch.softmax(logits, dim=-1)
-                
+
                 global_indices = torch.where(valid_mask)[0]
                 relative_target = (global_indices == target_idx).nonzero(as_tuple=True)[0]
-                
                 if relative_target.numel() == 0:
                     break
-                    
-                pi_prob = probs[relative_target]
-                pi_log_prob_total[b] += torch.log(pi_prob + 1e-10).sum()
-                
-                entropy = -(probs * torch.log(probs + 1e-10)).sum()
-                entropy_total[b] += entropy
-                
-                if logits.argmax() == relative_target:
+
+                rel_idx = int(relative_target.item())
+                pi_log_prob_total[b] += log_probs[rel_idx]
+                entropy_total[b] += -(probs * log_probs).sum()
+
+                if int(logits.argmax().item()) == rel_idx:
                     correct_total[b] += 1
                 steps_total[b] += 1
-                
-                chosen_embeddings.append(e_actions[target_idx])
-                
-            y_offset += y_len
-            
-        if return_random_baseline:
-            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total, random_correct_total
-        else:
-            return pi_log_prob_total, entropy_total, v_mean, v_variance, correct_total, steps_total
 
-    def _decode_and_sample_step(self, z, history_embeddings, e_actions, candidates, batch_idx, hetero_data, x_dict, deterministic=False):
+                chosen_seq_indices.append(target_idx)
+                chosen_embeddings.append(e_actions[target_idx])
+
+        ret = [pi_log_prob_total, entropy_total, v_mean, v_variance, v_preds, correct_total, steps_total]
+        if return_random_baseline:
+            ret.append(random_correct_total)
+        return tuple(ret)
+
+    def _decode_and_sample_step(
+        self, z, history_embeddings, e_actions, valid_mask, batch_idx, hetero_data, x_dict, deterministic=False
+    ):
         """
         Decodes the sequence using the history of chosen action embeddings,
-        scores candidates (either a boolean mask or a list of option dicts),
-        and samples the selected action.
+        scores the valid candidate mask, and samples the selected action node index.
         """
-        # 1. Decode sequence based on history
-        if not history_embeddings:
-            history_tensor = None
-        else:
-            history_tensor = torch.stack(history_embeddings, dim=1) # [1, len, hidden_dim]
-            
+        if not valid_mask.any():
+            return None, 0.0, torch.empty((0,), device=z.device)
+
+        history_tensor = (
+            None
+            if not history_embeddings
+            else torch.stack(history_embeddings, dim=1)  # [1, len, hidden_dim]
+        )
         s_k = self.actor_pointer.decode_sequence(z, history_tensor)
-        
-        # 2. Parse candidate indices & check for empty options
-        is_tensor = isinstance(candidates, torch.Tensor)
-        if is_tensor:
-            if not candidates.any():
-                return None, 0.0, torch.empty((0,))
-            indices = torch.where(candidates)[0]
-        else:
-            if not candidates:
-                return None, 0.0, torch.empty((0,))
-            indices = torch.tensor([opt.get("node_idx", -1) for opt in candidates], dtype=torch.long, device=z.device)
-            
-        # 3. Score candidates
+
+        indices = torch.where(valid_mask)[0]
         e_candidates = e_actions[indices]
         cand_batch_idx = batch_idx[indices] if batch_idx is not None else None
+
         logits = self.actor_pointer.score_actions(s_k, e_candidates, cand_batch_idx, x_dict, hetero_data)
+        log_probs = torch.log_softmax(logits, dim=-1)
         probs = torch.softmax(logits, dim=-1)
-        
-        # 4. Sample selected index relative to candidate list
+
         if deterministic:
-            idx = torch.argmax(probs).item()
-            log_prob = torch.log(probs[idx] + 1e-8).item()
+            idx = int(torch.argmax(logits).item())
+            log_prob = float(log_probs[idx].item())
         else:
-            dist = torch.distributions.Categorical(probs)
-            idx = dist.sample().item()
-            log_prob = dist.log_prob(torch.tensor(idx, device=probs.device)).item()
-            
-        # 5. Return selected target mapped to original candidate format
-        if is_tensor:
-            selected_global_idx = indices[idx].item()
-            return selected_global_idx, log_prob, probs
-        else:
-            return candidates[idx], log_prob, probs
+            dist = torch.distributions.Categorical(logits=logits)
+            sampled = dist.sample()
+            idx = int(sampled.item())
+            log_prob = float(log_probs[idx].item())
 
-    def _get_root_choices(self, phase_type, mask_tree, hetero_data):
-        """
-        Parses the phase's mask tree into initial DecisionNode choices.
-        """
-        if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT
-            active_entity_idx = mask_tree.get("active_entity") if mask_tree else None
-            if active_entity_idx is None:
-                active_entity_idx = -1
-            step_indices = hetero_data['action'].step_idx
-            source_unit_indices = hetero_data['action'].source_unit_idx
-            target_hex_indices = hetero_data['action'].target_hex_idx
-            path_indices = hetero_data['action'].path_idx
-            
-            # Find Step 0 hex nodes
-            step0_mask = (step_indices == 0)
-            if active_entity_idx != -1:
-                step0_mask = step0_mask & (source_unit_indices == active_entity_idx)
-            
-            if not step0_mask.any():
-                return []
-                
-            global_indices = torch.where(step0_mask)[0].tolist()
-            choices = []
-            for node_idx in global_indices:
-                selected_hex = target_hex_indices[node_idx].item()
-                parent_src_idx = source_unit_indices[node_idx].item()
-                # Children are Step 1 path nodes for this hex and source unit
-                step1_mask = (step_indices == 1) & (source_unit_indices == parent_src_idx) & (target_hex_indices == selected_hex)
-                child_indices = torch.where(step1_mask)[0].tolist()
-                
-                children = []
-                for c_node_idx in child_indices:
-                    raw_path_idx = int(path_indices[c_node_idx].item())
-                    actual_path_dict = mask_tree["valid_paths"][raw_path_idx] if mask_tree and "valid_paths" in mask_tree and raw_path_idx < len(mask_tree["valid_paths"]) else {"path_index": raw_path_idx}
-                    children.append({
-                        "node_idx": c_node_idx,
-                        "type": "PATH",
-                        "data": actual_path_dict,
-                        "children": []
-                    })
-                
-                choices.append({
-                    "node_idx": node_idx,
-                    "type": "HEX",
-                    "data": {"dest_index": selected_hex},
-                    "children": children
-                })
-            return choices
-            
-        elif phase_type == 1: # WEAPON
-            valid_twists = mask_tree.get("valid_twists", [])
-            
-            # Find END node index dynamically
-            end_node_idx = -1
-            if valid_twists:
-                src_idx = valid_twists[0].get("source_entity_index", -1)
-                action_x = hetero_data['action'].x
-                source_unit_indices = hetero_data['action'].source_unit_idx
-                end_mask = (action_x[:, 6] == 3.0) & (source_unit_indices == src_idx)
-                if end_mask.any():
-                    end_node_idx = torch.where(end_mask)[0][0].item()
+        selected_global_idx = int(indices[idx].item())
+        return selected_global_idx, log_prob, probs
 
-            choices = []
-            for twist in valid_twists:
-                children = []
-                if end_node_idx != -1:
-                    children.append({
-                        "node_idx": end_node_idx,
-                        "type": "END",
-                        "data": None,
-                        "children": []
-                    })
-                
-                valid_targets = twist.get("valid_targets", [])
-                for target in valid_targets:
-                    target_children = []
-                    valid_weapons = target.get("valid_weapons", [])
-                    for weapon in valid_weapons:
-                        target_children.append({
-                            "node_idx": weapon.get("node_idx", -1),
-                            "type": "WEAPON",
-                            "data": weapon,
-                            "children": []
-                        })
-                    
-                    children.append({
-                        "node_idx": target.get("node_idx", -1),
-                        "type": "TARGET",
-                        "data": target,
-                        "children": target_children
-                    })
-                
-                choices.append({
-                    "node_idx": twist.get("node_idx", -1),
-                    "type": "TWIST",
-                    "data": twist,
-                    "children": children
-                })
-            return choices
-            
-        elif phase_type == 2: # PHYSICAL
-            valid_targets = mask_tree.get("valid_targets", [])
-            
-            active_entity_idx = -1
-            if valid_targets:
-                active_entity_idx = valid_targets[0].get("source_entity_index", -1)
-                
-            # Find END node index dynamically
-            end_node_idx = -1
-            if active_entity_idx != -1:
-                action_x = hetero_data['action'].x
-                source_unit_indices = hetero_data['action'].source_unit_idx
-                end_mask = (action_x[:, 6] == 3.0) & (source_unit_indices == active_entity_idx)
-                if end_mask.any():
-                    end_node_idx = torch.where(end_mask)[0][0].item()
-                    
-            choices = []
-            if end_node_idx != -1:
-                choices.append({
-                    "node_idx": end_node_idx,
-                    "type": "END",
-                    "data": None,
-                    "children": []
-                })
-            for target in valid_targets:
-                children = []
-                for att in target.get("valid_attacks", []):
-                    children.append({
-                        "node_idx": att.get("node_idx", -1),
-                        "type": "ATTACK",
-                        "data": att,
-                        "children": []
-                    })
-                choices.append({
-                    "node_idx": target.get("node_idx", -1),
-                    "type": "TARGET",
-                    "data": target,
-                    "children": children
-                })
-            return choices
-            
-        return []
+    def _sample_agnostic_trajectory(
+        self, z, e_actions, batch_idx, hetero_data, x_dict, deterministic=False
+    ):
+        """
+        Phase-agnostically traverses the Unified Hierarchical Action Tree using _get_valid_step_mask.
+        """
+        action_store = hetero_data["action"]
+        parent_idx = action_store.parent_idx
+        next_parent_idx = action_store.next_parent_idx
+        exclusivity_group = action_store.exclusivity_group
 
-    def _get_dynamic_children(self, node, fired_weapons, mask_tree, hetero_data):
-        """
-        Computes dynamic, state-dependent children (specifically for WEAPON phase).
-        """
-        node_type = node["type"]
-        
-        twist_data = node["data"] if node_type == "TWIST" else mask_tree.get("_active_twist_data")
-        active_entity_idx = twist_data.get("source_entity_index", -1) if twist_data else -1
-        
-        # Find END node index dynamically
-        end_node_idx = -1
-        if active_entity_idx != -1:
-            action_x = hetero_data['action'].x
-            source_unit_indices = hetero_data['action'].source_unit_idx
-            end_mask = (action_x[:, 6] == 3.0) & (source_unit_indices == active_entity_idx)
-            if end_mask.any():
-                end_node_idx = torch.where(end_mask)[0][0].item()
-        
-        if node_type == "TWIST" or node_type == "WEAPON":
-            choices = []
-            if end_node_idx != -1:
-                choices.append({
-                    "node_idx": end_node_idx,
-                    "type": "END",
-                    "data": None,
-                    "children": []
-                })
-                
-            if twist_data:
-                for tm in twist_data.get("valid_targets", []):
-                    unfired = [wm for wm in tm.get("valid_weapons", []) if wm.get("weapon_id", -1) not in fired_weapons]
-                    if unfired:
-                        choices.append({
-                            "node_idx": tm.get("node_idx", -1),
-                            "type": "TARGET",
-                            "data": tm,
-                            "unfired_weapons": unfired,
-                            "children": []
-                        })
-            return choices
-            
-        elif node_type == "TARGET":
-            choices = []
-            unfired = node.get("unfired_weapons", [])
-            for wm in unfired:
-                choices.append({
-                    "node_idx": wm.get("node_idx", -1),
-                    "type": "WEAPON",
-                    "data": wm,
-                    "children": []
-                })
-            return choices
-            
-        return []
-
-    def _sample_agnostic_trajectory(self, z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict, deterministic=False):
-        """
-        Agnostically traverses the decision tree, scores and samples decision nodes,
-        and aggregates the selected nodes into a trajectory.
-        """
-        trajectory = []
+        chosen_seq_indices = []
         history_embeddings = []
         total_log_prob = 0.0
-        fired_weapons = set()
-        
-        # 1. Retrieve initial choices
-        current_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
-        if not current_choices:
-            return [], 0.0
-            
-        while current_choices:
-            # Score and sample step agnostically
-            selected_node, log_prob, _ = self._decode_and_sample_step(
-                z, history_embeddings, e_actions, current_choices, batch_idx, hetero_data, x_dict, deterministic
-            )
-            if not selected_node:
-                break
-                
-            trajectory.append(selected_node)
-            total_log_prob += log_prob
-            history_embeddings.append(e_actions[selected_node["node_idx"]].unsqueeze(0))
-            
-            # Dynamic state tracking
-            if selected_node["type"] == "TWIST":
-                mask_tree["_active_twist_data"] = selected_node["data"]
-            elif selected_node["type"] == "WEAPON":
-                w_id = selected_node["data"].get("weapon_id", -1)
-                fired_weapons.add(w_id)
-            elif selected_node["type"] == "END":
-                break
-                
-            # 2. Retrieve children for next step
-            if phase_type == 1:
-                current_choices = self._get_dynamic_children(selected_node, fired_weapons, mask_tree, hetero_data)
-            else:
-                current_choices = selected_node.get("children", [])
-                
-        mask_tree.pop("_active_twist_data", None)
-        return trajectory, total_log_prob
 
-    def _beam_search_agnostic(self, z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict, beam_width=3):
+        max_steps = 32
+        for _ in range(max_steps):
+            valid_mask = self._get_valid_step_mask(
+                parent_idx, next_parent_idx, exclusivity_group, chosen_seq_indices
+            )
+            if not valid_mask.any():
+                break
+
+            selected_idx, log_prob, _ = self._decode_and_sample_step(
+                z,
+                history_embeddings,
+                e_actions,
+                valid_mask,
+                batch_idx,
+                hetero_data,
+                x_dict,
+                deterministic=deterministic,
+            )
+            if selected_idx is None:
+                break
+
+            chosen_seq_indices.append(selected_idx)
+            total_log_prob += log_prob
+            history_embeddings.append(e_actions[selected_idx].unsqueeze(0))
+
+        return chosen_seq_indices, total_log_prob
+
+    def _beam_search_agnostic(
+        self, z, e_actions, batch_idx, hetero_data, x_dict, beam_width=3
+    ):
         """
-        Agnostic step-by-step beam search tree search over the generic DecisionNode tree.
+        Phase-agnostic beam search over the Unified Hierarchical Action Tree using _get_valid_step_mask.
         """
-        root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
-        if not root_choices:
+        action_store = hetero_data["action"]
+        parent_idx = action_store.parent_idx
+        next_parent_idx = action_store.next_parent_idx
+        exclusivity_group = action_store.exclusivity_group
+
+        root_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, [])
+        if not root_mask.any():
             return [], 0.0
-            
+
         s_0 = self.actor_pointer.decode_sequence(z, None)
-        root_indices = [c["node_idx"] for c in root_choices]
+        root_indices = torch.where(root_mask)[0]
         e_cands = e_actions[root_indices]
         cand_batch_idx = batch_idx[root_indices] if batch_idx is not None else None
         logits_0 = self.actor_pointer.score_actions(s_0, e_cands, cand_batch_idx, x_dict, hetero_data)
         log_probs_0 = torch.log_softmax(logits_0, dim=-1)
-        
+
         beams = []
-        for i, choice in enumerate(root_choices):
-            lp = log_probs_0[i].item()
+        for i, node_idx_t in enumerate(root_indices):
+            node_idx = int(node_idx_t.item())
+            lp = float(log_probs_0[i].item())
             beams.append({
-                "trajectory": [choice],
-                "history": [e_actions[choice["node_idx"]].unsqueeze(0)],
+                "trajectory": [node_idx],
+                "history": [e_actions[node_idx].unsqueeze(0)],
                 "log_prob_sum": lp,
-                "fired_weapons": set(),
-                "done": False
+                "done": False,
             })
-            
+
         beams = sorted(beams, key=lambda x: x["log_prob_sum"], reverse=True)[:beam_width]
-        
-        while True:
+
+        max_steps = 32
+        for _ in range(max_steps):
             if all(b["done"] for b in beams):
                 break
             new_beams = []
@@ -483,296 +352,431 @@ class MegaMekAgent(nn.Module):
                 if b["done"]:
                     new_beams.append(b)
                     continue
-                    
-                last_node = b["trajectory"][-1]
-                
-                # Check for Twist active state
-                if last_node["type"] == "TWIST":
-                    mask_tree["_active_twist_data"] = last_node["data"]
-                elif last_node["type"] == "END":
+
+                valid_mask = self._get_valid_step_mask(
+                    parent_idx, next_parent_idx, exclusivity_group, b["trajectory"]
+                )
+                if not valid_mask.any():
                     b["done"] = True
                     new_beams.append(b)
                     continue
-                    
-                # Get children
-                if phase_type == 1:
-                    children = self._get_dynamic_children(last_node, b["fired_weapons"], mask_tree, hetero_data)
-                else:
-                    children = last_node.get("children", [])
-                    
-                if not children:
-                    b["done"] = True
-                    new_beams.append(b)
-                    continue
-                    
-                # Score children
+
                 s_k = self.actor_pointer.decode_sequence(z, torch.stack(b["history"], dim=1))
-                child_indices = [c["node_idx"] for c in children]
+                child_indices = torch.where(valid_mask)[0]
                 e_cands = e_actions[child_indices]
                 cand_batch_idx = batch_idx[child_indices] if batch_idx is not None else None
                 logits_k = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx, x_dict, hetero_data)
                 log_probs_k = torch.log_softmax(logits_k, dim=-1)
-                
-                for i, child in enumerate(children):
-                    lp = log_probs_k[i].item()
-                    new_fired = set(b["fired_weapons"])
-                    if child["type"] == "WEAPON":
-                        w_id = child["data"].get("weapon_id", -1)
-                        new_fired.add(w_id)
-                        
-                    new_b = {
-                        "trajectory": b["trajectory"] + [child],
-                        "history": b["history"] + [e_actions[child["node_idx"]].unsqueeze(0)],
+
+                for i, child_idx_t in enumerate(child_indices):
+                    child_idx = int(child_idx_t.item())
+                    lp = float(log_probs_k[i].item())
+                    is_terminal = int(next_parent_idx[child_idx].item()) == -2
+                    new_beams.append({
+                        "trajectory": b["trajectory"] + [child_idx],
+                        "history": b["history"] + [e_actions[child_idx].unsqueeze(0)],
                         "log_prob_sum": b["log_prob_sum"] + lp,
-                        "fired_weapons": new_fired,
-                        "done": False
-                    }
-                    if child["type"] == "END":
-                        new_b["done"] = True
-                    new_beams.append(new_b)
-                    
+                        "done": is_terminal,
+                    })
+
             beams = sorted(new_beams, key=lambda x: x["log_prob_sum"], reverse=True)[:beam_width]
-            
-        mask_tree.pop("_active_twist_data", None)
+
         best_beam = beams[0] if beams else None
-        trajectory = best_beam["trajectory"] if best_beam else []
-        log_prob = best_beam["log_prob_sum"] if best_beam else 0.0
-        return trajectory, log_prob
+        if not best_beam:
+            return [], 0.0
+        return best_beam["trajectory"], best_beam["log_prob_sum"]
 
-    def _decode_movement_action(self, trajectory):
+    @staticmethod
+    def _decode_trajectory(hetero_data, chosen_seq_indices):
         """
-        Decodes selected MOVEMENT trajectory [HEX, PATH] into megamek action response.
+        Decodes a sequence of chosen action node indices into the MegaMek RLActionResponse dict.
         """
-        if len(trajectory) < 2:
-            return {"selected_path_index": -1}
-        path_node = trajectory[1]
-        path_idx = path_node["data"].get("path_index", -1)
-        return {"selected_path_index": path_idx}
+        phase_type = int(round(float(hetero_data.global_context[0, 2].item())))
+        if not chosen_seq_indices or hetero_data["action"].x.size(0) == 0:
+            if phase_type == 1:
+                return {"selected_entity_id": -1, "twist": 0, "attacks": []}
+            if phase_type == 2:
+                return {"selected_entity_id": -1, "attack": None}
+            return {"selected_entity_id": -1, "selected_path_index": -1}
 
-    def _decode_weapon_action(self, trajectory):
-        """
-        Decodes selected WEAPON trajectory [TWIST, TARGET, WEAPON, TARGET, WEAPON, ..., END] into megamek action response.
-        """
-        response = {"twist": 0, "attacks": []}
-        if not trajectory:
-            return response
-            
-        twist_node = trajectory[0]
-        response["twist"] = twist_node["data"].get("twist", 0)
-        response["selected_entity_id"] = twist_node["data"].get("source_entity_index", -1)
-        
-        # Parse attacks
-        current_target_id = -1
-        for node in trajectory[1:]:
-            if node["type"] == "TARGET":
-                current_target_id = node["data"].get("target_entity_index", -1)
-            elif node["type"] == "WEAPON":
-                w_id = node["data"].get("weapon_id", -1)
-                response["attacks"].append({
-                    "target_id": current_target_id,
-                    "weapon_id": w_id
-                })
-        return response
+        action_store = hetero_data["action"]
+        action_types = action_store.action_type_id
+        source_units = action_store.source_unit_idx
+        raw_meta = action_store.raw_meta
 
-    def _decode_physical_action(self, trajectory):
-        """
-        Decodes selected PHYSICAL trajectory [TARGET, ATTACK] into megamek action response.
-        """
-        response = {"attack": None}
-        if len(trajectory) < 2:
-            return response
-            
-        target_node = trajectory[0]
-        attack_node = trajectory[1]
-        target_entity = target_node["data"].get("target_entity_index", -1)
-        action_type = attack_node["data"].get("action_type", -1)
-        
-        response["selected_entity_id"] = target_node["data"].get("source_entity_index", -1)
-        response["attack"] = {
-            "target_id": target_entity,
-            "action_type": action_type
-        }
-        return response
+        selected_entity_id = int(source_units[chosen_seq_indices[0]].item())
 
-    def score_partial_weapon_trajectory(self, state_graph, mask_tree, hetero_data, partial_action):
+        if phase_type == 0:  # MOVEMENT or DEPLOYMENT
+            selected_path_index = -1
+            for idx in chosen_seq_indices:
+                if int(action_types[idx].item()) == StateParser.ACTION_MOVE_PATH:
+                    selected_path_index = int(raw_meta[idx, 0].item())
+                    break
+            return {
+                "selected_entity_id": selected_entity_id,
+                "selected_path_index": selected_path_index,
+            }
+
+        if phase_type == 1:  # WEAPON
+            twist = 0
+            attacks = []
+            for idx in chosen_seq_indices:
+                act_type = int(action_types[idx].item())
+                if act_type == StateParser.ACTION_TORSO_TWIST:
+                    twist = int(raw_meta[idx, 1].item())
+                elif act_type == StateParser.ACTION_FIRE_WEAPON:
+                    attacks.append({
+                        "target_id": int(raw_meta[idx, 2].item()),
+                        "weapon_id": int(raw_meta[idx, 3].item()),
+                    })
+            return {
+                "selected_entity_id": selected_entity_id,
+                "twist": twist,
+                "attacks": attacks,
+            }
+
+        if phase_type == 2:  # PHYSICAL
+            attack = None
+            for idx in chosen_seq_indices:
+                act_type = int(action_types[idx].item())
+                if act_type == StateParser.ACTION_PHYSICAL_ATTACK:
+                    attack = {
+                        "target_id": int(raw_meta[idx, 2].item()),
+                        "action_type": int(raw_meta[idx, 3].item()),
+                    }
+                    break
+            return {
+                "selected_entity_id": selected_entity_id,
+                "attack": attack,
+            }
+
+        return {"selected_entity_id": selected_entity_id, "selected_path_index": -1}
+
+    def compute_ui_action_probabilities(self, hetero_data, mask_tree):
         """
-        Dynamically scores the *next* possible steps given a partial weapon action (e.g. while building an attack).
-        partial_action: dict e.g. {"twist": 0, "attacks": [{"target_id": 3, "weapon_id": 7}]}
-        Returns a dictionary mapping node_idx to probability for the *next* valid choices.
+        Computes exact hierarchical probabilities over the Unified Action Tree
+        and annotates `mask_tree` in-place for `interactive_debugger.py`.
+        Returns a list of path probabilities (for Movement) or a dict of node probabilities.
         """
+        if (
+            hetero_data is None
+            or "action" not in hetero_data.node_types
+            or hetero_data["action"].x is None
+            or hetero_data["action"].x.size(0) == 0
+        ):
+            return []
+
         with torch.no_grad():
             z, x_dict = self.encoder(hetero_data)
             e_actions = self.actor_pointer.compute_action_embeddings(x_dict, hetero_data)
-            batch_idx = hetero_data['action'].batch if hasattr(hetero_data['action'], 'batch') and getattr(hetero_data['action'], 'batch') is not None else None
-            
-            fired_weapons = set()
-            trajectory_indices = []
-            
-            # 1. Start with root choices (Twists)
-            current_choices = self._get_root_choices(1, mask_tree, hetero_data)
-            
-            if not current_choices:
-                return {}
-                
-            # If no twist is selected yet, score roots
-            if "twist" not in partial_action or partial_action["twist"] is None:
-                s_0 = self.actor_pointer.decode_sequence(z, None)
-                e_cands = e_actions[[c["node_idx"] for c in current_choices]]
-                logits = self.actor_pointer.score_actions(s_0, e_cands, None, x_dict, hetero_data)
+            action_store = hetero_data["action"]
+            parent_idx = action_store.parent_idx
+            next_parent_idx = action_store.next_parent_idx
+            exclusivity_group = action_store.exclusivity_group
+            action_types = action_store.action_type_id
+            source_units = action_store.source_unit_idx
+            raw_meta = action_store.raw_meta
+            phase_type = int(round(float(hetero_data.global_context[0, 2].item())))
+
+            def score_step(seq_indices):
+                vmask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, seq_indices)
+                if not vmask.any():
+                    return {}, []
+                hist = None if not seq_indices else torch.stack([e_actions[i] for i in seq_indices]).unsqueeze(0)
+                s_k = self.actor_pointer.decode_sequence(z, hist)
+                cands = torch.where(vmask)[0]
+                logits = self.actor_pointer.score_actions(s_k, e_actions[cands], None, x_dict, hetero_data)
                 probs = torch.softmax(logits, dim=-1)
-                return {c["node_idx"]: p.item() for c, p in zip(current_choices, probs)}
-                
-            # Follow twist
-            twist_val = partial_action["twist"]
-            selected_node = next((c for c in current_choices if c["data"].get("twist", -1) == twist_val), None)
-            
-            if not selected_node:
+                return {int(idx.item()): float(p.item()) for idx, p in zip(cands, probs)}, [int(i.item()) for i in cands]
+
+            # Step 0: SELECT_UNIT
+            unit_probs, unit_nodes = score_step([])
+            unit_node_by_entity = {int(source_units[u].item()): u for u in unit_nodes}
+
+            if phase_type == 0:  # MOVEMENT
+                valid_paths = mask_tree.get("valid_paths", []) if isinstance(mask_tree, dict) else []
+                path_probs = [0.0] * len(valid_paths)
+                for u_node in unit_nodes:
+                    u_prob = unit_probs.get(u_node, 0.0)
+                    hex_probs, hex_nodes = score_step([u_node])
+                    for h_node in hex_nodes:
+                        h_prob = hex_probs.get(h_node, 0.0)
+                        p_probs, p_nodes = score_step([u_node, h_node])
+                        for p_node in p_nodes:
+                            p_prob = p_probs.get(p_node, 0.0)
+                            p_idx = int(raw_meta[p_node, 0].item())
+                            joint_prob = u_prob * h_prob * p_prob
+                            if 0 <= p_idx < len(path_probs):
+                                path_probs[p_idx] = joint_prob
+                                if isinstance(valid_paths[p_idx], dict):
+                                    valid_paths[p_idx]["unit_prob"] = u_prob
+                                    valid_paths[p_idx]["hex_prob"] = h_prob
+                                    valid_paths[p_idx]["facing_prob"] = p_prob
+                                    valid_paths[p_idx]["prob"] = joint_prob
+                return path_probs
+
+            elif phase_type == 1:  # WEAPON
+                node_prob_map = {str(k): v for k, v in unit_probs.items()}
+                valid_twists = mask_tree.get("valid_twists", []) if isinstance(mask_tree, dict) else []
+                for u_node in unit_nodes:
+                    u_prob = unit_probs.get(u_node, 0.0)
+                    u_ent = int(source_units[u_node].item())
+                    t_probs, t_nodes = score_step([u_node])
+                    for t_node in t_nodes:
+                        t_prob = t_probs.get(t_node, 0.0)
+                        t_val = int(raw_meta[t_node, 1].item())
+                        node_prob_map[str(t_node)] = u_prob * t_prob
+
+                        # Match twist dict in mask_tree
+                        twist_dict = next(
+                            (
+                                tw
+                                for tw in valid_twists
+                                if tw.get("source_entity_index", u_ent) == u_ent and int(tw.get("twist", 0)) == t_val
+                            ),
+                            None,
+                        )
+                        if twist_dict is not None:
+                            twist_dict["node_idx"] = t_node
+                            twist_dict["unit_prob"] = u_prob
+                            twist_dict["prob"] = u_prob * t_prob
+                            twist_dict["children"] = []
+
+                        step2_probs, step2_nodes = score_step([u_node, t_node])
+                        for s2_node in step2_nodes:
+                            s2_prob = step2_probs.get(s2_node, 0.0)
+                            node_prob_map[str(s2_node)] = s2_prob
+                            act_t = int(action_types[s2_node].item())
+                            if act_t == StateParser.ACTION_END_DECLARATION:
+                                if twist_dict is not None:
+                                    twist_dict["end_prob"] = s2_prob
+                                    twist_dict["children"].append({"type": "END", "node_idx": s2_node, "prob": s2_prob})
+                            elif act_t == StateParser.ACTION_SELECT_TARGET:
+                                tgt_ent = int(raw_meta[s2_node, 2].item())
+                                tgt_dict = None
+                                if twist_dict is not None:
+                                    tgt_dict = next(
+                                        (
+                                            tg
+                                            for tg in twist_dict.get("valid_targets", [])
+                                            if int(tg.get("target_entity_index", -1)) == tgt_ent
+                                        ),
+                                        None,
+                                    )
+                                if tgt_dict is not None:
+                                    tgt_dict["node_idx"] = s2_node
+                                    tgt_dict["prob"] = s2_prob
+
+                                w_probs, w_nodes = score_step([u_node, t_node, s2_node])
+                                for w_node in w_nodes:
+                                    w_prob = w_probs.get(w_node, 0.0)
+                                    node_prob_map[str(w_node)] = w_prob
+                                    w_id = int(raw_meta[w_node, 3].item())
+                                    if tgt_dict is not None:
+                                        w_dict = next(
+                                            (
+                                                wp
+                                                for wp in tgt_dict.get("valid_weapons", [])
+                                                if int(wp.get("weapon_id", -1)) == w_id
+                                            ),
+                                            None,
+                                        )
+                                        if w_dict is not None:
+                                            w_dict["node_idx"] = w_node
+                                            w_dict["prob"] = w_prob
+                return node_prob_map
+
+            elif phase_type == 2:  # PHYSICAL
+                node_prob_map = {str(k): v for k, v in unit_probs.items()}
+                valid_targets = mask_tree.get("valid_targets", []) if isinstance(mask_tree, dict) else []
+                for u_node in unit_nodes:
+                    u_prob = unit_probs.get(u_node, 0.0)
+                    u_ent = int(source_units[u_node].item())
+                    s1_probs, s1_nodes = score_step([u_node])
+                    for s1_node in s1_nodes:
+                        s1_prob = s1_probs.get(s1_node, 0.0)
+                        node_prob_map[str(s1_node)] = u_prob * s1_prob
+                        act_t = int(action_types[s1_node].item())
+                        if act_t == StateParser.ACTION_SELECT_TARGET:
+                            tgt_ent = int(raw_meta[s1_node, 2].item())
+                            tgt_dict = next(
+                                (
+                                    tg
+                                    for tg in valid_targets
+                                    if tg.get("source_entity_index", u_ent) == u_ent
+                                    and int(tg.get("target_entity_index", -1)) == tgt_ent
+                                ),
+                                None,
+                            )
+                            if tgt_dict is not None:
+                                tgt_dict["node_idx"] = s1_node
+                                tgt_dict["prob"] = u_prob * s1_prob
+                            p_probs, p_nodes = score_step([u_node, s1_node])
+                            for p_node in p_nodes:
+                                p_prob = p_probs.get(p_node, 0.0)
+                                node_prob_map[str(p_node)] = p_prob
+                                p_type = int(raw_meta[p_node, 3].item())
+                                if tgt_dict is not None:
+                                    att_dict = next(
+                                        (
+                                            at
+                                            for at in tgt_dict.get("valid_attacks", [])
+                                            if int(at.get("action_type", -1)) == p_type
+                                        ),
+                                        None,
+                                    )
+                                    if att_dict is not None:
+                                        att_dict["node_idx"] = p_node
+                                        att_dict["prob"] = p_prob
+                return node_prob_map
+
+            return []
+
+    def score_partial_weapon_trajectory(self, state_graph, mask_tree, hetero_data, partial_action):
+        """
+        Scores the next valid choices in the Unified Action Tree given a partial weapon action dict.
+        Also computes conditional probabilities for the FIRE_WEAPON children of each valid SELECT_TARGET.
+        """
+        target_Graph = state_graph if hasattr(state_graph, "node_types") else hetero_data
+        with torch.no_grad():
+            z, x_dict = self.encoder(target_Graph)
+            e_actions = self.actor_pointer.compute_action_embeddings(x_dict, target_Graph)
+            action_store = target_Graph["action"]
+            parent_idx = action_store.parent_idx
+            next_parent_idx = action_store.next_parent_idx
+            exclusivity_group = action_store.exclusivity_group
+            action_types = action_store.action_type_id
+            source_units = action_store.source_unit_idx
+            raw_meta = action_store.raw_meta
+
+            chosen_seq = []
+            valid_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, chosen_seq)
+            if not valid_mask.any():
                 return {}
-                
-            trajectory_indices.append(selected_node["node_idx"])
-            mask_tree["_active_twist_data"] = selected_node["data"]
-            current_choices = self._get_dynamic_children(selected_node, fired_weapons, mask_tree, hetero_data)
-            
-            # 2. Follow attacks
-            for attack in partial_action.get("attacks", []):
-                target_id = attack.get("target_id", -1)
-                weapon_id = attack.get("weapon_id", -1)
-                
-                # Match target
-                target_node = next((c for c in current_choices if c["type"] == "TARGET" and c["data"].get("target_entity_index", -1) == target_id), None)
-                if not target_node:
-                    mask_tree.pop("_active_twist_data", None)
-                    return {}
-                    
-                trajectory_indices.append(target_node["node_idx"])
-                current_choices = self._get_dynamic_children(target_node, fired_weapons, mask_tree, hetero_data)
-                
-                # Match weapon
-                weapon_node = next((c for c in current_choices if c["type"] == "WEAPON" and c["data"].get("weapon_id", -1) == weapon_id), None)
-                if not weapon_node:
-                    mask_tree.pop("_active_twist_data", None)
-                    return {}
-                    
-                trajectory_indices.append(weapon_node["node_idx"])
-                fired_weapons.add(weapon_id)
-                current_choices = self._get_dynamic_children(weapon_node, fired_weapons, mask_tree, hetero_data)
-                
-            mask_tree.pop("_active_twist_data", None)
-            
-            # 3. Score the next step using the full history
-            if not current_choices:
+
+            # 1. Match SELECT_UNIT
+            req_unit = partial_action.get("selected_entity_id", partial_action.get("selected_entity_index"))
+            root_cands = torch.where(valid_mask)[0].tolist()
+            unit_node = None
+            if req_unit is not None:
+                unit_node = next((i for i in root_cands if int(source_units[i].item()) == int(req_unit)), None)
+            if unit_node is None and root_cands:
+                unit_node = root_cands[0]
+            if unit_node is None:
                 return {}
-                
-            history_embeddings = torch.stack([e_actions[idx] for idx in trajectory_indices]).unsqueeze(0)
+            chosen_seq.append(unit_node)
+
+            # 2. Match TORSO_TWIST if provided
+            if "twist" in partial_action and partial_action["twist"] is not None:
+                valid_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, chosen_seq)
+                twist_cands = torch.where(valid_mask)[0].tolist()
+                twist_val = int(partial_action["twist"])
+                twist_node = next(
+                    (
+                        i
+                        for i in twist_cands
+                        if int(action_types[i].item()) == StateParser.ACTION_TORSO_TWIST
+                        and int(raw_meta[i, 1].item()) == twist_val
+                    ),
+                    None,
+                )
+                if twist_node is None:
+                    return {}
+                chosen_seq.append(twist_node)
+
+                for att in partial_action.get("attacks", []):
+                    t_id = int(att.get("target_id", -1))
+                    w_id = int(att.get("weapon_id", -1))
+                    valid_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, chosen_seq)
+                    t_cands = torch.where(valid_mask)[0].tolist()
+                    t_node = next(
+                        (
+                            i
+                            for i in t_cands
+                            if int(action_types[i].item()) == StateParser.ACTION_SELECT_TARGET
+                            and int(raw_meta[i, 2].item()) == t_id
+                        ),
+                        None,
+                    )
+                    if t_node is None:
+                        return {}
+                    chosen_seq.append(t_node)
+
+                    valid_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, chosen_seq)
+                    w_cands = torch.where(valid_mask)[0].tolist()
+                    w_node = next(
+                        (
+                            i
+                            for i in w_cands
+                            if int(action_types[i].item()) == StateParser.ACTION_FIRE_WEAPON
+                            and int(raw_meta[i, 3].item()) == w_id
+                        ),
+                        None,
+                    )
+                    if w_node is None:
+                        return {}
+                    chosen_seq.append(w_node)
+
+            valid_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, chosen_seq)
+            if not valid_mask.any():
+                return {}
+
+            history_embeddings = torch.stack([e_actions[idx] for idx in chosen_seq]).unsqueeze(0)
             s_next = self.actor_pointer.decode_sequence(z, history_embeddings)
-            
-            child_indices = [c["node_idx"] for c in current_choices]
-            e_cands = e_actions[child_indices]
-            
-            logits = self.actor_pointer.score_actions(s_next, e_cands, None, x_dict, hetero_data)
+            child_indices = torch.where(valid_mask)[0]
+            logits = self.actor_pointer.score_actions(s_next, e_actions[child_indices], None, x_dict, target_Graph)
             probs = torch.softmax(logits, dim=-1)
-            
-            res = {}
-            for i, child in enumerate(current_choices):
-                # Using string keys to map nicely to JSON
-                res[str(child["node_idx"])] = probs[i].item()
-                
-            return res
+            result = {str(int(idx.item())): float(p.item()) for idx, p in zip(child_indices, probs)}
 
-    def _populate_tree_probabilities(self, z, e_actions, batch_idx, choices, history_embeddings_list, x_dict, hetero_data, current_prob=1.0, parent_data=None):
-        if not choices:
-            return
-            
-        if not history_embeddings_list:
-            s_k = self.actor_pointer.decode_sequence(z, None)
-        else:
-            history = torch.stack(history_embeddings_list).unsqueeze(0)
-            s_k = self.actor_pointer.decode_sequence(z, history)
-            
-        choice_indices = [c["node_idx"] for c in choices]
-        e_cands = e_actions[choice_indices]
-        cand_batch_idx = batch_idx[choice_indices] if batch_idx is not None else None
-        
-        logits = self.actor_pointer.score_actions(s_k, e_cands, cand_batch_idx, x_dict, hetero_data)
-        probs = torch.softmax(logits, dim=-1)
-        
-        for i, choice in enumerate(choices):
-            p = probs[i].item()
-            cumulative_p = current_prob * p
-            
-            node_data = choice.get("data")
-            if node_data is not None:
-                node_data["prob"] = p
-                node_data["cumulative_prob"] = cumulative_p
-            elif choice["type"] == "END" and parent_data is not None:
-                parent_data["end_prob"] = p
-                
-            children = choice.get("children", [])
-            if children:
-                next_history = history_embeddings_list + [e_actions[choice["node_idx"]]]
-                self._populate_tree_probabilities(z, e_actions, batch_idx, children, next_history, x_dict, hetero_data, cumulative_p, node_data)
+            # Also score FIRE_WEAPON children of each valid SELECT_TARGET candidate
+            for idx_t in child_indices:
+                c_idx = int(idx_t.item())
+                if int(action_types[c_idx].item()) == StateParser.ACTION_SELECT_TARGET:
+                    sub_seq = chosen_seq + [c_idx]
+                    sub_mask = self._get_valid_step_mask(parent_idx, next_parent_idx, exclusivity_group, sub_seq)
+                    if sub_mask.any():
+                        sub_hist = torch.stack([e_actions[i] for i in sub_seq]).unsqueeze(0)
+                        s_sub = self.actor_pointer.decode_sequence(z, sub_hist)
+                        w_cands = torch.where(sub_mask)[0]
+                        w_logits = self.actor_pointer.score_actions(s_sub, e_actions[w_cands], None, x_dict, target_Graph)
+                        w_probs = torch.softmax(w_logits, dim=-1)
+                        for w_idx, w_p in zip(w_cands, w_probs):
+                            result[str(int(w_idx.item()))] = float(w_p.item())
 
+            return result
 
     def get_action(self, hetero_data, mask_tree, deterministic=False):
         """
         Forward pass of the agent for inference/sampling.
-        Supports deterministic (greedy) and stochastic (categorical) action selection.
+        Supports deterministic (beam search) and stochastic (categorical) action selection.
         Returns: response_dict, v_mean, probs, mu_log_prob
         """
-        # 1. Forward Encoder
         z, x_dict = self.encoder(hetero_data)
-        
-        # 2. Extract Value Ensembles
-        v_mean, v_var = self.compute_values(z)
-        
-        # 3. Compute embeddings for all action nodes
-        e_actions = self.actor_pointer.compute_action_embeddings(x_dict, hetero_data)
-        batch_idx = hetero_data['action'].batch if hasattr(hetero_data['action'], 'batch') and getattr(hetero_data['action'], 'batch') is not None else None
-        
-        # Determine Phase Type from first action feature
-        if hetero_data['action'].x is None or hetero_data['action'].x.size(0) == 0:
-            return {"selected_path_index": -1}, v_mean, torch.empty((0,)), 0.0
-            
-        phase_type = int(hetero_data['action'].x[0, 7].item())
-        
-        # 4. Agnostically sample the trajectory (stochastically or via beam search)
-        if deterministic:
-            trajectory, mu_log_prob = self._beam_search_agnostic(
-                z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict
-            )
-        else:
-            trajectory, mu_log_prob = self._sample_agnostic_trajectory(
-                z, e_actions, batch_idx, phase_type, mask_tree, hetero_data, x_dict, deterministic=False
-            )
-            
-        # 5. Decode trajectory back to megamek format using opinionated decoders
-        if phase_type == 0 or phase_type == 3: # MOVEMENT or DEPLOYMENT
-            response_dict = self._decode_movement_action(trajectory)
-            
-            # Compute probabilities for the UI for all valid paths
-            probs_list = []
-            if mask_tree and "valid_paths" in mask_tree and len(mask_tree["valid_paths"]) > 0:
-                root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
-                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [], x_dict, hetero_data)
-                
-                for path in mask_tree["valid_paths"]:
-                    probs_list.append(path.get("cumulative_prob", 0.0))
-            
-            probs = torch.tensor(probs_list) if probs_list else torch.empty((0,))
-        elif phase_type == 1:
-            response_dict = self._decode_weapon_action(trajectory)
-            probs = torch.empty((0,))
-            
-            # Compute probabilities for UI weapon tree
-            if mask_tree and "valid_twists" in mask_tree:
-                root_choices = self._get_root_choices(phase_type, mask_tree, hetero_data)
-                self._populate_tree_probabilities(z, e_actions, batch_idx, root_choices, [], x_dict, hetero_data)
+        v_mean, _ = self.compute_values(z)
 
-        elif phase_type == 2:
-            response_dict = self._decode_physical_action(trajectory)
-            probs = torch.empty((0,))
+        if (
+            "action" not in hetero_data.node_types
+            or hetero_data["action"].x is None
+            or hetero_data["action"].x.size(0) == 0
+        ):
+            return {"selected_entity_id": -1, "selected_path_index": -1}, v_mean, torch.empty((0,)), 0.0
+
+        e_actions = self.actor_pointer.compute_action_embeddings(x_dict, hetero_data)
+        batch_idx = (
+            hetero_data["action"].batch
+            if hasattr(hetero_data["action"], "batch") and getattr(hetero_data["action"], "batch") is not None
+            else None
+        )
+
+        if deterministic:
+            chosen_seq_indices, mu_log_prob = self._beam_search_agnostic(
+                z, e_actions, batch_idx, hetero_data, x_dict
+            )
         else:
-            response_dict = {"selected_path_index": -1}
-            probs = torch.empty((0,))
-            
+            chosen_seq_indices, mu_log_prob = self._sample_agnostic_trajectory(
+                z, e_actions, batch_idx, hetero_data, x_dict, deterministic=False
+            )
+
+        response_dict = self._decode_trajectory(hetero_data, chosen_seq_indices)
+        probs = torch.empty((0,), device=z.device)
         return response_dict, v_mean, probs, mu_log_prob

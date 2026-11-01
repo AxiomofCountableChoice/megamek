@@ -55,14 +55,59 @@ public class RLDataPipeline {
 
     private boolean hasSentTopology = false;
 
+    private static class CachedEntityPaths {
+        final String stateSignature;
+        final List<MovePath> paths;
+
+        CachedEntityPaths(String stateSignature, List<MovePath> paths) {
+            this.stateSignature = stateSignature;
+            this.paths = paths;
+        }
+    }
+
+    private final Map<Integer, CachedEntityPaths> entityPathCache = new HashMap<>();
+    private int lastCachedRound = -1;
+    private final List<String> pendingReports = new ArrayList<>();
+
     public RLDataPipeline(BotClient client) {
         this.baseClient = client;
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
     }
 
+    public synchronized void appendReports(String formattedReport) {
+        if (formattedReport == null || formattedReport.isEmpty()) {
+            return;
+        }
+        String cleaned = formattedReport
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("<[^>]*>", "")
+                .replace("&nbsp;", " ")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&");
+        for (String line : cleaned.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                pendingReports.add(trimmed);
+            }
+        }
+    }
+
+    public synchronized void appendReportLine(String line) {
+        if (line != null && !line.trim().isEmpty()) {
+            pendingReports.add(line.trim());
+        }
+    }
+
+    public synchronized List<String> drainReports() {
+        List<String> drained = new ArrayList<>(pendingReports);
+        pendingReports.clear();
+        return drained;
+    }
+
     public void listenForPython(int listenPort) {
         try {
-            pythonServerSocket = new ServerSocket(listenPort);
+            pythonServerSocket = new ServerSocket(listenPort, 50, java.net.InetAddress.getLoopbackAddress());
             pythonServerSocket.setSoTimeout(30000); // 30 seconds to connect
             logger.info("RLDataPipeline waiting for Python connection on port " + listenPort);
             try {
@@ -97,6 +142,8 @@ public class RLDataPipeline {
             java.util.Map<String, Object> payloadMap = new java.util.HashMap<>();
             payloadMap.put("game_over", true);
             payloadMap.put("win", didWin);
+            payloadMap.put("rewards", calculateRewards(didWin));
+            payloadMap.put("reports", drainReports());
             sendPayload(payloadMap);
             logger.info("RLDataPipeline: Sent END_GAME payload (win=" + didWin + ")");
         } catch (Exception e) {
@@ -283,9 +330,7 @@ public class RLDataPipeline {
             payload.put("state", serializeGameState(declaredAttacks));
             payload.put("mask", mask);
             payload.put("rewards", calculateRewards());
-            
-            // We no longer send step-by-step reports.
-            // Game logs are natively extracted at the end of the episode by the Python worker.
+            payload.put("reports", drainReports());
 
             byte[] bytes = msgpackMapper.writeValueAsBytes(payload);
 
@@ -339,13 +384,19 @@ public class RLDataPipeline {
     }
 
     public Map<String, Object> calculateRewards() {
+        return calculateRewards(null);
+    }
+
+    public Map<String, Object> calculateRewards(Boolean won) {
         Game game = (Game) baseClient.getGame();
         Map<String, Object> rewards = new HashMap<>();
         if (game == null) return rewards;
 
-        // Compute current BV for Player 1 and Player 2
+        // Compute current BV and initial BV for Player 1 and Player 2
         double bv1 = 0;
         double bv2 = 0;
+        double initialBv1 = 0;
+        double initialBv2 = 0;
         double vp1 = 0;
         double vp2 = 0;
         double tp1 = 0;
@@ -363,22 +414,43 @@ public class RLDataPipeline {
 
         for (Player p : game.getPlayersList()) {
             double bv = 0;
+            double initBv = 0;
             double tp = 0;
             double vp = 0;
-            
-            if (vr != null && getPlayerScoreMethod != null) {
-                try {
-                    vp = (Double) getPlayerScoreMethod.invoke(vr, p.getId());
-                } catch (Exception ex) {}
-                if (vr.isVictory()) {
-                    if (vr.getWinningPlayer() == p.getId()) vp += 100.0;
-                    else if (!vr.isDraw()) vp -= 100.0;
+
+            boolean isFriendly = false;
+            if (baseClient.getLocalPlayer() != null) {
+                if (baseClient.getLocalPlayer().getTeam() != Player.TEAM_NONE && p.getTeam() != Player.TEAM_NONE) {
+                    isFriendly = p.getTeam() == baseClient.getLocalPlayer().getTeam();
+                } else {
+                    isFriendly = p.getId() == baseClient.getLocalPlayer().getId();
                 }
             }
-            
+
+            if (won != null) {
+                if (isFriendly) {
+                    vp += won ? 1.0 : -1.0;
+                } else {
+                    vp += won ? -1.0 : 1.0;
+                }
+            } else if (vr != null && getPlayerScoreMethod != null) {
+                try {
+                    vp = (Double) getPlayerScoreMethod.invoke(vr, p.getId()) / 100.0;
+                } catch (Exception ex) {}
+                if (vr.isVictory()) {
+                    if (vr.getWinningPlayer() == p.getId() || (vr.getWinningTeam() != Player.TEAM_NONE && vr.getWinningTeam() == p.getTeam())) {
+                        vp += 1.0;
+                    } else if (!vr.isDraw()) {
+                        vp -= 1.0;
+                    }
+                }
+            }
+
             for (Entity e : game.getEntitiesVector()) {
                 if (e == null) continue;
                 if (e.getOwnerId() == p.getId()) {
+                    double unitInitBv = (e.getInitialBV() > 0) ? e.getInitialBV() : e.calculateBattleValue(true, false);
+                    initBv += unitInitBv;
                     if (!e.isDestroyed()) {
                         bv += e.calculateBattleValue();
                     }
@@ -393,22 +465,26 @@ public class RLDataPipeline {
                         tp += 1; // ammo explosion
                 }
             }
-            
-            // Apply massive VP penalty for fleeing
+
+            // Apply massive VP penalty for fleeing and include out-of-game units in initial BV
             for (Entity e : game.getOutOfGameEntitiesVector()) {
                 if (e != null && e.getOwnerId() == p.getId()) {
+                    double unitInitBv = (e.getInitialBV() > 0) ? e.getInitialBV() : e.calculateBattleValue(true, false);
+                    initBv += unitInitBv;
                     if (e.getRemovalCondition() == megamek.common.interfaces.IEntityRemovalConditions.REMOVE_IN_RETREAT) {
-                        vp -= e.calculateBattleValue() * 2.0;
+                        vp -= (unitInitBv / 1000.0) * 2.0;
                     }
                 }
             }
-            
-            if (baseClient.getLocalPlayer() != null && p.getTeam() == baseClient.getLocalPlayer().getTeam()) {
+
+            if (isFriendly) {
                 bv1 += bv;
+                initialBv1 += initBv;
                 vp1 += vp;
                 tp1 += tp;
             } else {
                 bv2 += bv;
+                initialBv2 += initBv;
                 vp2 += vp;
                 tp2 += tp;
             }
@@ -416,6 +492,8 @@ public class RLDataPipeline {
 
         rewards.put("bv1", bv1);
         rewards.put("bv2", bv2);
+        rewards.put("initial_bv1", initialBv1);
+        rewards.put("initial_bv2", initialBv2);
         rewards.put("vp1", vp1 - vp2); // Zero sum
         rewards.put("vp2", vp2 - vp1); // Zero sum
         rewards.put("tp1", tp1);
@@ -620,8 +698,10 @@ public class RLDataPipeline {
 
         int weaponNodeId = 0;
         int boardWidth = game.getBoard().getWidth();
+        boolean isMovementPhase = game.getPhase() != null && game.getPhase().isMovement();
+        String boardOccSig = isMovementPhase ? computeBoardOccupancySignature(game) : "";
 
-        // Pass 1: Compute reachable hexes for all entities
+        // Pass 1: Compute reachable hexes for all entities (cached & restricted to active movement)
         java.util.Map<Integer, java.util.Map<Integer, Integer>> entityReachableHexes = new java.util.HashMap<>();
         java.util.Set<Integer> friendlyGlobalReachableHexes = new java.util.HashSet<>();
         java.util.Set<Integer> enemyOccupiedHexes = new java.util.HashSet<>();
@@ -633,62 +713,35 @@ public class RLDataPipeline {
             boolean isFriendly = (localPlayer != null && e1.getOwnerId() == localPlayer.getId());
             java.util.Map<Integer, Integer> reachableHexes = new java.util.HashMap<>();
 
-            // A unit can always "reach" its own hex (stationary TMM = 0)
+            // A unit can always "reach" its own hex
             if (e1.getPosition() != null) {
                 int startHexIdx = e1.getPosition().getY() * boardWidth + e1.getPosition().getX();
-                reachableHexes.put(startHexIdx, 0);
+                int currentTmm = megamek.common.compute.Compute.getTargetMovementModifier(game, e1.getId()).getValue();
+                reachableHexes.put(startHexIdx, Math.max(0, currentTmm));
                 if (!isFriendly) {
                     enemyOccupiedHexes.add(startHexIdx);
                 }
 
-                try {
-                    int groundMove = Math.max(e1.getWalkMP(), e1.getRunMP());
-                    int jumpMove = e1.getAnyTypeMaxJumpMP();
-                    int maxMove = Math.max(groundMove, jumpMove);
-
-                    if (maxMove > 0 && !e1.isImmobile()) {
+                // Only run/query ShortestPathFinder during the Movement phase for units that have not yet moved
+                if (isMovementPhase && !e1.isDone() && !e1.isDestroyed() && !e1.isImmobile()) {
+                    try {
                         boolean airborneNonAerospace = e1.isAirborneVTOLorWIGE();
-                        // Ground paths
-                        if (groundMove > 0) {
-                            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
-                                    .newInstanceOfOneToAll(groundMove, megamek.common.enums.MoveStepType.FORWARDS,
-                                            game);
-                            spfGround.run(new megamek.common.moves.MovePath(game, e1, null));
-                            for (megamek.common.moves.MovePath p : spfGround.getAllComputedPathsUncategorized()) {
-                                if (p.getFinalCoords() != null) {
-                                    int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
-                                    int tmm = megamek.common.compute.Compute
-                                            .getTargetMovementModifier(p.getHexesMoved(),
-                                                    p.isJumping(), airborneNonAerospace, game)
-                                            .getValue();
-                                    if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
-                                        reachableHexes.put(hexIdx, tmm);
-                                    }
+                        List<MovePath> legalPaths = getOrComputeLegalMovePaths(game, e1, boardOccSig);
+                        for (MovePath p : legalPaths) {
+                            if (p.getFinalCoords() != null) {
+                                int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
+                                int tmm = megamek.common.compute.Compute
+                                        .getTargetMovementModifier(p.getHexesMoved(),
+                                                p.isJumping(), airborneNonAerospace, game)
+                                        .getValue();
+                                if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
+                                    reachableHexes.put(hexIdx, tmm);
                                 }
                             }
                         }
-                        // Jump paths
-                        if (jumpMove > 0) {
-                            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
-                                    .newInstanceOfOneToAll(jumpMove, megamek.common.enums.MoveStepType.FORWARDS, game);
-                            spfJump.run(new megamek.common.moves.MovePath(game, e1, null)
-                                    .addStep(megamek.common.enums.MoveStepType.START_JUMP));
-                            for (megamek.common.moves.MovePath p : spfJump.getAllComputedPathsUncategorized()) {
-                                if (p.getFinalCoords() != null) {
-                                    int hexIdx = p.getFinalCoords().getY() * boardWidth + p.getFinalCoords().getX();
-                                    int tmm = megamek.common.compute.Compute
-                                            .getTargetMovementModifier(p.getHexesMoved(),
-                                                    p.isJumping(), airborneNonAerospace, game)
-                                            .getValue();
-                                    if (!reachableHexes.containsKey(hexIdx) || tmm > reachableHexes.get(hexIdx)) {
-                                        reachableHexes.put(hexIdx, tmm);
-                                    }
-                                }
-                            }
-                        }
+                    } catch (Exception ex) {
+                        // Ignore if pathfinding fails for some entities
                     }
-                } catch (Exception ex) {
-                    // Ignore if pathfinding fails for some entities
                 }
             }
 
@@ -852,102 +905,133 @@ public class RLDataPipeline {
         return state;
     }
 
+    private String computeBoardOccupancySignature(Game game) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(game.getRoundCount()).append('|');
+        for (Entity e : game.getEntitiesVector()) {
+            if (e != null && !e.isDestroyed() && e.getPosition() != null) {
+                sb.append(e.getId()).append(':')
+                  .append(e.getPosition().getX()).append(',')
+                  .append(e.getPosition().getY()).append(',')
+                  .append(e.getElevation()).append(';');
+            }
+        }
+        return sb.toString();
+    }
+
+    private synchronized List<MovePath> getOrComputeLegalMovePaths(Game game, Entity mover, String boardOccupancySig) {
+        int currentRound = game.getRoundCount();
+        if (currentRound != lastCachedRound) {
+            entityPathCache.clear();
+            lastCachedRound = currentRound;
+        }
+        if (mover.getPosition() == null || mover.isDestroyed() || mover.isImmobile()) {
+            return java.util.Collections.emptyList();
+        }
+        String stateSig = currentRound + "|" + mover.getId() + "|"
+                + mover.getPosition().getX() + "," + mover.getPosition().getY() + "|"
+                + mover.getFacing() + "|" + mover.getWalkMP() + "," + mover.getRunMP() + ","
+                + mover.getAnyTypeMaxJumpMP() + "|" + mover.isProne() + "|" + boardOccupancySig;
+
+        CachedEntityPaths cached = entityPathCache.get(mover.getId());
+        if (cached != null && cached.stateSignature.equals(stateSig)) {
+            return cached.paths;
+        }
+
+        List<MovePath> legalPaths = new ArrayList<>();
+        int groundMove = Math.max(mover.getWalkMP(), mover.getRunMP());
+        if (groundMove > 0) {
+            megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
+                    .newInstanceOfOneToAll(groundMove, megamek.common.enums.MoveStepType.FORWARDS, game);
+            spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
+            for (MovePath p : spfGround.getAllComputedPathsUncategorized()) {
+                if (isPathValidAndOnBoard(game, mover, p)) {
+                    legalPaths.add(p);
+                }
+            }
+        }
+
+        int jumpMove = mover.getAnyTypeMaxJumpMP();
+        if (jumpMove > 0) {
+            megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
+                    .newInstanceOfOneToAll(jumpMove, megamek.common.enums.MoveStepType.FORWARDS, game);
+            spfJump.run(new megamek.common.moves.MovePath(game, mover, null)
+                    .addStep(megamek.common.enums.MoveStepType.START_JUMP));
+            for (MovePath p : spfJump.getAllComputedPathsUncategorized()) {
+                if (isPathValidAndOnBoard(game, mover, p)) {
+                    legalPaths.add(p);
+                }
+            }
+        }
+
+        entityPathCache.put(mover.getId(), new CachedEntityPaths(stateSig, legalPaths));
+        return legalPaths;
+    }
+
+    private boolean isPathValidAndOnBoard(Game game, Entity mover, MovePath p) {
+        if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
+                p.getFinalCoords(), mover.climbMode()) != null) {
+            return false;
+        }
+        if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
+            return false;
+        }
+        for (megamek.common.moves.MoveStep step : p.getStepVector()) {
+            if (game.getBoard().getHex(step.getPosition()) == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public List<Integer> extractSelectableIndices(List<Entity> entities) {
+        List<Integer> indices = new ArrayList<>();
+        Game game = (Game) baseClient.getGame();
+        if (game == null || entities == null) {
+            return indices;
+        }
+        for (Entity e : entities) {
+            if (e != null) {
+                int idx = game.getEntitiesVector().indexOf(e);
+                if (idx >= 0 && !indices.contains(idx)) {
+                    indices.add(idx);
+                }
+            }
+        }
+        return indices;
+    }
+
     public List<MovePath> buildMovementMask(List<Entity> movers, List<RLActionMask.RLPathMask> serializedMaskOut) {
         Game game = (Game) baseClient.getGame();
         List<MovePath> calculatedPaths = new ArrayList<>();
         serializedMaskOut.clear();
-        
+        if (game == null) {
+            return calculatedPaths;
+        }
+
+        String boardOccSig = computeBoardOccupancySignature(game);
         int pathIndexCounter = 0;
 
         for (Entity mover : movers) {
             if (mover == null) continue;
             int sourceEntityIndex = game.getEntitiesVector().indexOf(mover);
-
-            // Ground path generation
-            int maxMove = Math.max(mover.getWalkMP(), Math.max(mover.getRunMP(), mover.getJumpMP()));
-            if (maxMove > 0) {
-                megamek.common.pathfinder.ShortestPathFinder spfGround = megamek.common.pathfinder.ShortestPathFinder
-                        .newInstanceOfOneToAll(maxMove, megamek.common.enums.MoveStepType.FORWARDS, game);
-                spfGround.run(new megamek.common.moves.MovePath(game, mover, null));
-                
-                for (MovePath p : spfGround.getAllComputedPathsUncategorized()) {
-                    if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
-                            p.getFinalCoords(), mover.climbMode()) != null) {
-                        continue;
-                    }
-                    boolean hasNullHex = false;
-                    if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
-                        hasNullHex = true;
-                    } else {
-                        for (megamek.common.moves.MoveStep step : p.getStepVector()) {
-                            if (game.getBoard().getHex(step.getPosition()) == null) {
-                                hasNullHex = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (hasNullHex) continue;
-
-                    calculatedPaths.add(p);
-                    RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
-                    pm.source_entity_index = sourceEntityIndex;
-                    pm.path_index = pathIndexCounter++;
-                    if (p.getFinalCoords() != null && game.getBoard() != null) {
-                        pm.dest_index = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
-                    }
-                    pm.dest_facing = p.getFinalFacing();
-                    pm.mp_used = p.getMpUsed();
-                    pm.is_jump = p.isJumping();
-                    pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
-                    pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
-                    pm.has_masc = p.hasActiveMASC();
-                    pm.has_supercharger = p.hasActiveSupercharger();
-                    serializedMaskOut.add(pm);
+            List<MovePath> legalPaths = getOrComputeLegalMovePaths(game, mover, boardOccSig);
+            for (MovePath p : legalPaths) {
+                calculatedPaths.add(p);
+                RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
+                pm.source_entity_index = sourceEntityIndex;
+                pm.path_index = pathIndexCounter++;
+                if (p.getFinalCoords() != null && game.getBoard() != null) {
+                    pm.dest_index = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
                 }
-            }
-
-            // Add jump paths if applicable
-            if (mover.getAnyTypeMaxJumpMP() > 0) {
-                megamek.common.pathfinder.ShortestPathFinder spfJump = megamek.common.pathfinder.ShortestPathFinder
-                        .newInstanceOfOneToAll(mover.getAnyTypeMaxJumpMP(), megamek.common.enums.MoveStepType.FORWARDS,
-                                game);
-                spfJump.run(new megamek.common.moves.MovePath(game, mover, null)
-                        .addStep(megamek.common.enums.MoveStepType.START_JUMP));
-                        
-                for (MovePath p : spfJump.getAllComputedPathsUncategorized()) {
-                    if (!p.isMoveLegal() || megamek.common.compute.Compute.stackingViolation(game, mover.getId(),
-                            p.getFinalCoords(), mover.climbMode()) != null) {
-                        continue;
-                    }
-                    boolean hasNullHex = false;
-                    if (p.getFinalCoords() != null && game.getBoard().getHex(p.getFinalCoords()) == null) {
-                        hasNullHex = true;
-                    } else {
-                        for (megamek.common.moves.MoveStep step : p.getStepVector()) {
-                            if (game.getBoard().getHex(step.getPosition()) == null) {
-                                hasNullHex = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (hasNullHex) continue;
-
-                    calculatedPaths.add(p);
-                    RLActionMask.RLPathMask pm = new RLActionMask.RLPathMask();
-                    pm.source_entity_index = sourceEntityIndex;
-                    pm.path_index = pathIndexCounter++;
-                    if (p.getFinalCoords() != null && game.getBoard() != null) {
-                        pm.dest_index = p.getFinalCoords().getY() * game.getBoard().getWidth() + p.getFinalCoords().getX();
-                    }
-                    pm.dest_facing = p.getFinalFacing();
-                    pm.mp_used = p.getMpUsed();
-                    pm.is_jump = p.isJumping();
-                    pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
-                    pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
-                    pm.has_masc = p.hasActiveMASC();
-                    pm.has_supercharger = p.hasActiveSupercharger();
-                    serializedMaskOut.add(pm);
-                }
+                pm.dest_facing = p.getFinalFacing();
+                pm.mp_used = p.getMpUsed();
+                pm.is_jump = p.isJumping();
+                pm.is_walk = (!pm.is_jump && pm.mp_used <= mover.getWalkMP());
+                pm.is_run = (!pm.is_jump && pm.mp_used > mover.getWalkMP());
+                pm.has_masc = p.hasActiveMASC();
+                pm.has_supercharger = p.hasActiveSupercharger();
+                serializedMaskOut.add(pm);
             }
         }
         return calculatedPaths;
@@ -1005,6 +1089,7 @@ public class RLDataPipeline {
             }
 
             RLActionMask maskData = new RLActionMask();
+            maskData.selectable_entities = extractSelectableIndices(selectableEntities);
             maskData.valid_paths = serializedMask;
 
             Map<String, Object> payload = new HashMap<>();
@@ -1012,6 +1097,7 @@ public class RLDataPipeline {
             payload.put("state", serializeGameState(null));
             payload.put("mask", maskData);
             payload.put("rewards", calculateRewards());
+            payload.put("reports", drainReports());
 
             Map<String, Object> targetAction = new HashMap<>();
             targetAction.put("selected_path_index", subsetChoiceIndex);
@@ -1036,7 +1122,9 @@ public class RLDataPipeline {
             int originalFacing = shooter.getSecondaryFacing();
             List<Integer> facingChanges = new ArrayList<>(
                     megamek.client.bot.princess.FireControl.getValidFacingChanges(shooter));
-            facingChanges.add(0); // "no facing change"
+            if (!facingChanges.contains(0)) {
+                facingChanges.add(0); // "no facing change"
+            }
 
             for (int twist : facingChanges) {
                 // Apply the twist temporarily
@@ -1095,7 +1183,7 @@ public class RLDataPipeline {
                     }
                 }
 
-                if (!targetsMask.isEmpty()) {
+                if (!targetsMask.isEmpty() || twist == 0) {
                     RLActionMask.RLTwistMask twistMask = new RLActionMask.RLTwistMask();
                     twistMask.source_entity_index = sourceEntityIndex;
                     twistMask.twist = twist;
@@ -1120,11 +1208,12 @@ public class RLDataPipeline {
 
         try {
             RLActionMask maskData = new RLActionMask();
+            maskData.selectable_entities = extractSelectableIndices(selectableEntities);
             maskData.valid_twists = buildFiringMask(selectableEntities);
 
             RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
             targetAction.selected_entity_index = baseClient.getGame().getEntitiesVector().indexOf(shooter);
-            targetAction.torso_twist = chosenTwist;
+            targetAction.torso_twist = (attacks == null || attacks.isEmpty()) ? 0 : chosenTwist;
             targetAction.attacks = new ArrayList<>();
 
             for (megamek.common.actions.EntityAction ea : attacks) {
@@ -1151,6 +1240,7 @@ public class RLDataPipeline {
             payload.put("state", serializeGameState(null));
             payload.put("mask", maskData);
             payload.put("rewards", calculateRewards());
+            payload.put("reports", drainReports());
             payload.put("target_action", targetAction);
 
             sendPayload(payload);
@@ -1248,6 +1338,7 @@ public class RLDataPipeline {
 
         try {
             RLActionMask maskData = new RLActionMask();
+            maskData.selectable_entities = extractSelectableIndices(selectableEntities);
             maskData.valid_targets = buildPhysicalMask(selectableEntities);
 
             RLActionMask.RLTargetAction targetAction = new RLActionMask.RLTargetAction();
@@ -1294,6 +1385,7 @@ public class RLDataPipeline {
             payload.put("state", serializeGameState(null));
             payload.put("mask", maskData);
             payload.put("rewards", calculateRewards());
+            payload.put("reports", drainReports());
             payload.put("target_action", targetAction);
 
             sendPayload(payload);
